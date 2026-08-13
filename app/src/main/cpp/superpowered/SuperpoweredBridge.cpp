@@ -16,6 +16,8 @@
 #include "SuperpoweredFilter.h"
 #include "SuperpoweredSimple.h"
 #include "SuperpoweredLimiter.h"
+#include "SuperpoweredSpatializer.h"
+#include "SuperpoweredReverb.h"
 #else
 #define HAS_SUPERPOWERED 0
 #endif
@@ -143,6 +145,29 @@ struct EqSnapshot {
     float preampMultiplier = 1.0f;
     bool safeVolumeEnabled = false;
     float safeVolumeGain = 1.0f;
+    /// Spatial stage (opt-in). Disabled by default so EQ-only playback stays bit-identical in this
+    /// branch. Parameter layout is owned by Kotlin SpatialAudioProfile.toNativeParams().
+    bool spatialEnabled = false;
+    int spatialAlgorithm = 0; // 0 HRTF, 1 crossfeed, 2 speaker M/S
+    float azL = 330.0f;
+    float azR = 30.0f;
+    float elL = 0.0f;
+    float elR = 0.0f;
+    float rearAzL = 250.0f;
+    float rearAzR = 110.0f;
+    float rearEl = 0.0f;
+    float phantomGain = 0.0f;
+    float phantomDelayMs = 12.0f;
+    float reverbMix = 0.0f;
+    float reverbWidth = 1.0f;
+    float reverbDamp = 0.5f;
+    float reverbRoomSize = 0.8f;
+    float reverbPredelayMs = 0.0f;
+    float reverbLowCutHz = 0.0f;
+    bool sound2 = false;
+    float inputVolume = 1.0f;
+    float crossfeedAmt = 0.32f;
+    float speakerWidth = 1.0f;
     /// Bumped by writers ONLY when a band actually changed (setEqBand / disableAllBands). Lets the audio
     /// thread skip re-writing all 64 filters for a publication that only moved a scalar — most importantly
     /// the per-track Safe Volume update, which must not touch EQ coefficients at all.
@@ -155,6 +180,22 @@ public:
     Superpowered::Limiter* limiter = nullptr;
     Superpowered::Filter* deEsser = nullptr;
     Superpowered::Filter* deEsserDetector = nullptr;
+
+    Superpowered::Spatializer* spatFrontL = nullptr;
+    Superpowered::Spatializer* spatFrontR = nullptr;
+    Superpowered::Spatializer* spatRearL = nullptr;
+    Superpowered::Spatializer* spatRearR = nullptr;
+    Superpowered::Reverb* spatialRoom = nullptr;
+
+    float spInL[MAX_AUDIO_FRAMES];
+    float spInR[MAX_AUDIO_FRAMES];
+    float spOutL[MAX_AUDIO_FRAMES];
+    float spOutR[MAX_AUDIO_FRAMES];
+    float spDelayL[2048];
+    float spDelayR[2048];
+    int spDelayPos = 0;
+    float xfLpL = 0.0f;
+    float xfLpR = 0.0f;
 
     float conversionBuffer[MAX_BUFFER_SIZE];
     float deEsserBuffer[MAX_BUFFER_SIZE];
@@ -184,6 +225,27 @@ public:
     // reference instead of blasting at full native level.
     bool activeSafeVolumeEnabled = false;
     float activeSafeVolumeGain = 1.0f;
+    bool activeSpatialEnabled = false;
+    int activeSpatialAlgorithm = 0;
+    float activeAzL = 330.0f;
+    float activeAzR = 30.0f;
+    float activeElL = 0.0f;
+    float activeElR = 0.0f;
+    float activeRearAzL = 250.0f;
+    float activeRearAzR = 110.0f;
+    float activeRearEl = 0.0f;
+    float activePhantomGain = 0.0f;
+    float activePhantomDelayMs = 12.0f;
+    float activeReverbMix = 0.0f;
+    float activeReverbWidth = 1.0f;
+    float activeReverbDamp = 0.5f;
+    float activeReverbRoomSize = 0.8f;
+    float activeReverbPredelayMs = 0.0f;
+    float activeReverbLowCutHz = 0.0f;
+    bool activeSound2 = false;
+    float activeInputVolume = 1.0f;
+    float activeCrossfeedAmt = 0.32f;
+    float activeSpeakerWidth = 1.0f;
     /// bandsRevision of the snapshot whose band parameters are currently loaded into the filter objects.
     uint32_t appliedBandsRevision = 0;
 
@@ -268,6 +330,28 @@ public:
         activePreampMultiplier = s.preampMultiplier;
         activeSafeVolumeEnabled = s.safeVolumeEnabled;
         activeSafeVolumeGain = s.safeVolumeGain;
+        activeSpatialEnabled = s.spatialEnabled;
+        activeSpatialAlgorithm = s.spatialAlgorithm;
+        activeAzL = s.azL;
+        activeAzR = s.azR;
+        activeElL = s.elL;
+        activeElR = s.elR;
+        activeRearAzL = s.rearAzL;
+        activeRearAzR = s.rearAzR;
+        activeRearEl = s.rearEl;
+        activePhantomGain = s.phantomGain;
+        activePhantomDelayMs = s.phantomDelayMs;
+        activeReverbMix = s.reverbMix;
+        activeReverbWidth = s.reverbWidth;
+        activeReverbDamp = s.reverbDamp;
+        activeReverbRoomSize = s.reverbRoomSize;
+        activeReverbPredelayMs = s.reverbPredelayMs;
+        activeReverbLowCutHz = s.reverbLowCutHz;
+        activeSound2 = s.sound2;
+        activeInputVolume = s.inputVolume;
+        activeCrossfeedAmt = s.crossfeedAmt;
+        activeSpeakerWidth = s.speakerWidth;
+        applySpatializerProperties();
 
         // Filter objects are touched ONLY when a band genuinely changed. A publication caused purely by
         // Safe Volume (which happens on every track) therefore leaves the EQ's coefficients completely
@@ -292,6 +376,115 @@ public:
                 f->octave = b.octave;
             }
             f->enabled = b.enabled;
+        }
+    }
+
+    static float clampf(float v, float lo, float hi) {
+        if (v < lo) return lo;
+        if (v > hi) return hi;
+        return v;
+    }
+
+    void configureOneSpatializer(Superpowered::Spatializer* sp, float azimuth, float elevation) {
+        if (!sp) return;
+        sp->samplerate = currentSamplerate;
+        sp->azimuth = clampf(azimuth, 0.0f, 360.0f);
+        sp->elevation = clampf(elevation, -90.0f, 90.0f);
+        sp->reverbmix = 0.0f; // global Spatializer reverb is process-wide; we use a per-processor Reverb
+        sp->occlusion = 0.0f;
+        sp->sound2 = activeSound2;
+        sp->inputVolume = clampf(activeInputVolume, 0.05f, 1.5f);
+    }
+
+    void applySpatializerProperties() {
+        if (!activeSpatialEnabled || activeSpatialAlgorithm != 0) return;
+        configureOneSpatializer(spatFrontL, activeAzL, activeElL);
+        configureOneSpatializer(spatFrontR, activeAzR, activeElR);
+        configureOneSpatializer(spatRearL, activeRearAzL, activeRearEl);
+        configureOneSpatializer(spatRearR, activeRearAzR, activeRearEl);
+        if (spatialRoom) {
+            spatialRoom->samplerate = currentSamplerate;
+            spatialRoom->width = clampf(activeReverbWidth, 0.0f, 1.0f);
+            spatialRoom->damp = clampf(activeReverbDamp, 0.0f, 1.0f);
+            spatialRoom->roomSize = clampf(activeReverbRoomSize, 0.0f, 1.0f);
+            spatialRoom->predelayMs = clampf(activeReverbPredelayMs, 0.0f, 500.0f);
+            spatialRoom->lowCutHz = clampf(activeReverbLowCutHz, 0.0f, 2000.0f);
+            spatialRoom->mix = clampf(activeReverbMix, 0.0f, 0.45f);
+            spatialRoom->enabled = activeReverbMix > 0.001f;
+        }
+    }
+
+    void processCrossfeed(float* interleaved, int frames) {
+        const float amt = clampf(activeCrossfeedAmt, 0.0f, 0.6f);
+        const float dry = 1.0f - amt;
+        const float a = 1.0f - expf(-2.0f * 3.14159265f * 700.0f / (float) currentSamplerate);
+        for (int i = 0; i < frames; ++i) {
+            float L = interleaved[i * 2];
+            float R = interleaved[i * 2 + 1];
+            xfLpL += a * (R - xfLpL);
+            xfLpR += a * (L - xfLpR);
+            interleaved[i * 2] = L * dry + xfLpL * amt;
+            interleaved[i * 2 + 1] = R * dry + xfLpR * amt;
+        }
+    }
+
+    void processSpeakerMs(float* interleaved, int frames) {
+        const float width = clampf(activeSpeakerWidth, 0.85f, 1.45f);
+        if (fabsf(width - 1.0f) < 0.001f) return;
+        Superpowered::StereoToMidSide(interleaved, interleaved, (unsigned int) frames);
+        for (int i = 0; i < frames; ++i) {
+            interleaved[i * 2 + 1] *= width;
+        }
+        Superpowered::MidSideToStereo(interleaved, interleaved, (unsigned int) frames);
+    }
+
+    void processHrtfChunk(float* interleaved, int frames) {
+        Superpowered::DeInterleave(interleaved, spInL, spInR, (unsigned int) frames);
+        bool okL = spatFrontL && spatFrontL->process(spInL, spInL, spOutL, spOutR, (unsigned int) frames, false);
+        bool okR = spatFrontR && spatFrontR->process(spInR, spInR, spOutL, spOutR, (unsigned int) frames, true);
+        if (!okL && !okR) return;
+
+        if (activePhantomGain > 0.001f && spatRearL && spatRearR) {
+            const int delayLen = (int) clampf(activePhantomDelayMs * (float) currentSamplerate / 1000.0f, 1.0f, 2047.0f);
+            for (int i = 0; i < frames; ++i) {
+                int read = spDelayPos - delayLen;
+                if (read < 0) read += 2048;
+                float dL = spDelayL[read] * activePhantomGain;
+                float dR = spDelayR[read] * activePhantomGain;
+                spDelayL[spDelayPos] = spInL[i];
+                spDelayR[spDelayPos] = spInR[i];
+                spDelayPos = (spDelayPos + 1) & 2047;
+                spInL[i] = dL;
+                spInR[i] = dR;
+            }
+            spatRearL->process(spInL, spInL, spOutL, spOutR, (unsigned int) frames, true);
+            spatRearR->process(spInR, spInR, spOutL, spOutR, (unsigned int) frames, true);
+        }
+        Superpowered::Interleave(spOutL, spOutR, interleaved, (unsigned int) frames);
+        if (spatialRoom && activeReverbMix > 0.001f) {
+            spatialRoom->process(interleaved, interleaved, (unsigned int) frames);
+        }
+    }
+
+    void processSpatial(float* interleaved, int frames) {
+        if (!activeSpatialEnabled || frames < 64) return;
+        switch (activeSpatialAlgorithm) {
+            case 1:
+                processCrossfeed(interleaved, frames);
+                return;
+            case 2:
+                processSpeakerMs(interleaved, frames);
+                return;
+            default:
+                break;
+        }
+        int offset = 0;
+        while (offset < frames) {
+            int chunk = frames - offset;
+            if (chunk > 8192) chunk = 8192;
+            if (chunk < 64) break;
+            processHrtfChunk(interleaved + offset * 2, chunk);
+            offset += chunk;
         }
     }
 
@@ -322,6 +515,16 @@ public:
         deEsserDetector->frequency = 6500.0f;
         deEsserDetector->octave = 1.0f;
         deEsserDetector->enabled = true;
+
+        spatFrontL = new Superpowered::Spatializer(samplerate);
+        spatFrontR = new Superpowered::Spatializer(samplerate);
+        spatRearL = new Superpowered::Spatializer(samplerate);
+        spatRearR = new Superpowered::Spatializer(samplerate);
+        spatialRoom = new Superpowered::Reverb(samplerate);
+        spatialRoom->enabled = false;
+        spatialRoom->mix = 0.0f;
+        memset(spDelayL, 0, sizeof(spDelayL));
+        memset(spDelayR, 0, sizeof(spDelayR));
     }
 
     ~SuperpoweredProcessor() {
@@ -333,6 +536,11 @@ public:
         if (limiter) { delete limiter; limiter = nullptr; }
         if (deEsser) { delete deEsser; deEsser = nullptr; }
         if (deEsserDetector) { delete deEsserDetector; deEsserDetector = nullptr; }
+        if (spatFrontL) { delete spatFrontL; spatFrontL = nullptr; }
+        if (spatFrontR) { delete spatFrontR; spatFrontR = nullptr; }
+        if (spatRearL) { delete spatRearL; spatRearL = nullptr; }
+        if (spatRearR) { delete spatRearR; spatRearR = nullptr; }
+        if (spatialRoom) { delete spatialRoom; spatialRoom = nullptr; }
     }
 };
 #endif
@@ -493,6 +701,46 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setSafeVolume(JNI
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setSpatial(JNIEnv *env, jobject thiz, jlong ptr, jboolean enabled, jint algorithm, jfloatArray params) {
+#if HAS_SUPERPOWERED
+    auto* processor = reinterpret_cast<SuperpoweredProcessor*>(ptr);
+    if (!processor) return;
+    std::lock_guard<std::mutex> lock(processor->writerMutex);
+    processor->staging.spatialEnabled = (enabled == JNI_TRUE);
+    processor->staging.spatialAlgorithm = algorithm;
+    if (params != nullptr) {
+        const jsize n = env->GetArrayLength(params);
+        if (n >= 19) {
+            jfloat* p = env->GetFloatArrayElements(params, nullptr);
+            if (p) {
+                processor->staging.azL = p[0];
+                processor->staging.azR = p[1];
+                processor->staging.elL = p[2];
+                processor->staging.elR = p[3];
+                processor->staging.rearAzL = p[4];
+                processor->staging.rearAzR = p[5];
+                processor->staging.rearEl = p[6];
+                processor->staging.phantomGain = p[7];
+                processor->staging.phantomDelayMs = p[8];
+                processor->staging.reverbMix = p[9];
+                processor->staging.reverbWidth = p[10];
+                processor->staging.reverbDamp = p[11];
+                processor->staging.reverbRoomSize = p[12];
+                processor->staging.reverbPredelayMs = p[13];
+                processor->staging.reverbLowCutHz = p[14];
+                processor->staging.sound2 = p[15] > 0.5f;
+                processor->staging.inputVolume = p[16];
+                processor->staging.crossfeedAmt = p[17];
+                processor->staging.speakerWidth = p[18];
+                env->ReleaseFloatArrayElements(params, p, JNI_ABORT);
+            }
+        }
+    }
+    processor->publishIfNotBatchingLocked();
+#endif
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_disableAllBands(JNIEnv *env, jobject thiz, jlong ptr) {
 #if HAS_SUPERPOWERED
     auto* processor = reinterpret_cast<SuperpoweredProcessor*>(ptr);
@@ -556,13 +804,16 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
         }
     }
 
-    // Run the DSP block if the EQ is on OR the optional Safe Volume stage is on. When BOTH are off the
-    // block is skipped entirely (pure float pass-through) so default playback stays bit-perfect.
+    // Run the DSP block if the EQ is on, Safe Volume is on (or still ramping), OR spatial is on.
+    // When ALL of those are off the block is skipped (pure float pass-through) so default playback
+    // stays bit-perfect.
     bool runEq = (enabled == JNI_TRUE);
     // Also run while Safe Volume is ramping BACK to unity after being switched off — otherwise disabling it
     // would skip the chain outright and drop the gain in one step, the very jump the ramp exists to avoid.
+    bool runSpatial = processor && processor->activeSpatialEnabled;
     bool runChain = runEq ||
-        (processor && (processor->activeSafeVolumeEnabled || processor->safeVolumeGainCurrent != 1.0f));
+        (processor && (processor->activeSafeVolumeEnabled || processor->safeVolumeGainCurrent != 1.0f)) ||
+        runSpatial;
     if (runChain && workBuffer && processor) {
         // NO LOCK HERE. Parameters were taken in above via consumeAndApplySnapshot, which is wait-free
         // and delivers a complete set or nothing at all. Everything read below is either that applied
@@ -665,6 +916,13 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
                     workBuffer[i] *= cur;
                 }
             }
+        }
+
+        // SPATIAL — after EQ / Safe Volume so the HRTF (or crossfeed / speaker width) sees the
+        // levelled signal, and BEFORE the limiter so peaks from summing virtual sources are caught.
+        // Stereo only: a Spatializer instance is a 3D point source feeding two ears.
+        if (processor->activeSpatialEnabled && channels == 2 && workBuffer) {
+            processor->processSpatial(workBuffer, num_frames);
         }
 
         // Limiter (peak safety) — runs for EQ OR Safe Volume. Stereo only (Superpowered Limiter is stereo);

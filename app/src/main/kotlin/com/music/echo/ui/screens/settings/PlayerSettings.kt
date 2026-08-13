@@ -171,11 +171,16 @@ fun PlayerSettings(
         key = iad1tya.echo.music.constants.HighPerformanceModeKey,
         defaultValue = false
     )
+    val (spatialEnabled, _) = rememberPreference(
+        key = iad1tya.echo.music.constants.SpatialAudioEnabledKey,
+        defaultValue = false
+    )
 
     val offloadBlockedReason: String? = when {
         crossfadeEnabled && !highPerformanceMode -> stringResource(R.string.audio_offload_disabled_by_crossfade)
         safeVolumeEnabled -> stringResource(R.string.audio_offload_disabled_by_safe_volume)
         eqActive -> stringResource(R.string.audio_offload_disabled_by_equalizer)
+        spatialEnabled -> stringResource(R.string.audio_offload_disabled_by_spatial)
         else -> null
     }
 

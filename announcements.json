@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-13T05:10:00Z",
+  "updatedAt": "2026-08-13T05:50:00Z",
   "items": [
+    {
+      "id": "aviso-20260813-055000",
+      "date": "2026-08-13",
+      "publishedAt": "2026-08-13T05:50:00Z",
+      "title": "Aura Hi-Res 0.6.189: portada real, EQ con el dedo y audio espacial",
+      "body": "Aura Hi-Res 0.6.189 ya está lista para todos.\n\n• La miniatura del reproductor en notificaciones muestra la portada del álbum, no el icono de Aura.\n• En el ecualizador, desliza con el dedo presionado de derecha a izquierda para mover las bandas y ajustar con más precisión.\n• Audio espacial nuevo en el ecualizador (apagado por defecto): elige un perfil para auriculares o el altavoz del teléfono.\n\nActualiza desde el menú de tu cuenta (avatar) ▸ Actualizaciones. Gracias por estar en Aura.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260813-051000",
       "date": "2026-08-13",

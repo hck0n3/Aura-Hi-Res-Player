@@ -43,6 +43,8 @@ class AudioOffloadGateTest {
         assertFalse(AudioOffloadGate.allowOffload(passthrough.copy(crossfadeEnabled = true)))
         assertFalse(AudioOffloadGate.allowOffload(passthrough.copy(safeVolumeEnabled = true)))
         assertFalse(AudioOffloadGate.allowOffload(passthrough.copy(equalizerActive = true)))
+        assertFalse(AudioOffloadGate.allowOffload(passthrough.copy(spatialEnabled = true)))
+        assertEquals(BlockReason.SPATIAL, AudioOffloadGate.blockReason(passthrough.copy(spatialEnabled = true)))
     }
 
     /**
@@ -77,6 +79,8 @@ class AudioOffloadGateTest {
         assertFalse(AudioOffloadGate.allowOffload(perfModeWithEq))
         val perfModeWithSafeVolume = passthrough.copy(highPerformanceMode = true, safeVolumeEnabled = true)
         assertFalse(AudioOffloadGate.allowOffload(perfModeWithSafeVolume))
+        val perfModeWithSpatial = passthrough.copy(highPerformanceMode = true, spatialEnabled = true)
+        assertFalse(AudioOffloadGate.allowOffload(perfModeWithSpatial))
     }
 
     /**
@@ -105,20 +109,21 @@ class AudioOffloadGateTest {
     fun `allowed implies nothing is live, over the whole input space`() {
         val flags = listOf(false, true)
         var allowedCount = 0
-        for (wants in flags) for (cf in flags) for (perf in flags) for (sv in flags) for (eq in flags) {
-            val inputs = Inputs(wants, cf, perf, sv, eq)
+        for (wants in flags) for (cf in flags) for (perf in flags) for (sv in flags) for (eq in flags) for (spatial in flags) {
+            val inputs = Inputs(wants, cf, perf, sv, eq, spatial)
             if (AudioOffloadGate.allowOffload(inputs)) {
                 allowedCount++
                 assertTrue("offload allowed without the user asking: $inputs", inputs.userWantsOffload)
                 assertFalse("offload allowed with Safe Volume live: $inputs", inputs.safeVolumeEnabled)
                 assertFalse("offload allowed with the EQ live: $inputs", inputs.equalizerActive)
+                assertFalse("offload allowed with spatial live: $inputs", inputs.spatialEnabled)
                 assertFalse(
                     "offload allowed with crossfade able to run: $inputs",
                     inputs.crossfadeEnabled && !inputs.highPerformanceMode,
                 )
             }
         }
-        // wants=true, sv=false, eq=false, and (cf=false with perf either way) or (cf=true with perf=true).
+        // wants=true, sv=false, eq=false, spatial=false, and (cf=false with perf either way) or (cf=true with perf=true).
         assertEquals(3, allowedCount)
     }
 }

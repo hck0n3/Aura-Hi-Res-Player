@@ -481,6 +481,7 @@
     <string name="audio_offload_disabled_by_crossfade">Deshabilitado porque el desvanecido esta activo</string>
     <string name="audio_offload_disabled_by_safe_volume">Desactivado porque el Volumen seguro está activo</string>
     <string name="audio_offload_disabled_by_equalizer">Desactivado porque el ecualizador está activo</string>
+    <string name="audio_offload_disabled_by_spatial">Desactivado porque el audio espacial está activo</string>
     <string name="lyrics_romanize_as_main">Mostrar letras romanizadas como principales</string>
     <string name="hide_youtube_shorts">Ocultar Shorts</string>
     <string name="not_playing">No se está reproduciendo ninguna canción</string>

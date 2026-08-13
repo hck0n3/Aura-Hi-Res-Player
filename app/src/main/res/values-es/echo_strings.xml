@@ -637,6 +637,7 @@
     <string name="audio_offload_disabled_by_crossfade">Desactivado porque la transición suave está activa</string>
     <string name="audio_offload_disabled_by_safe_volume">Desactivado porque el Volumen seguro está activo</string>
     <string name="audio_offload_disabled_by_equalizer">Desactivado porque el ecualizador está activo</string>
+    <string name="audio_offload_disabled_by_spatial">Desactivado porque el audio espacial está activo</string>
     <string name="crossfade">Transición suave</string>
     <string name="hide_youtube_shorts">Ocultar Shorts</string>
     <string name="listen_together_in_top_bar">Escuchar juntos en la barra superior</string>
@@ -815,6 +816,21 @@
     <string name="eq_preset_dirac_game">Dirac Juego</string>
     <string name="eq_enable_title">Ecualizador</string>
     <string name="eq_enable_summary">Activa o desactiva el procesamiento de audio profesional</string>
+    <string name="spatial_audio_title">Audio espacial</string>
+    <string name="spatial_audio_summary">Simula un escenario 3D con Superpowered. No es Apple Spatial Audio, Sony 360RA, Dolby Atmos ni DTS:X licenciados: cada perfil es un ajuste binaural (auriculares) o de ancho estéreo (altavoz del teléfono) distinto. Apagado = este efecto no corre.</string>
+    <string name="spatial_audio_profiles_label">PERFILES ESPACIALES</string>
+    <string name="spatial_profile_aura">Aura (estudio)</string>
+    <string name="spatial_profile_aura_summary">Triángulo frontal estrecho, casi seco. El de menos color.</string>
+    <string name="spatial_profile_apple">Frontal (Apple Music)</string>
+    <string name="spatial_profile_apple_summary">El escenario se queda delante, un poco de altura, sala seca.</string>
+    <string name="spatial_profile_sony">Esfera 360 (Sony)</string>
+    <string name="spatial_profile_sony_summary">Más ancho y alto; fuentes a los lados y detrás.</string>
+    <string name="spatial_profile_cinema">Cine inmersivo</string>
+    <string name="spatial_profile_cinema_summary">Surrounds fantasma + más sala, upmix binaural tipo Atmos.</string>
+    <string name="spatial_profile_wide">Surround amplio</string>
+    <string name="spatial_profile_wide_summary">Más energía trasera, estilo DTS Headphone.</string>
+    <string name="spatial_profile_crossfeed">Crossfeed (estudio)</string>
+    <string name="spatial_profile_crossfeed_summary">Simulación Bauer de altavoces. Sin HRTF ni reverb.</string>
     <string name="eq_label_echo">Firma JR</string>
     <string name="eq_label_dolby">Dolby Atmos</string>
     <string name="eq_label_dirac">Dirac Audio</string>

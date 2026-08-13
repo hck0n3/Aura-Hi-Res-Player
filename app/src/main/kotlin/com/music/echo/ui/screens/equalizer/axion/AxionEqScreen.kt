@@ -13,6 +13,7 @@ import android.os.Build
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
@@ -23,7 +24,6 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -96,6 +96,9 @@ import iad1tya.echo.music.ui.component.Material3SettingsItem
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.constants.EqFftMeterEnabledKey
 import iad1tya.echo.music.constants.HighPerformanceModeKey
+import iad1tya.echo.music.constants.SpatialAudioEnabledKey
+import iad1tya.echo.music.constants.SpatialAudioProfileKey
+import iad1tya.echo.music.eq.audio.SpatialAudioProfile
 import iad1tya.echo.music.ui.newui.AuraDialogWindowEffects
 import iad1tya.echo.music.ui.newui.AuraFloatingSurface
 import iad1tya.echo.music.ui.newui.AuraPalette
@@ -107,6 +110,7 @@ import iad1tya.echo.music.ui.utils.rememberIsWideLayout
 import iad1tya.echo.music.utils.DeviceCapabilities
 import iad1tya.echo.music.utils.DeviceTier
 import iad1tya.echo.music.utils.rememberPreference
+import iad1tya.echo.music.utils.rememberEnumPreference
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -287,8 +291,9 @@ private fun EngineUnavailableBanner() {
             )
             Text(
                 text = "El motor de audio no se está aplicando en este dispositivo, así que mover estas " +
-                    "bandas no cambia nada de lo que oyes. Preferimos decírtelo a dejarte un control que " +
-                    "no hace nada. Envía el registro desde Ajustes ▸ Registros para que podamos verlo.",
+                    "bandas o el audio espacial no cambia nada de lo que oyes. Preferimos decírtelo a " +
+                    "dejarte un control que no hace nada. Envía el registro desde Ajustes ▸ Registros " +
+                    "para que podamos verlo.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
@@ -809,6 +814,8 @@ private fun ColumnScope.EqMainContent(
         ),
     )
 
+    SpatialAudioSection(skin = skin)
+
     // Preamp applies to both modes (graphic + parametric) so it stays visible always.
     PreampCard(
         skin = skin,
@@ -1311,6 +1318,92 @@ private fun PreampCard(
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
+private fun ColumnScope.SpatialAudioSection(skin: AuraPanelSkin) {
+    val engineStatus by CustomEqualizerAudioProcessor.engineStatus.collectAsState()
+    val engineLive = engineStatus == SuperpoweredEngineStatus.HEALTHY ||
+        engineStatus == SuperpoweredEngineStatus.UNKNOWN
+    val (enabled, onEnabledChange) = rememberPreference(SpatialAudioEnabledKey, false)
+    val (profile, onProfileChange) = rememberEnumPreference(SpatialAudioProfileKey, SpatialAudioProfile.APPLE_FRONT)
+    val accent = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
+    val fill = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow
+    val line = if (skin.enabled) skin.line else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+    val ink = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onSurface
+    val inkMuted = if (skin.enabled) skin.inkMuted else MaterialTheme.colorScheme.onSurfaceVariant
+
+    Material3SettingsGroup(
+        items = listOf(
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.spatial_tracking_apple),
+                title = { Text(stringResource(R.string.spatial_audio_title)) },
+                description = { Text(stringResource(R.string.spatial_audio_summary)) },
+                trailingContent = {
+                    Switch(
+                        checked = enabled,
+                        enabled = engineLive,
+                        onCheckedChange = { onEnabledChange(it) },
+                        thumbContent = {
+                            Icon(
+                                painter = painterResource(id = if (enabled) R.drawable.check else R.drawable.close),
+                                contentDescription = null,
+                                modifier = Modifier.size(SwitchDefaults.IconSize),
+                            )
+                        },
+                    )
+                },
+                onClick = { if (engineLive) onEnabledChange(!enabled) },
+            ),
+        ),
+    )
+
+    if (!enabled) return
+
+    Text(
+        text = stringResource(R.string.spatial_audio_profiles_label),
+        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold),
+        color = accent,
+        modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp),
+    )
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        maxItemsInEachRow = 2,
+    ) {
+        SpatialAudioProfile.entries.forEach { item ->
+            val selected = profile == item
+            val shape = RoundedCornerShape(14.dp)
+            Box(
+                modifier = Modifier
+                    .weight(1f, fill = true)
+                    .clip(shape)
+                    .background(if (selected) accent.copy(alpha = 0.12f) else fill)
+                    .border(
+                        width = if (selected) 2.dp else 1.dp,
+                        color = if (selected) accent else line,
+                        shape = shape,
+                    )
+                    .clickable(enabled = engineLive) { onProfileChange(item) }
+                    .padding(horizontal = 10.dp, vertical = 10.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = stringResource(item.titleRes),
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = if (selected) accent else ink,
+                    )
+                    Text(
+                        text = stringResource(item.summaryRes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = inkMuted,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
 private fun FactoryPresetGrid(
     skin: AuraPanelSkin,
     bandGains: FloatArray,
@@ -1445,8 +1538,7 @@ private fun BandEqCard(
 ) {
     val plate = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow
     val line = if (skin.enabled) skin.line else Color.Transparent
-    // Track whether any band slider is being dragged so the band container's horizontal scroll
-    // can be disabled during the drag (prevents accidental sideways slip while adjusting a band).
+    // True only after a VERTICAL fader move — used to freeze page scroll, not to lock band pan.
     var bandDragActive by remember { mutableStateOf(false) }
     val bandScrollState = rememberScrollState()
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -1479,9 +1571,10 @@ private fun BandEqCard(
                 modifier = Modifier
                     .then(
                         if (canExpand) Modifier.fillMaxWidth()
-                        // Horizontal scroll is disabled while a band is being dragged to prevent
-                        // the container from sliding sideways during vertical slider adjustments.
-                        else Modifier.horizontalScroll(bandScrollState, enabled = !bandDragActive),
+                        // Keep horizontal scroll enabled while a finger is down: locking it on
+                        // pointer-down made a pressed left/right swipe unable to pan the bands.
+                        // Vertical fader moves still freeze PAGE scroll via onDragActiveChange.
+                        else Modifier.horizontalScroll(bandScrollState),
                     )
                     .padding(horizontal = BAND_ROW_HORIZONTAL_PADDING),
                 horizontalArrangement = Arrangement.spacedBy(BAND_SLIDER_SPACING),
@@ -2040,8 +2133,12 @@ private fun EqBandSlider(
 ) {
     var fingerDown by remember { mutableStateOf(false) }
     val latestDrag = rememberUpdatedState(onDragActiveChange)
+    val latestValue = rememberUpdatedState(value)
+    val latestOnChange = rememberUpdatedState(onValueChange)
+    val latestOnFinished = rememberUpdatedState(onValueChangeFinished)
+    val travelPx = with(LocalDensity.current) { travel.toPx() }
     // Rotated slider: finger moves vertically on screen → parent verticalScroll steals the gesture
-    // unless we consume nested scroll while the finger is down.
+    // unless we consume nested scroll while the fader is actually moving.
     val blockParentScroll = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -2069,23 +2166,7 @@ private fun EqBandSlider(
                 .height(travel)
                 .width(BAND_SLIDER_MIN_WIDTH)
                 .clip(RectangleShape)
-                .nestedScroll(blockParentScroll)
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        fingerDown = true
-                        latestDrag.value(true)
-                        try {
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Final)
-                                if (event.changes.all { !it.pressed }) break
-                            }
-                        } finally {
-                            fingerDown = false
-                            latestDrag.value(false)
-                        }
-                    }
-                },
+                .nestedScroll(blockParentScroll),
             contentAlignment = Alignment.Center,
         ) {
             Slider(
@@ -2122,6 +2203,37 @@ private fun EqBandSlider(
                         }
                     }
                     .graphicsLayer { rotationZ = -90f },
+            )
+            // Overlay takes pointers. Vertical slop → fader. Horizontal slop is left unconsumed so
+            // the band row can pan (pressed swipe left/right). Do NOT lock on pointer-down.
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .pointerInput(enabled, travelPx) {
+                        if (!enabled) return@pointerInput
+                        detectVerticalDragGestures(
+                            onDragStart = {
+                                fingerDown = true
+                                latestDrag.value(true)
+                            },
+                            onVerticalDrag = { change, dragAmount ->
+                                change.consume()
+                                val range = EqConstants.GAIN_MAX - EqConstants.GAIN_MIN
+                                val next = (latestValue.value - dragAmount / travelPx * range)
+                                    .coerceIn(EqConstants.GAIN_MIN, EqConstants.GAIN_MAX)
+                                latestOnChange.value(next)
+                            },
+                            onDragEnd = {
+                                fingerDown = false
+                                latestDrag.value(false)
+                                latestOnFinished.value()
+                            },
+                            onDragCancel = {
+                                fingerDown = false
+                                latestDrag.value(false)
+                            },
+                        )
+                    },
             )
         }
         Spacer(modifier = Modifier.height(4.dp))

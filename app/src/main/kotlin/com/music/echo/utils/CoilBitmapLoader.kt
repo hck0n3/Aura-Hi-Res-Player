@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.net.Uri
-import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
 import androidx.media3.common.util.BitmapLoader
 import coil3.imageLoader
@@ -14,7 +13,6 @@ import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
-import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.utils.resize
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
@@ -30,27 +28,17 @@ class CoilBitmapLoader(
     override fun supportsMimeType(mimeType: String): Boolean = mimeType.startsWith("image/")
 
     /**
-     * Unbreakable cover rule: never hand media3 / Auto / notification a transparent or empty bitmap.
-     * Prefer the launcher artwork; fall back to a solid teal plate.
+     * Last-resort plate when a bitmap is required and the real cover is gone (recycled, undecodable,
+     * or Coil + direct fetch both failed). MUST NOT draw the Aura launcher: MediaStyle uses this as
+     * the notification LARGE artwork, so a brand icon here looks like the album cover.
+     *
+     * Do not throw on a failed URI fetch: media3 1.10.1 leaves artwork null and MediaStyle then
+     * substitutes the smallIcon (launcher) into that slot (registry #63 / #137). A dark opaque
+     * square is honest empty art. Keep [MAX_ARTWORK_PX] at 384 (#26 / #54).
      */
     private fun createFallbackBitmap(): Bitmap {
-        runCatching {
-            val drawable = ContextCompat.getDrawable(context, R.drawable.ic_launcher_nobg)
-                ?: ContextCompat.getDrawable(context, R.drawable.ic_launcher_foreground)
-            if (drawable != null) {
-                val bmp = createBitmap(MAX_ARTWORK_PX, MAX_ARTWORK_PX)
-                val canvas = Canvas(bmp)
-                canvas.drawColor(0xFF0F766E.toInt())
-                val inset = (MAX_ARTWORK_PX * 0.12f).toInt()
-                drawable.setBounds(inset, inset, MAX_ARTWORK_PX - inset, MAX_ARTWORK_PX - inset)
-                drawable.draw(canvas)
-                return bmp
-            }
-        }.onFailure {
-            Timber.tag("CoilBitmapLoader").w(it, "Launcher cover fallback failed")
-        }
         val bmp = createBitmap(MAX_ARTWORK_PX, MAX_ARTWORK_PX)
-        Canvas(bmp).drawColor(0xFF0F766E.toInt())
+        Canvas(bmp).drawColor(0xFF121212.toInt())
         return bmp
     }
 
@@ -121,8 +109,9 @@ class CoilBitmapLoader(
             //     successfully fetched.
             //  2. That fallback is plain blocking I/O (HttpURLConnection + BitmapFactory) with no suspension
             //     point, so a coroutine deadline cannot interrupt it regardless.
-            //  3. Throwing TimeoutException does NOT restore the previous cover in media3 1.10.1 — it leaves
-            //     a null artwork until a later success. Prefer a real fallback plate over empty.
+            //  3. Throwing does NOT restore the previous cover in media3 1.10.1 — it leaves a null
+            //     artwork until a later success. MediaStyle then substitutes the smallIcon (Aura launcher)
+            //     as the LARGE notification thumbnail. Prefer an opaque dark plate over that brand icon.
             val raw = uri.toString()
             val localMediaUri = iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.parseModelUri(raw)
             // Pass the STRING model for localaudioart so Coil's LocalAudioArtMapper runs — never hand
@@ -179,6 +168,9 @@ class CoilBitmapLoader(
                 null
             }
 
+            // Last resort: opaque dark plate, NEVER the Aura launcher. CacheBitmapLoader memoizes this
+            // future per URI; a brand icon here became the song's "cover" in the notification (owner
+            // report). A dark square is honest empty art and stops MediaStyle from substituting smallIcon.
             return@future direct ?: createFallbackBitmap()
     }
 

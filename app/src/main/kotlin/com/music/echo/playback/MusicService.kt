@@ -80,6 +80,8 @@ import iad1tya.echo.music.MainActivity
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.AudioNormalizationKey
 import iad1tya.echo.music.constants.SafeVolumeEnabledKey
+import iad1tya.echo.music.constants.SpatialAudioEnabledKey
+import iad1tya.echo.music.constants.SpatialAudioProfileKey
 import iad1tya.echo.music.constants.AudioOffload
 import iad1tya.echo.music.constants.AudioQualityKey
 import iad1tya.echo.music.constants.AutoDownloadOnLikeKey
@@ -154,6 +156,8 @@ import iad1tya.echo.music.di.DownloadCache
 import iad1tya.echo.music.di.PlayerCache
 import iad1tya.echo.music.eq.EqualizerService
 import iad1tya.echo.music.eq.audio.CustomEqualizerAudioProcessor
+import iad1tya.echo.music.eq.audio.SpatialAudioProfile
+import iad1tya.echo.music.eq.audio.SpatialOutputKind
 import iad1tya.echo.music.eq.audio.NormalizationGainAudioProcessor
 import iad1tya.echo.music.eq.audio.TruePeakLimiterAudioProcessor
 import iad1tya.echo.music.eq.audio.normalizationMultiplier
@@ -737,6 +741,8 @@ class MusicService :
     // Initialised TRUE to match SafeVolumeEnabledKey's own default: starting false left a window before the
     // collector's first emission where a crossfade or instant-video swap would skip priming entirely.
     @Volatile private var safeVolumeEnabledHint: Boolean = true
+    @Volatile private var spatialEnabledHint: Boolean = false
+    @Volatile private var spatialProfileNameHint: String = SpatialAudioProfile.APPLE_FRONT.name
     // The offload request CURRENTLY PUBLISHED to the players (not merely the gate's latest verdict — an
     // approved enable can be waiting for a track boundary; see publishOffloadDecision). Read by
     // onPlaybackParametersChanged, which only re-publishes the speed requirement while offload is live.
@@ -1594,11 +1600,13 @@ class MusicService :
                 }
             }
             applyEqForCurrentOutput()
+            applySpatialFromPrefs()
         }
 
         override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) {
             super.onAudioDevicesRemoved(removedDevices)
             applyEqForCurrentOutput()
+            applySpatialFromPrefs()
         }
     }
 
@@ -1806,6 +1814,19 @@ class MusicService :
                 iad1tya.echo.music.eq.data.SoundEffectsSnapshot.apply(this@MusicService, profile.effects)
             }
         }
+    }
+
+    /**
+     * Pushes the live Superpowered spatial stage to every player processor. Device routing is
+     * resolved here so a HDMI/soundbar path is a real bypass (not HRTF on room speakers).
+     */
+    private fun applySpatialFromPrefs() {
+        val profile = SpatialAudioProfile.fromName(spatialProfileNameHint)
+        val kind = SpatialAudioProfile.detectOutputKind(this)
+        val live = spatialEnabledHint && kind != SpatialOutputKind.BYPASS
+        val algorithm = SpatialAudioProfile.nativeAlgorithm(profile, kind)
+        val params = profile.toNativeParams()
+        playerEqProcessors.values.forEach { it.applySpatial(live, algorithm, params) }
     }
 
     override fun onCreate() {
@@ -2387,6 +2408,19 @@ class MusicService :
                 }
         }
 
+        scope.launch {
+            combine(
+                dataStore.data.map { it[SpatialAudioEnabledKey] ?: false }.distinctUntilChanged(),
+                dataStore.data.map { it[SpatialAudioProfileKey] ?: SpatialAudioProfile.APPLE_FRONT.name }
+                    .distinctUntilChanged(),
+            ) { enabled, profileName -> enabled to profileName }
+                .collect { (enabled, profileName) ->
+                    spatialEnabledHint = enabled
+                    spatialProfileNameHint = profileName
+                    applySpatialFromPrefs()
+                }
+        }
+
         // NOTE (0.6.145): two collectors used to sit here, feeding AudioEnhanceProcessor.enabled and
         // JrDspAudioProcessor.config from DataStore. Both target classes are inert stubs — isActive()
         // returns false and NEITHER is ever inserted into any AudioProcessorChain (see
@@ -2466,6 +2500,9 @@ class MusicService :
         // the same reason CrossfadeMath and CrossfadeLyricsPin were lifted out: a decision that can
         // silence the EQ has to be unit-testable, and nothing inside MusicService is. This collector is
         // now only plumbing — flows in, publication out.
+        //   - Spatial audio: a LIVE native Superpowered stage (applySpatial -> setSpatial) inside
+        //     CustomEqualizerAudioProcessor. Default OFF. When on it must veto offload or the EQ
+        //     screen's spatial switch would be a placebo.
         combine(
             dataStore.data.map { it[AudioOffload] ?: false }.distinctUntilChanged(),
             dataStore.data.map { p ->
@@ -2477,7 +2514,8 @@ class MusicService :
                 eqProfileRepository.activeProfile,
                 eqProfileRepository.unsavedProfile,
             ) { active, unsaved -> (unsaved ?: active) != null }.distinctUntilChanged(),
-        ) { offloadPref, (crossfadeKey, perfMode), safeVolume, eqActive ->
+            dataStore.data.map { it[SpatialAudioEnabledKey] ?: false }.distinctUntilChanged(),
+        ) { offloadPref, (crossfadeKey, perfMode), safeVolume, eqActive, spatial ->
             AudioOffloadGate.allowOffload(
                 AudioOffloadGate.Inputs(
                     userWantsOffload = offloadPref,
@@ -2485,6 +2523,7 @@ class MusicService :
                     highPerformanceMode = perfMode,
                     safeVolumeEnabled = safeVolume,
                     equalizerActive = eqActive,
+                    spatialEnabled = spatial,
                 ),
             )
         }.distinctUntilChanged()
@@ -2827,6 +2866,7 @@ class MusicService :
         playerSilenceProcessors[player] = silenceProcessor
         playerNormProcessors[player] = normProcessor
         playerLimiterProcessors[player] = limiterProcessor
+        applySpatialFromPrefs()
 
         player.apply {
                 setOffloadEnabled(audioOffloadHint)

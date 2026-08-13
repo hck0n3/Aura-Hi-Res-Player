@@ -1,22 +1,18 @@
-# Aura Hi-Res Player 0.6.188
+# Aura Hi-Res Player 0.6.189
 
-Diseño premium: barra Inicio · Novedades · Biblioteca · Buscar, hojas negras con blur, y el aviso de letras traducidas ya no tapa el texto.
+Portada real en la notificación, ecualizador que se desplaza con el dedo, y audio espacial en el EQ.
 
 ---
 
-## Diseño premium
+## Notificación
 
-- Barra nueva: Inicio, Novedades, Biblioteca y Buscar. Ajustes sigue en la hoja de cuenta.
-- Novedades (estilo Apple, datos de YouTube Music): radar, lo más nuevo, playlists actualizadas, lo que todos escuchan y Próximamente con presave.
-- Inicio queda como Listen Now (personal). Los estrenos van a Novedades.
-- Biblioteca: categorías Apple + Recién añadido.
-- Menús, diálogos y hojas: negro translúcido con desenfoque, no una placa gris plana.
-- «Letras traducidas» avisa 3 segundos y desaparece para no tapar la letra.
+- La miniatura del reproductor en la barra de notificaciones muestra la portada del álbum, no el icono de Aura.
 
-## Reproducción
+## Ecualizador
 
-- Al cambiar de canción el audio arranca antes (menos espera de buffer al saltar).
+- Con el dedo presionado, desliza de derecha a izquierda (o al revés) para desplazar las bandas y ecualizar con más precisión.
+- Audio espacial (apagado por defecto): perfiles distintos en Superpowered para auriculares y altavoz del teléfono. No es Dolby Atmos ni Apple Spatial Audio licenciados.
 
-## Reportes
+## Cómo actualizar
 
-- Puedes adjuntar capturas de pantalla antes de enviar el correo.
+- Avatar ▸ Actualizaciones.

@@ -401,6 +401,7 @@
     <string name="audio_offload_disabled_by_crossfade">Disabled because Crossfade is active</string>
     <string name="audio_offload_disabled_by_safe_volume">Disabled because Safe Volume is active</string>
     <string name="audio_offload_disabled_by_equalizer">Disabled because the equalizer is active</string>
+    <string name="audio_offload_disabled_by_spatial">Disabled because spatial audio is active</string>
 
     <!-- Google Cast -->
     <string name="google_cast">Google Cast</string>
@@ -605,6 +606,21 @@
     <string name="eq_preset_dirac_game">Dirac Game</string>
     <string name="eq_enable_title">Equalizer</string>
     <string name="eq_enable_summary">Toggle professional audio processing</string>
+    <string name="spatial_audio_title">Spatial audio</string>
+    <string name="spatial_audio_summary">Simulates a 3D stage with Superpowered. Not licensed Apple Spatial Audio, Sony 360RA, Dolby Atmos or DTS:X — each profile is a distinct binaural (headphones) or stereo-width (phone speaker) setup. Off = this stage is skipped.</string>
+    <string name="spatial_audio_profiles_label">SPATIAL PROFILES</string>
+    <string name="spatial_profile_aura">Aura (studio)</string>
+    <string name="spatial_profile_aura_summary">Narrow front triangle, almost dry. Least colour.</string>
+    <string name="spatial_profile_apple">Front (Apple Music)</string>
+    <string name="spatial_profile_apple_summary">Stage stays in front, a little height, dry room.</string>
+    <string name="spatial_profile_sony">Sphere 360 (Sony)</string>
+    <string name="spatial_profile_sony_summary">Wider, higher, sources beside and behind you.</string>
+    <string name="spatial_profile_cinema">Immersive cinema</string>
+    <string name="spatial_profile_cinema_summary">Phantom surrounds + more hall, Atmos-like binaural upmix.</string>
+    <string name="spatial_profile_wide">Wide surround</string>
+    <string name="spatial_profile_wide_summary">More rear energy, DTS Headphone-style.</string>
+    <string name="spatial_profile_crossfeed">Crossfeed (studio)</string>
+    <string name="spatial_profile_crossfeed_summary">Bauer speaker simulation. No HRTF, no reverb.</string>
     <string name="eq_label_echo">JR Signature</string>
     <string name="eq_label_dolby">Dolby Atmos</string>
     <string name="eq_label_dirac">Dirac Audio</string>

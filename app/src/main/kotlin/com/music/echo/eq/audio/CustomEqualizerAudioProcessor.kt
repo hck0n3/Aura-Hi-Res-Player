@@ -138,6 +138,7 @@ class CustomEqualizerAudioProcessor(context: Context) : BaseAudioProcessor() {
     }
     private external fun setPreamp(ptr: Long, preampDb: Float)
     private external fun setSafeVolume(ptr: Long, enabled: Boolean, gainLinear: Float)
+    private external fun setSpatial(ptr: Long, enabled: Boolean, algorithm: Int, params: FloatArray)
     private external fun disableAllBands(ptr: Long)
     private external fun setEqBand(ptr: Long, index: Int, frequency: Float, gainDb: Float, q: Float, filterType: Int)
 
@@ -164,6 +165,9 @@ class CustomEqualizerAudioProcessor(context: Context) : BaseAudioProcessor() {
     // hot into the limiter, an audible burst.
     private var safeVolumeEnabled = false
     private var safeVolumeGain = 1f
+    private var spatialEnabled = false
+    private var spatialAlgorithm = 0
+    private var spatialParams: FloatArray = FloatArray(SpatialAudioProfile.NATIVE_PARAM_COUNT)
 
     /**
      * Enable/disable the Safe Volume stage (per-track loudness normalization + limiter that runs even when
@@ -181,6 +185,26 @@ class CustomEqualizerAudioProcessor(context: Context) : BaseAudioProcessor() {
             val ptr = nativePtr
             if (isInitialized && ptr != 0L) {
                 setSafeVolume(ptr, enabled, gainLinear)
+            }
+        }
+    }
+
+    /**
+     * Superpowered spatial stage (HRTF / crossfeed / speaker M-S). Independent of the EQ profile:
+     * it can run with the EQ off. [params] layout is [SpatialAudioProfile.toNativeParams].
+     */
+    fun applySpatial(enabled: Boolean, algorithm: Int, params: FloatArray) {
+        synchronized(eqApplyLock) {
+            spatialEnabled = enabled
+            spatialAlgorithm = algorithm
+            spatialParams = if (params.size >= SpatialAudioProfile.NATIVE_PARAM_COUNT) {
+                params.copyOf()
+            } else {
+                FloatArray(SpatialAudioProfile.NATIVE_PARAM_COUNT)
+            }
+            val ptr = nativePtr
+            if (isInitialized && ptr != 0L) {
+                setSpatial(ptr, enabled, algorithm, spatialParams)
             }
         }
     }
@@ -359,6 +383,9 @@ class CustomEqualizerAudioProcessor(context: Context) : BaseAudioProcessor() {
             val restorePtr = nativePtr
             if (isInitialized && restorePtr != 0L && safeVolumeEnabled) {
                 setSafeVolume(restorePtr, safeVolumeEnabled, safeVolumeGain)
+            }
+            if (isInitialized && restorePtr != 0L) {
+                setSpatial(restorePtr, spatialEnabled, spatialAlgorithm, spatialParams)
             }
         }
 

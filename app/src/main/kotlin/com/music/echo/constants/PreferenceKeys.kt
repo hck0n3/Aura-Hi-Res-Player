@@ -1129,6 +1129,10 @@ val JrStereoWidthKey = floatPreferencesKey("jr_dsp_stereo_width")
 val JrDialogueEnabledKey = booleanPreferencesKey("jr_dsp_dialogue_enabled")
 val JrDialogueAmountKey = floatPreferencesKey("jr_dsp_dialogue_amount")
 
+// Superpowered binaural / stereo-width stage (opt-in, default OFF). Independent of the EQ profile.
+val SpatialAudioEnabledKey = booleanPreferencesKey("spatial_audio_enabled")
+val SpatialAudioProfileKey = stringPreferencesKey("spatial_audio_profile")
+
 // ── SponsorBlock ──
 // Opt-in (default OFF). When ON, non-music segments (sponsor / self-promo / interaction reminders and the
 // "non-music" parts of music videos) are auto-skipped during playback via the community SponsorBlock API.

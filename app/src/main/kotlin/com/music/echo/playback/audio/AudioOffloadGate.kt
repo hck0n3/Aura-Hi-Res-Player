@@ -19,8 +19,9 @@ package iad1tya.echo.music.playback.audio
  * rather than against the settings screen:
  *
  *  - The whole DSP block is skipped — pure memcpy passthrough — when
- *    `!runEq && !activeSafeVolumeEnabled && safeVolumeGainCurrent == 1.0f`. That is the ONLY state in
- *    which playback is bit-identical, and it is precisely the state this gate opens on.
+ *    `!runEq && !activeSafeVolumeEnabled && safeVolumeGainCurrent == 1.0f && !activeSpatialEnabled`.
+ *    That is the ONLY state in which playback is bit-identical, and it is precisely the state this
+ *    gate opens on.
  *  - `runEq` is [Inputs.equalizerActive]. Note what rides inside it: the EQ bands, the preamp
  *    (`frontGain = activePreampMultiplier`, applied only inside the block), the DE-ESSER (nested
  *    inside the `runEq` branch), the -3 dBFS limiter and the 0.95 soft-clip knee. So a single "is an
@@ -67,6 +68,8 @@ object AudioOffloadGate {
          * was applied from the EQ screen without touching any switch.
          */
         val equalizerActive: Boolean,
+        /** `SpatialAudioEnabledKey` (default OFF): live Superpowered HRTF / crossfeed / speaker-width stage. */
+        val spatialEnabled: Boolean = false,
     )
 
     /** Why offload is impossible right now, independently of the user's own switch. */
@@ -74,6 +77,7 @@ object AudioOffloadGate {
         CROSSFADE,
         SAFE_VOLUME,
         EQUALIZER,
+        SPATIAL,
     }
 
     /**
@@ -95,6 +99,7 @@ object AudioOffloadGate {
         crossfadeRunning(inputs) -> BlockReason.CROSSFADE
         inputs.safeVolumeEnabled -> BlockReason.SAFE_VOLUME
         inputs.equalizerActive -> BlockReason.EQUALIZER
+        inputs.spatialEnabled -> BlockReason.SPATIAL
         else -> null
     }
 
