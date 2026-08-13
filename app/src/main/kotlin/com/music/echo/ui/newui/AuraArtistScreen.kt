@@ -235,7 +235,8 @@ fun AuraArtistScreen(
             val title = section.title.trim()
             if (title.isEmpty() || section.items.isEmpty()) return@filter false
             if (showedLocalLibraryPreview &&
-                isArtistLibrarySectionTitle(title, yourLibraryTitle, fromYourLibraryTitle)
+                (isArtistLibrarySectionTitle(title, yourLibraryTitle, fromYourLibraryTitle) ||
+                    isArtistPopularSectionTitle(title))
             ) {
                 return@filter false
             }
@@ -1075,14 +1076,15 @@ private fun AuraArtistHero(
 }
 
 /**
- * Apple Music artist-page order: latest, library (drawn separately), top, essentials,
- * albums, videos, playlists, singles/EP, live, compilations, appears-on, similar.
+ * Apple Music artist-page order: top songs (library occupies this slot when present),
+ * latest, essentials, albums, videos, playlists, singles/EP, live, compilations,
+ * appears-on, similar. "Tu biblioteca" is drawn separately above the online sections.
  */
 internal fun appleArtistSectionRank(title: String): Int {
     val t = title.trim().lowercase()
     return when {
-        t.contains("latest") || t.contains("último") || t.contains("ultimo lanz") -> 0
-        t.contains("top song") || t.contains("canciones populares") || t.contains("popular song") -> 2
+        isArtistPopularSectionTitle(title) -> 0
+        isArtistLatestSectionTitle(title) -> 1
         t.contains("essential") || t.contains("imprescind") -> 3
         t.contains("album") && !t.contains("live") && !t.contains("compilation") &&
             !t.contains("en vivo") && !t.contains("recopil") -> 4
@@ -1099,20 +1101,33 @@ internal fun appleArtistSectionRank(title: String): Int {
     }
 }
 
+internal fun isArtistLatestSectionTitle(title: String): Boolean {
+    val t = title.trim().lowercase()
+    return t.contains("latest") || t.contains("último") || t.contains("ultimo lanz")
+}
+
+internal fun isArtistPopularSectionTitle(title: String): Boolean {
+    val t = title.trim().lowercase()
+    return t.contains("top song") ||
+        t.contains("canciones populares") ||
+        t.contains("popular song") ||
+        t.contains("canciones más populares")
+}
+
 internal fun pinLatestArtistRelease(
     sections: List<ArtistSection>,
     latestTitle: String,
 ): List<ArtistSection> {
-    if (sections.any { appleArtistSectionRank(it.title) == 0 }) return sections
+    if (sections.any { isArtistLatestSectionTitle(it.title) }) return sections
     val latest = sections.asSequence()
         .flatMap { it.items.asSequence() }
         .filterIsInstance<AlbumItem>()
         .maxWithOrNull(
             compareBy<AlbumItem> { it.year ?: Int.MIN_VALUE }.thenBy { it.title },
         ) ?: return sections
-    return listOf(
+    return (listOf(
         ArtistSection(title = latestTitle, items = listOf(latest), moreEndpoint = null),
-    ) + sections
+    ) + sections).sortedBy { appleArtistSectionRank(it.title) }
 }
 
 /**

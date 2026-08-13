@@ -320,18 +320,22 @@ fun AuraSearchResultScreen(
                         searchSummary?.summaries
                             ?.sortedBy { summary ->
                                 when (summary.items.firstOrNull()) {
+                                    is ArtistItem -> 0
                                     is SongItem -> 1
-                                    is ArtistItem -> 2
-                                    is AlbumItem -> 3
-                                    is PlaylistItem -> 4
-                                    else -> 5
+                                    is AlbumItem -> 2
+                                    is PlaylistItem -> 3
+                                    else -> 4
                                 }
                             }
                             ?.forEach { summary ->
                                 // "Ocultar vídeos" applies here (default = show); a section left empty
                                 // by it is dropped rather than drawn as a bare header.
+                                // All tab: two artists first, then songs/albums/playlists. Full artist
+                                // list stays on the Artistas chip.
                                 val musicItems = summary.items.filterNot {
                                     hideVideoSongs && it is SongItem && it.isVideoSong
+                                }.let { items ->
+                                    if (items.firstOrNull() is ArtistItem) items.take(2) else items
                                 }
                                 if (musicItems.isEmpty()) return@forEach
 

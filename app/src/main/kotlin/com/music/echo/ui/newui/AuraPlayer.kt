@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -1398,6 +1399,7 @@ private fun AuraPlayerShape(
                 val isLocalTrack = meta.id.isLocalMediaId() || currentSong?.song?.isLocal == true
                 Row(
                     horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     AuraIconButton(
@@ -1444,7 +1446,10 @@ private fun AuraPlayerShape(
                     if (!isLocalTrack) {
                     Box(
                         contentAlignment = Alignment.Center,
-                        modifier = Modifier.size(quickAccessGlyph + 10.dp),
+                        modifier = Modifier.sizeIn(
+                            minWidth = AuraSpacing.MinTouchTarget,
+                            minHeight = AuraSpacing.MinTouchTarget,
+                        ),
                     ) {
                         val isVideo = meta.isVideoSong
                         val songId = meta.id

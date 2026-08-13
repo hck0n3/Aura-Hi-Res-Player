@@ -89,7 +89,11 @@ class ArtistViewModel @Inject constructor(
         .flatMapLatest { (prefs, name) ->
             val (hideExplicit, hideVideoSongs) = prefs
             database.artistLibraryOrLikedSongs(artistId, name)
-                .map { it.filterExplicit(hideExplicit).filterVideoSongsLocal(hideVideoSongs) }
+                .map { songs ->
+                    songs.filterExplicit(hideExplicit)
+                        .filterVideoSongsLocal(hideVideoSongs)
+                        .sortedByDescending { it.song.totalPlayTime }
+                }
         }
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 

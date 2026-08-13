@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
@@ -78,7 +79,7 @@ fun AuraDialogWindowEffects(enabled: Boolean) {
         val window = (view.parent as? DialogWindowProvider)?.window
         if (window != null) {
             window.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
-            window.setDimAmount(0.45f)
+            window.setDimAmount(0.22f)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && blurOk) {
                 try {
                     window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
@@ -160,9 +161,9 @@ fun auraFloatingContentColor(): Color {
 @Composable
 fun auraFloatingScrimColor(): Color {
     val skin = rememberAuraPanelSkin()
-    // Lighter than Material's default so the frosted plate can still reveal the UI behind.
-    return if (skin.enabled && skin.darkGround) Color.Black.copy(alpha = 0.45f)
-    else MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f)
+    return if (skin.enabled && skin.darkGround) {
+        AuraPalette.Teal.copy(alpha = 0.10f).compositeOver(Color.Black).copy(alpha = 0.22f)
+    } else MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f)
 }
 
 @Composable

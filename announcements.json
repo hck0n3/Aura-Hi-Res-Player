@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-13T05:50:00Z",
+  "updatedAt": "2026-08-13T06:25:00Z",
   "items": [
+    {
+      "id": "aviso-20260813-062500",
+      "date": "2026-08-13",
+      "publishedAt": "2026-08-13T06:25:00Z",
+      "title": "Aura Hi-Res 0.6.190: biblioteca, Novedades y cristal más claro",
+      "body": "Aura Hi-Res 0.6.190 ya está lista para todos.\n\n• Álbumes y artistas de la biblioteca vuelven a verse en cuadrícula de portadas.\n• En la búsqueda, los dos primeros resultados son artistas.\n• Novedades (incluido el Top diario) se basa en lo que sigues, escuchas y te gusta.\n• En un artista, arriba están las canciones de tu biblioteca que más has oído.\n• Menús y hojas más transparentes, con desenfoque, y el color sigue la portada.\n\nActualiza desde el menú de tu cuenta (avatar) ▸ Actualizaciones. Gracias por estar en Aura.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260813-055000",
       "date": "2026-08-13",

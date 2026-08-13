@@ -781,12 +781,19 @@ fun AuraLibraryAlbumsTab(
         if (ytmSync) withContext(Dispatchers.IO) { viewModel.sync() }
     }
 
-    LazyColumn(
-        state = rememberLazyListState(),
+    val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
+    val gridCellSize = if (gridItemSize == GridItemSize.BIG) 150.dp else 104.dp
+
+    LazyVerticalGrid(
+        state = rememberLazyGridState(),
+        columns = GridCells.Adaptive(minSize = gridCellSize),
         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-        modifier = Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = AuraSpacing.Gutter),
     ) {
-        item(key = "aura_albums_subfilters") {
+        item(key = "aura_albums_subfilters", span = { GridItemSpan(maxLineSpan) }) {
             AuraSubFilterRow(
                 options = listOf(
                     AlbumFilter.LIKED to R.string.filter_liked,
@@ -796,7 +803,7 @@ fun AuraLibraryAlbumsTab(
                 onSelect = { filter = it },
             )
         }
-        item(key = "aura_albums_sort") {
+        item(key = "aura_albums_sort", span = { GridItemSpan(maxLineSpan) }) {
             AuraSortControl(
                 sortType = sortType,
                 sortDescending = sortDescending,
@@ -811,6 +818,7 @@ fun AuraLibraryAlbumsTab(
                 ),
                 onSortTypeChange = onSortTypeChange,
                 onSortDescendingChange = onSortDescendingChange,
+                modifier = Modifier.padding(start = 0.dp),
                 trailing = {
                     AuraCount(pluralStringResource(R.plurals.n_album, albums.size, albums.size))
                 },
@@ -818,7 +826,7 @@ fun AuraLibraryAlbumsTab(
         }
 
         if (albums.isEmpty()) {
-            item(key = "aura_albums_empty") {
+            item(key = "aura_albums_empty", span = { GridItemSpan(maxLineSpan) }) {
                 AuraEmpty(
                     text = stringResource(R.string.library_album_empty),
                     modifier = Modifier.animateItem(),
@@ -827,24 +835,20 @@ fun AuraLibraryAlbumsTab(
         }
 
         items(albums, key = { it.id }) { album ->
-            AuraSongRow(
+            AuraCoverCard(
                 title = album.album.title,
                 subtitle = album.artists.joinToString { it.name },
                 thumbnailUrl = album.album.thumbnailUrl,
                 seed = album.id,
+                width = gridCellSize,
                 isActive = album.id == mediaMetadata?.album?.id,
                 isPlaying = isPlaying,
+                modifier = Modifier.animateItem(),
                 onClick = { navController.navigate("album/${album.id}") },
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     menuState.show { AlbumMenu(album, navController, menuState::dismiss) }
                 },
-                onMenuClick = {
-                    menuState.show { AlbumMenu(album, navController, menuState::dismiss) }
-                },
-                modifier = Modifier
-                    .animateItem()
-                    .padding(horizontal = AuraSpacing.Gutter),
             )
         }
     }
@@ -875,12 +879,20 @@ fun AuraLibraryArtistsTab(
         if (ytmSync) withContext(Dispatchers.IO) { viewModel.sync() }
     }
 
-    LazyColumn(
-        state = rememberLazyListState(),
+    val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
+    val gridCellSize = if (gridItemSize == GridItemSize.BIG) 150.dp else 104.dp
+    val artistVisual = auraTypeVisual(AuraContentKind.Artist)
+
+    LazyVerticalGrid(
+        state = rememberLazyGridState(),
+        columns = GridCells.Adaptive(minSize = gridCellSize),
         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
-        modifier = Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = AuraSpacing.Gutter),
     ) {
-        item(key = "aura_artists_subfilters") {
+        item(key = "aura_artists_subfilters", span = { GridItemSpan(maxLineSpan) }) {
             AuraSubFilterRow(
                 options = listOf(
                     ArtistFilter.LIKED to R.string.filter_liked,
@@ -890,7 +902,7 @@ fun AuraLibraryArtistsTab(
                 onSelect = { filter = it },
             )
         }
-        item(key = "aura_artists_sort") {
+        item(key = "aura_artists_sort", span = { GridItemSpan(maxLineSpan) }) {
             AuraSortControl(
                 sortType = sortType,
                 sortDescending = sortDescending,
@@ -905,6 +917,7 @@ fun AuraLibraryArtistsTab(
                 searchLabel = stringResource(R.string.search_library),
                 searchOpen = searchOpen,
                 onToggleSearch = onToggleSearch,
+                modifier = Modifier.padding(start = 0.dp),
                 trailing = {
                     AuraCount(pluralStringResource(R.plurals.n_artist, artists.size, artists.size))
                 },
@@ -912,18 +925,20 @@ fun AuraLibraryArtistsTab(
         }
         // Below the control row that opens it — see the songs tab.
         if (searchOpen) {
-            item(key = "aura_artists_search") {
+            item(key = "aura_artists_search", span = { GridItemSpan(maxLineSpan) }) {
                 AuraSearchField(
                     value = searchQuery,
                     onValueChange = { viewModel.searchQuery.value = it },
                     placeholder = stringResource(R.string.search_library),
-                    modifier = Modifier.animateItem(),
+                    modifier = Modifier
+                        .animateItem()
+                        .padding(horizontal = 0.dp),
                 )
             }
         }
 
         if (artists.isEmpty()) {
-            item(key = "aura_artists_empty") {
+            item(key = "aura_artists_empty", span = { GridItemSpan(maxLineSpan) }) {
                 AuraEmpty(
                     text = if (searchQuery.isNotEmpty()) {
                         stringResource(R.string.no_results_found)
@@ -936,26 +951,19 @@ fun AuraLibraryArtistsTab(
         }
 
         items(artists, key = { it.id }) { artist ->
-            val visual = auraTypeVisual(AuraContentKind.Artist)
-            AuraSongRow(
+            AuraCoverCard(
                 title = artist.artist.name,
                 subtitle = pluralStringResource(R.plurals.n_song, artist.songCount, artist.songCount),
                 thumbnailUrl = artist.artist.thumbnailUrl,
                 seed = artist.id,
-                artworkShape = visual.shape,
-                artworkSize = visual.rowWidth,
-                typeChip = visual.label,
+                width = gridCellSize,
+                shape = artistVisual.shape,
+                modifier = Modifier.animateItem(),
                 onClick = { navController.navigate("artist/${artist.id}") },
                 onLongClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     menuState.show { ArtistMenu(artist, coroutineScope, menuState::dismiss) }
                 },
-                onMenuClick = {
-                    menuState.show { ArtistMenu(artist, coroutineScope, menuState::dismiss) }
-                },
-                modifier = Modifier
-                    .animateItem()
-                    .padding(horizontal = AuraSpacing.Gutter),
             )
         }
     }

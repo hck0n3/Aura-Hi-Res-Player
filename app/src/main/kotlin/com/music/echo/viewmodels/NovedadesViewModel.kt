@@ -12,34 +12,48 @@ import com.music.innertube.pages.ChartsPage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import iad1tya.echo.music.constants.HideExplicitKey
+import iad1tya.echo.music.constants.HideVideoSongsKey
+import iad1tya.echo.music.constants.MyTopFilter
 import iad1tya.echo.music.constants.SpotifyAccessTokenKey
+import iad1tya.echo.music.constants.TopSize
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.ReleaseRadarItem
+import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.db.entities.UpcomingReleaseEntity
+import iad1tya.echo.music.extensions.filterExplicit
 import iad1tya.echo.music.notices.OwnerAnnouncements
 import iad1tya.echo.music.releaseradar.ReleaseRadarWorker
 import iad1tya.echo.music.spotify.Spotify
 import iad1tya.echo.music.utils.dataStore
+import iad1tya.echo.music.utils.filterSongsToTasteArtists
 import iad1tya.echo.music.utils.filterToSubscribedArtists
+import iad1tya.echo.music.utils.filterToTasteArtists
 import iad1tya.echo.music.utils.get
-import iad1tya.echo.music.utils.subscribedArtistKeys
+import iad1tya.echo.music.utils.SubscribedArtistKeys
+import iad1tya.echo.music.utils.tasteArtistKeys
 import java.time.LocalDate
 import java.time.ZoneOffset
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class NovedadesViewModel
 @Inject
@@ -56,14 +70,41 @@ constructor(
         database.upcomingReleases()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    private val hideFlags = context.dataStore.data
+        .map { (it[HideExplicitKey] ?: false) to (it[HideVideoSongsKey] ?: false) }
+        .distinctUntilChanged()
+
+    val topSongs: StateFlow<List<Song>> =
+        combine(
+            context.dataStore.data.map { it[TopSize] ?: "50" }.distinctUntilChanged(),
+            hideFlags,
+        ) { size, flags -> size to flags }
+            .flatMapLatest { (size, flags) ->
+                val (hideExplicit, hideVideoSongs) = flags
+                val limit = size.toIntOrNull()?.coerceIn(1, 200) ?: 50
+                database.mostPlayedSongs(0L, limit).map { songs ->
+                    songs
+                        .let { if (hideExplicit) it.filterExplicit() else it }
+                        .let { if (hideVideoSongs) it.filter { song -> !song.song.isVideo } else it }
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val momentSongs: StateFlow<List<Song>> =
+        hideFlags.flatMapLatest { flags ->
+            val (hideExplicit, hideVideoSongs) = flags
+            database.mostPlayedSongs(MyTopFilter.WEEK.toTimeMillis(), limit = 12).map { songs ->
+                songs
+                    .let { if (hideExplicit) it.filterExplicit() else it }
+                    .let { if (hideVideoSongs) it.filter { song -> !song.song.isVideo } else it }
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     private val _newAlbums = MutableStateFlow<List<AlbumItem>>(emptyList())
     val newAlbums: StateFlow<List<AlbumItem>> = _newAlbums
 
     private val _featuredSongs = MutableStateFlow<List<SongItem>>(emptyList())
     val featuredSongs: StateFlow<List<SongItem>> = _featuredSongs
-
-    private val _momentSongs = MutableStateFlow<List<SongItem>>(emptyList())
-    val momentSongs: StateFlow<List<SongItem>> = _momentSongs
 
     private val _listening = MutableStateFlow<List<YTItem>>(emptyList())
     val listening: StateFlow<List<YTItem>> = _listening
@@ -120,12 +161,15 @@ constructor(
             val upcomingJob = async { scanUpcoming() }
 
             val albums = albumsJob.await()
-            val keys = database.subscribedArtistKeys()
-            val personal = albums.filterToSubscribedArtists(keys).ifEmpty { albums }
-            if (personal.isNotEmpty()) _newAlbums.value = personal.take(20)
+            val keys = database.tasteArtistKeys()
+            _newAlbums.value = albums.filterToSubscribedArtists(keys).take(20)
 
             val charts = chartsJob.await()
-            if (charts != null) applyCharts(charts)
+            if (charts != null) applyCharts(charts, keys)
+            else {
+                _featuredSongs.value = emptyList()
+                _listening.value = emptyList()
+            }
 
             val playlists = libraryJob.await()?.items?.filterIsInstance<PlaylistItem>().orEmpty()
             if (playlists.isNotEmpty()) _updatedPlaylists.value = playlists.take(16)
@@ -134,21 +178,20 @@ constructor(
         }
     }
 
-    private fun applyCharts(page: ChartsPage) {
+    private fun applyCharts(page: ChartsPage, keys: SubscribedArtistKeys) {
         val songs = page.sections
             .flatMap { it.items }
             .filterIsInstance<SongItem>()
             .distinctBy { it.id }
-        if (songs.isNotEmpty()) {
-            _featuredSongs.value = songs.take(12)
-            _momentSongs.value = songs.drop(12).take(12).ifEmpty { songs.take(12) }
-        }
+            .filterSongsToTasteArtists(keys)
+        _featuredSongs.value = songs.take(12)
         val mix = page.sections
             .firstOrNull { it.chartType == ChartsPage.ChartType.TRENDING || it.chartType == ChartsPage.ChartType.TOP }
             ?.items
             .orEmpty()
             .ifEmpty { page.sections.firstOrNull()?.items.orEmpty() }
-        if (mix.isNotEmpty()) _listening.value = mix.take(16)
+            .filterToTasteArtists(keys)
+        _listening.value = mix.take(16)
     }
 
     private suspend fun scanUpcoming() {

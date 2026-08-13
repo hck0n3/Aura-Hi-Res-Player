@@ -463,6 +463,8 @@ fun OnlineSearchResult(
                         // show) instead of being dropped unconditionally; also drop sections left empty.
                         val musicItems = summary.items.filterNot {
                             hideVideoSongs && it is com.music.innertube.models.SongItem && it.isVideoSong
+                        }.let { items ->
+                            if (items.firstOrNull() is ArtistItem) items.take(2) else items
                         }
                         if (musicItems.isEmpty()) return@forEach
                         item {

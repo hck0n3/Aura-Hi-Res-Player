@@ -40,10 +40,14 @@ import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.HomeRichLayoutKey
 import iad1tya.echo.music.constants.TopSize
+import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.db.entities.UpcomingReleaseEntity
+import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.models.toMediaMetadata
+import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.LocalMenuState
+import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
 import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
 import iad1tya.echo.music.ui.menu.YouTubeSongMenu
@@ -75,6 +79,7 @@ fun AuraNovedadesScreen(
     val moment by viewModel.momentSongs.collectAsState()
     val listening by viewModel.listening.collectAsState()
     val playlists by viewModel.updatedPlaylists.collectAsState()
+    val topSongs by viewModel.topSongs.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val (topSize) = rememberPreference(TopSize, "50")
     val (homeRichLayout) = rememberPreference(HomeRichLayoutKey, true)
@@ -218,15 +223,33 @@ fun AuraNovedadesScreen(
                         }
                     }
                 }
-                novedadesSongShelf(
+                novedadesLocalSongShelf(
                     key = "moment",
                     titleRes = R.string.novedades_songs_of_the_moment,
                     songs = moment,
+                    queue = moment,
                     cardScale = cardScale,
                     isPlaying = isPlaying,
                     activeId = mediaMetadata?.id,
-                    onOpen = openYt,
-                    onMenu = ytMenu,
+                    onPlayAt = { index, queueSongs, title ->
+                        playerConnection.playQueue(
+                            ListQueue(
+                                title = title,
+                                items = queueSongs.map { it.toMediaItem() },
+                                startIndex = index,
+                            ),
+                        )
+                    },
+                    onMenu = { song ->
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuState.show {
+                            SongMenu(
+                                originalSong = song,
+                                navController = navController,
+                                onDismiss = menuState::dismiss,
+                            )
+                        }
+                    },
                 )
                 if (listening.isNotEmpty()) {
                     item(key = "aura_novedades_listening") {
@@ -247,13 +270,37 @@ fun AuraNovedadesScreen(
                         }
                     }
                 }
-                item(key = "aura_novedades_daily_top") {
-                    Column(Modifier.padding(horizontal = AuraSpacing.Gutter, vertical = 12.dp)) {
-                        AuraSectionHeader(
-                            title = stringResource(R.string.novedades_daily_top),
-                            onClick = { navController.navigate("top_playlist/$topSize") },
-                        )
-                    }
+                if (topSongs.isNotEmpty()) {
+                    novedadesLocalSongShelf(
+                        key = "daily_top",
+                        titleRes = R.string.novedades_daily_top,
+                        songs = topSongs.take(12),
+                        queue = topSongs,
+                        cardScale = cardScale,
+                        isPlaying = isPlaying,
+                        activeId = mediaMetadata?.id,
+                        headerClick = { navController.navigate("top_playlist/$topSize") },
+                        onPlayAt = { index, queueSongs, title ->
+                            playerConnection.playQueue(
+                                ListQueue(
+                                    title = title,
+                                    items = queueSongs.map { it.toMediaItem() },
+                                    startIndex = index,
+                                ),
+                            )
+                        },
+                        onMenu = { song ->
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menuState.show {
+                                SongMenu(
+                                    originalSong = song,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                            }
+                        },
+                    )
                 }
                 if (upcoming.isNotEmpty()) {
                     item(key = "aura_novedades_coming_soon") {
@@ -305,6 +352,47 @@ private fun androidx.compose.foundation.lazy.LazyListScope.novedadesSongShelf(
                         isActive = song.id == activeId,
                         isPlaying = isPlaying,
                         onClick = { onOpen(song) },
+                        onLongClick = { onMenu(song) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.novedadesLocalSongShelf(
+    key: String,
+    titleRes: Int,
+    songs: List<Song>,
+    queue: List<Song>,
+    cardScale: Float,
+    isPlaying: Boolean,
+    activeId: String?,
+    onPlayAt: (Int, List<Song>, String) -> Unit,
+    onMenu: (Song) -> Unit,
+    headerClick: (() -> Unit)? = null,
+) {
+    if (songs.isEmpty()) return
+    item(key = "aura_novedades_$key") {
+        val title = stringResource(titleRes)
+        val visual = auraTypeVisual(AuraContentKind.Song)
+        Column {
+            AuraSectionHeader(title = title, onClick = headerClick)
+            AuraShelf {
+                items(songs, key = { it.id }) { song ->
+                    AuraCoverCard(
+                        title = song.song.title,
+                        subtitle = song.artists.joinToString { it.name }
+                            .takeIf { it.isNotBlank() },
+                        thumbnailUrl = song.song.thumbnailUrl,
+                        seed = song.id,
+                        width = visual.shelfWidth * cardScale,
+                        isActive = song.id == activeId,
+                        isPlaying = isPlaying,
+                        onClick = {
+                            val index = queue.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
+                            onPlayAt(index, queue, title)
+                        },
                         onLongClick = { onMenu(song) },
                     )
                 }

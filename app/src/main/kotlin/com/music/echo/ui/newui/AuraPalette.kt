@@ -281,11 +281,19 @@ object AuraPalette {
     /**
      * Frosted overlay plate (dialogs / sheets / menus).
      *
-     * True black with real alpha so the dimmed UI behind shows through, plus window backdrop
-     * blur when the device allows it ([AuraFloatingSurface] / [AuraDialogWindowEffects]).
-     * Not a blue-grey film and not a flat Material card.
+     * Same chromatic ground as the Aura screens, plus a whisper of the now-playing [Teal]
+     * (cover-driven via [AuraPaletteSync]) so the plate tracks the album wash instead of sitting
+     * as a black slab on a blue-black / cover-tinted UI. Real alpha so the blurred UI behind
+     * shows through ([AuraFloatingSurface] / [AuraDialogWindowEffects]). Not a flat Material card.
+     *
+     * Alpha is deliberately lower than the old 0.62 black fill — that read as a second, darker
+     * tone. Text stays [OnGround] (already contrast-walked to ≥ 4.5:1 against [Ground]).
      */
-    val FrostFill: Color get() = Color.Black.copy(alpha = 0.62f)
+    val FrostFill: Color
+        get() {
+            val tinted = Teal.copy(alpha = 0.16f).compositeOver(Ground)
+            return tinted.copy(alpha = 0.34f)
+        }
 
     /**
      * Card / chip hairline: `rgba(255,255,255,.10)`, or the user's Bordes colour.
