@@ -34,6 +34,7 @@ import iad1tya.echo.music.db.entities.PlaylistSongMapPreview
 import iad1tya.echo.music.db.entities.RecognitionHistory
 import iad1tya.echo.music.db.entities.RelatedSongMap
 import iad1tya.echo.music.db.entities.ReleaseRadarItem
+import iad1tya.echo.music.db.entities.UpcomingReleaseEntity
 import iad1tya.echo.music.db.entities.SearchHistory
 import iad1tya.echo.music.db.entities.SetVideoIdEntity
 import iad1tya.echo.music.db.entities.SongAlbumMap
@@ -108,6 +109,7 @@ class MusicDatabase(
         RecognitionHistory::class,
         SpeedDialItem::class,
         ReleaseRadarItem::class,
+        UpcomingReleaseEntity::class,
         EnhancedShufflePlayedEntity::class,
         EnhancedShuffleContextEntity::class
     ],
@@ -116,7 +118,7 @@ class MusicDatabase(
         SortedSongAlbumMap::class,
         PlaylistSongMapPreview::class,
     ],
-    version = 41,
+    version = 42,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 2, to = 3),
@@ -164,6 +166,7 @@ class MusicDatabase(
         // BOTH database builders. A hand-written Migration has to be registered in each builder
         // separately, and forgetting the Hilt one is what crashed every install on 0.6.117.
         AutoMigration(from = 40, to = 41),
+        AutoMigration(from = 41, to = 42),
     ],
 )
 @TypeConverters(Converters::class)

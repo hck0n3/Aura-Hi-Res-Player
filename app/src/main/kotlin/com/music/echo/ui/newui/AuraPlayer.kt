@@ -1488,8 +1488,10 @@ private fun AuraPlayerShape(
                         }
                         val doneChrome = downloadDone || (isExported && !busy)
                         AuraIconButton(
-                            icon = AuraIcons.Download,
-                            contentDescription = stringResource(R.string.action_download),
+                            icon = if (doneChrome) AuraIcons.Downloaded else AuraIcons.Download,
+                            contentDescription = stringResource(
+                                if (doneChrome) R.string.filter_downloaded else R.string.action_download,
+                            ),
                             onClick = {
                                 when {
                                     downloadBusy || downloadDone ->

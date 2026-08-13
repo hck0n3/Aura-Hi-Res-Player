@@ -267,7 +267,8 @@ fun AuraCover(
             .width(size)
             .aspectRatio(ratio)
             .clip(shape)
-            .background(brush),
+            .background(brush)
+            .border(0.5.dp, AuraPalette.ArtworkEdge, shape),
     ) {
         AuraStableCoverImage(
             url = effectiveUrl,
@@ -642,6 +643,7 @@ fun AuraPosterCard(
             .aspectRatio(ratio)
             .clip(shape)
             .background(brush)
+            .border(0.5.dp, AuraPalette.ArtworkEdge, shape)
             .then(
                 if (onClick != null || onLongClick != null) {
                     Modifier.combinedClickable(

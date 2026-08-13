@@ -266,6 +266,7 @@ object LyricsTranslationHelper {
         isCompositionActive = false
         translationJob?.cancel()
         translationJob = null
+        _status.value = TranslationStatus.Idle
     }
 
     
@@ -400,7 +401,7 @@ object LyricsTranslationHelper {
                     }
 
                     delay(3000)
-                    if (_status.value is TranslationStatus.Success && isCompositionActive) {
+                    if (_status.value is TranslationStatus.Success) {
                         _status.value = TranslationStatus.Idle
                     }
                     return@launch
@@ -606,7 +607,7 @@ object LyricsTranslationHelper {
 
                     
                     delay(3000)
-                    if (_status.value is TranslationStatus.Success && isCompositionActive) {
+                    if (_status.value is TranslationStatus.Success) {
                         _status.value = TranslationStatus.Idle
                     }
                 }.onFailure { error ->

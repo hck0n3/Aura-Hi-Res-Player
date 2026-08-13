@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.music.innertube.models.AlbumItem
+import com.music.innertube.pages.ArtistSection
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
@@ -216,6 +217,7 @@ fun AuraArtistScreen(
 
     val fromYourLibraryTitle = stringResource(R.string.from_your_library)
     val yourLibraryTitle = stringResource(R.string.your_library)
+    val latestReleaseTitle = stringResource(R.string.latest_release)
     val filteredLibrarySongsYt = remember(allLibrarySongs, hideExplicit) {
         if (hideExplicit) allLibrarySongs.filter { !it.song.explicit } else allLibrarySongs
     }
@@ -226,9 +228,10 @@ fun AuraArtistScreen(
         showedLocalLibraryPreview,
         fromYourLibraryTitle,
         yourLibraryTitle,
+        latestReleaseTitle,
     ) {
         val seenTitles = linkedSetOf<String>()
-        artistPage?.sections.orEmpty().filter { section ->
+        val ranked = artistPage?.sections.orEmpty().filter { section ->
             val title = section.title.trim()
             if (title.isEmpty() || section.items.isEmpty()) return@filter false
             if (showedLocalLibraryPreview &&
@@ -238,7 +241,8 @@ fun AuraArtistScreen(
             }
             val key = title.lowercase()
             seenTitles.add(key)
-        }
+        }.sortedBy { appleArtistSectionRank(it.title) }
+        pinLatestArtistRelease(ranked, latestReleaseTitle)
     }
 
     // The Apple-Music background clip. HOISTED out of the hero on purpose: the header needs the same
@@ -1068,6 +1072,47 @@ private fun AuraArtistHero(
             )
         }
     }
+}
+
+/**
+ * Apple Music artist-page order: latest, library (drawn separately), top, essentials,
+ * albums, videos, playlists, singles/EP, live, compilations, appears-on, similar.
+ */
+internal fun appleArtistSectionRank(title: String): Int {
+    val t = title.trim().lowercase()
+    return when {
+        t.contains("latest") || t.contains("último") || t.contains("ultimo lanz") -> 0
+        t.contains("top song") || t.contains("canciones populares") || t.contains("popular song") -> 2
+        t.contains("essential") || t.contains("imprescind") -> 3
+        t.contains("album") && !t.contains("live") && !t.contains("compilation") &&
+            !t.contains("en vivo") && !t.contains("recopil") -> 4
+        t.contains("álbum") && !t.contains("vivo") && !t.contains("recopil") -> 4
+        t.contains("video") || t.contains("vídeo") -> 5
+        t.contains("playlist") || t.contains("lista") -> 6
+        t.contains("single") || t.contains("ep") -> 7
+        t.contains("live") || t.contains("en vivo") -> 8
+        t.contains("compilation") || t.contains("recopil") -> 9
+        t.contains("appear") || t.contains("aparece") || t.contains("featuring") -> 10
+        t.contains("similar") || t.contains("also like") || t.contains("fans might") ||
+            t.contains("artistas similares") -> 13
+        else -> 50
+    }
+}
+
+internal fun pinLatestArtistRelease(
+    sections: List<ArtistSection>,
+    latestTitle: String,
+): List<ArtistSection> {
+    if (sections.any { appleArtistSectionRank(it.title) == 0 }) return sections
+    val latest = sections.asSequence()
+        .flatMap { it.items.asSequence() }
+        .filterIsInstance<AlbumItem>()
+        .maxWithOrNull(
+            compareBy<AlbumItem> { it.year ?: Int.MIN_VALUE }.thenBy { it.title },
+        ) ?: return sections
+    return listOf(
+        ArtistSection(title = latestTitle, items = listOf(latest), moreEndpoint = null),
+    ) + sections
 }
 
 /**

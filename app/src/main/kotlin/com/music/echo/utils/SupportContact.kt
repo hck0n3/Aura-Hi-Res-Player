@@ -37,6 +37,7 @@ object SupportContact {
         kind: Kind,
         userMessage: String,
         attachLogs: Boolean,
+        screenshotUris: List<Uri> = emptyList(),
     ): Boolean {
         val header = DiagnosticHeader.build(context, "feedback")
         val body = buildString {
@@ -45,8 +46,9 @@ object SupportContact {
             append(header)
         }
         val subject = subject(kind)
-        return if (attachLogs) {
-            openWithLogAttachment(context, subject, body)
+        val shots = screenshotUris.filter { it != Uri.EMPTY }
+        return if (attachLogs || shots.isNotEmpty()) {
+            openWithAttachments(context, subject, body, attachLogs, shots)
         } else {
             openMailto(context, subject, body)
         }
@@ -64,7 +66,7 @@ object SupportContact {
             putExtra(Intent.EXTRA_TEXT, body)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        if (launchMailOnly(context, sendIntent, attachmentUri = null)) return true
+        if (launchMailOnly(context, sendIntent, attachmentUris = emptyList())) return true
 
         // Fallback: body embedded in the mailto URI (capped — some stacks reject huge URIs).
         val uri = Uri.parse(
@@ -79,45 +81,61 @@ object SupportContact {
             putExtra(Intent.EXTRA_TEXT, body)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        return launchMailOnly(context, mailtoIntent, attachmentUri = null)
+        return launchMailOnly(context, mailtoIntent, attachmentUris = emptyList())
     }
 
-    private fun openWithLogAttachment(
+    private fun openWithAttachments(
         context: Context,
         subject: String,
         body: String,
+        attachLogs: Boolean,
+        screenshotUris: List<Uri>,
     ): Boolean {
-        val attachment = runCatching {
-            val dir = File(context.filesDir, "logs").apply { mkdirs() }
-            // All log types in one file: crash + app.log + system exits + playback RAM log.
-            val fileBody = AppLogger.buildFullShareBundle(
-                context = context,
-                reason = "feedback",
-                prepend = body,
-            )
-            File(dir, "aura_feedback.txt").also { it.writeText(fileBody) }
-        }.getOrNull()
-
-        if (attachment == null || !attachment.exists()) {
+        val uris = ArrayList<Uri>()
+        if (attachLogs) {
+            val attachment = runCatching {
+                val dir = File(context.filesDir, "logs").apply { mkdirs() }
+                val fileBody = AppLogger.buildFullShareBundle(
+                    context = context,
+                    reason = "feedback",
+                    prepend = body,
+                )
+                File(dir, "aura_feedback.txt").also { it.writeText(fileBody) }
+            }.getOrNull()
+            if (attachment != null && attachment.exists()) {
+                uris.add(
+                    FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.FileProvider",
+                        attachment,
+                    ),
+                )
+            }
+        }
+        uris.addAll(screenshotUris)
+        if (uris.isEmpty()) {
             return openMailto(context, subject, body)
         }
 
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.FileProvider",
-            attachment,
-        )
-        // ACTION_SEND + package of a mail app: attachments work; generic chooser does NOT.
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
+        val multiple = uris.size > 1
+        val intent = Intent(
+            if (multiple) Intent.ACTION_SEND_MULTIPLE else Intent.ACTION_SEND,
+        ).apply {
+            type = if (screenshotUris.isNotEmpty()) "*/*" else "text/plain"
             putExtra(Intent.EXTRA_EMAIL, arrayOf(EMAIL))
             putExtra(Intent.EXTRA_SUBJECT, subject)
             putExtra(Intent.EXTRA_TEXT, body)
-            putExtra(Intent.EXTRA_STREAM, uri)
-            clipData = android.content.ClipData.newRawUri(attachment.name, uri)
+            if (multiple) {
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            } else {
+                putExtra(Intent.EXTRA_STREAM, uris.first())
+            }
+            clipData = android.content.ClipData.newRawUri("attachment", uris.first()).also { clip ->
+                uris.drop(1).forEach { uri -> clip.addItem(android.content.ClipData.Item(uri)) }
+            }
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        return launchMailOnly(context, intent, attachmentUri = uri)
+        return launchMailOnly(context, intent, attachmentUris = uris)
     }
 
     /**
@@ -126,7 +144,7 @@ object SupportContact {
     private fun launchMailOnly(
         context: Context,
         intent: Intent,
-        attachmentUri: Uri?,
+        attachmentUris: List<Uri>,
     ): Boolean {
         val pm = context.packageManager
         val mailPackages = resolveMailPackages(pm)
@@ -147,11 +165,11 @@ object SupportContact {
 
         if (targetPkg != null) {
             intent.setPackage(targetPkg)
-            if (attachmentUri != null) {
+            attachmentUris.forEach { uri ->
                 runCatching {
                     context.grantUriPermission(
                         targetPkg,
-                        attachmentUri,
+                        uri,
                         Intent.FLAG_GRANT_READ_URI_PERMISSION,
                     )
                 }
@@ -163,11 +181,11 @@ object SupportContact {
         val targeted = mailPackages.map { pkg ->
             Intent(intent).apply {
                 setPackage(pkg)
-                if (attachmentUri != null) {
+                attachmentUris.forEach { uri ->
                     runCatching {
                         context.grantUriPermission(
                             pkg,
-                            attachmentUri,
+                            uri,
                             Intent.FLAG_GRANT_READ_URI_PERMISSION,
                         )
                     }

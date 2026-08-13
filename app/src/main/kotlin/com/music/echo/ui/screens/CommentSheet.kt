@@ -106,6 +106,7 @@ fun CommentSheet(
         tonalElevation = 0.dp,
     ) {
         CompositionLocalProvider(LocalAuraFloatingChrome provides premium) {
+        iad1tya.echo.music.ui.newui.AuraFrostWindowIfPremium()
         Column(modifier = Modifier.fillMaxHeight()) {
             
             Row(

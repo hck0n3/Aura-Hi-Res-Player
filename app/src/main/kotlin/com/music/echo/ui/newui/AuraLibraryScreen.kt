@@ -227,7 +227,10 @@ fun AuraLibraryScreen(navController: NavController) {
             ) {
                 Box(Modifier.fillMaxSize()) {
                     when (filterType) {
-                        LibraryFilter.LIBRARY -> AuraLibraryHub(navController)
+                        LibraryFilter.LIBRARY -> AuraLibraryHub(
+                            navController,
+                            onOpenFilter = { filterType = it },
+                        )
                         LibraryFilter.PLAYLISTS ->
                             AuraLibraryPlaylistsTab(navController, searchOpen, toggleSearch)
 

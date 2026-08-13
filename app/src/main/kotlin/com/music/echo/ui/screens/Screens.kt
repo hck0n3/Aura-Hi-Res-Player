@@ -42,7 +42,16 @@ sealed class Screens(
         route = "library"
     )
 
+    /** New UI only — Apple Music "New" tab. Not in [MainScreens] so the classic bar stays unchanged. */
+    object Novedades : Screens(
+        titleId = R.string.tab_novedades,
+        iconIdInactive = R.drawable.new_release,
+        iconIdActive = R.drawable.new_release,
+        route = "novedades"
+    )
+
     companion object {
         val MainScreens = listOf(Home, Search, ListenTogether, Library)
+        val NewUiMainScreens = listOf(Home, Novedades, Library, Search)
     }
 }

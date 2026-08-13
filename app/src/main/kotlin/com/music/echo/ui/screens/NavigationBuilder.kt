@@ -63,6 +63,7 @@ import iad1tya.echo.music.ui.newui.AutoPlaylistScreenHost
 import iad1tya.echo.music.ui.newui.CachePlaylistScreenHost
 import iad1tya.echo.music.ui.newui.HomeScreenHost
 import iad1tya.echo.music.ui.newui.LibraryScreenHost
+import iad1tya.echo.music.ui.newui.NovedadesScreenHost
 import iad1tya.echo.music.ui.newui.LocalPlaylistScreenHost
 import iad1tya.echo.music.ui.newui.MigrationAppleScreenHost
 import iad1tya.echo.music.ui.newui.MigrationScreenHost
@@ -85,6 +86,10 @@ fun NavGraphBuilder.navigationBuilder(
         // "Interfaz nueva" beta: the Host picks the new Inicio when the flag is ON and a new
         // implementation exists, and falls back to this exact classic screen otherwise.
         HomeScreenHost(navController = navController, snackbarHostState = snackbarHostState)
+    }
+
+    composable(Screens.Novedades.route) {
+        NovedadesScreenHost(navController)
     }
 
     composable(Screens.Search.route) {

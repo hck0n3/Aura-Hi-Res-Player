@@ -320,11 +320,11 @@ fun AuraSearchResultScreen(
                         searchSummary?.summaries
                             ?.sortedBy { summary ->
                                 when (summary.items.firstOrNull()) {
-                                    is ArtistItem -> 0
                                     is SongItem -> 1
-                                    is AlbumItem -> 2
-                                    is PlaylistItem -> 3
-                                    else -> 4
+                                    is ArtistItem -> 2
+                                    is AlbumItem -> 3
+                                    is PlaylistItem -> 4
+                                    else -> 5
                                 }
                             }
                             ?.forEach { summary ->
@@ -483,12 +483,11 @@ fun AuraSearchResultScreen(
 private fun auraResultFilters(): List<Pair<YouTube.SearchFilter?, Int>> = listOf(
     null to R.string.filter_all,
     FILTER_SONG to R.string.filter_songs,
-    // The view model deliberately skips "Ocultar vídeos" for this chip: asking for videos shows them.
-    FILTER_VIDEO to R.string.filter_videos,
-    FILTER_ALBUM to R.string.filter_albums,
     FILTER_ARTIST to R.string.filter_artists,
+    FILTER_ALBUM to R.string.filter_albums,
     FILTER_COMMUNITY_PLAYLIST to R.string.filter_community_playlists,
     FILTER_FEATURED_PLAYLIST to R.string.filter_featured_playlists,
+    FILTER_VIDEO to R.string.filter_videos,
     FILTER_PODCAST_EPISODE to R.string.podcasts,
 )
 

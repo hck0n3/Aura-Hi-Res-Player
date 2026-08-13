@@ -563,6 +563,18 @@ fun Lyrics(
     
     val translationStatus by LyricsTranslationHelper.status.collectAsState()
     val hasActiveTranslations by LyricsTranslationHelper.hasActiveTranslations.collectAsState()
+
+    LaunchedEffect(translationStatus) {
+        when (translationStatus) {
+            is LyricsTranslationHelper.TranslationStatus.Success,
+            is LyricsTranslationHelper.TranslationStatus.Error,
+            -> {
+                delay(3_000)
+                LyricsTranslationHelper.resetStatus()
+            }
+            else -> Unit
+        }
+    }
     
     
     DisposableEffect(Unit) {
@@ -992,6 +1004,11 @@ fun Lyrics(
                 .padding(top = 56.dp),
             contentAlignment = Alignment.Center
         ) {
+            AnimatedVisibility(
+                visible = translationStatus !is LyricsTranslationHelper.TranslationStatus.Idle,
+                enter = fadeIn(tween(180)) + slideInVertically { -it / 3 },
+                exit = fadeOut(tween(220)) + slideOutVertically { -it / 3 },
+            ) {
             when (val status = translationStatus) {
                 is LyricsTranslationHelper.TranslationStatus.Translating -> {
                     Card(
@@ -1073,9 +1090,8 @@ fun Lyrics(
                         }
                     }
                 }
-                is LyricsTranslationHelper.TranslationStatus.Idle -> {
-                    
-                }
+                is LyricsTranslationHelper.TranslationStatus.Idle -> Unit
+            }
             }
         }
 

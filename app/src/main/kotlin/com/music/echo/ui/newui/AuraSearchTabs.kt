@@ -27,7 +27,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -320,10 +319,9 @@ fun AuraTrendingTab(
         onRefresh = { viewModel.refresh(regionCode, force = true) },
         state = pullState,
         indicator = {
-            PullToRefreshDefaults.LoadingIndicator(
+            AuraPullRefreshIndicator(
                 state = pullState,
                 isRefreshing = isManualLoading,
-                modifier = Modifier.align(Alignment.TopCenter),
             )
         },
         modifier = Modifier.fillMaxSize(),

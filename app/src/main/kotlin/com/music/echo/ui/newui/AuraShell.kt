@@ -524,6 +524,7 @@ private fun auraNavIcon(screen: Screens): ImageVector = when (screen) {
     Screens.Search -> AuraIcons.Search
     Screens.Library -> AuraIcons.Library
     Screens.ListenTogether -> AuraIcons.People
+    Screens.Novedades -> AuraIcons.Novedades
 }
 
 // ── Mini player ───────────────────────────────────────────────────────────────────────────────────

@@ -29,7 +29,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,6 +70,7 @@ import iad1tya.echo.music.constants.ArtistSortTypeKey
 import iad1tya.echo.music.constants.GridItemSize
 import iad1tya.echo.music.constants.GridItemsSizeKey
 import iad1tya.echo.music.constants.HideExplicitKey
+import iad1tya.echo.music.constants.LibraryFilter
 import iad1tya.echo.music.constants.MixSortDescendingKey
 import iad1tya.echo.music.constants.MixSortType
 import iad1tya.echo.music.constants.MixSortTypeKey
@@ -317,6 +317,7 @@ private fun AuraSearchField(
 @Composable
 fun AuraLibraryHub(
     navController: NavController,
+    onOpenFilter: (LibraryFilter) -> Unit,
     viewModel: LibraryMixViewModel = hiltViewModel(),
 ) {
     val menuState = LocalMenuState.current
@@ -382,6 +383,16 @@ fun AuraLibraryHub(
         if (ytmSync) withContext(Dispatchers.IO) { viewModel.syncAllLibrary() }
     }
 
+    val recentlyAdded = remember(albums, playlists) {
+        (albums + playlists).sortedByDescending { item ->
+            when (item) {
+                is Album -> item.album.lastUpdateTime
+                is Playlist -> item.playlist.lastUpdateTime
+                else -> null
+            }
+        }.take(12)
+    }
+
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val pullRefreshState = rememberPullToRefreshState()
 
@@ -389,13 +400,12 @@ fun AuraLibraryHub(
         state = pullRefreshState,
         isRefreshing = isRefreshing,
         onRefresh = viewModel::refresh,
-        indicator = {
-            PullToRefreshDefaults.LoadingIndicator(
-                state = pullRefreshState,
-                isRefreshing = isRefreshing,
-                modifier = Modifier.align(Alignment.TopCenter),
-            )
-        },
+            indicator = {
+                AuraPullRefreshIndicator(
+                    state = pullRefreshState,
+                    isRefreshing = isRefreshing,
+                )
+            },
     ) {
         LazyColumn(
             state = rememberLazyListState(),
@@ -416,142 +426,89 @@ fun AuraLibraryHub(
                 )
             }
 
-            item(key = "aura_hub_auto_playlists") {
-                FlowRow(
-                    maxItemsInEachRow = 2,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = AuraSpacing.Gutter, vertical = 12.dp),
-                ) {
-                    val tile = Modifier.weight(1f)
+            item(key = "aura_hub_categories") {
+                val (_, onSongFilterChange) = rememberEnumPreference(SongFilterKey, SongFilter.LIBRARY)
+                Column(Modifier.padding(top = 8.dp)) {
+                    libraryCategoryRow(stringResource(R.string.filter_playlists)) {
+                        onOpenFilter(LibraryFilter.PLAYLISTS)
+                    }
+                    libraryCategoryRow(stringResource(R.string.filter_artists)) {
+                        onOpenFilter(LibraryFilter.ARTISTS)
+                    }
+                    libraryCategoryRow(stringResource(R.string.filter_albums)) {
+                        onOpenFilter(LibraryFilter.ALBUMS)
+                    }
+                    libraryCategoryRow(stringResource(R.string.filter_songs)) {
+                        onOpenFilter(LibraryFilter.SONGS)
+                    }
+                    libraryCategoryRow(stringResource(R.string.filter_downloaded)) {
+                        onSongFilterChange(SongFilter.DOWNLOADED)
+                        onOpenFilter(LibraryFilter.SONGS)
+                    }
                     if (showLiked) {
-                        AuraTile(AuraIcons.HeartFilled, stringResource(R.string.liked),
-                            { navController.navigate("auto_playlist/liked") }, tile)
+                        libraryCategoryRow(stringResource(R.string.liked)) {
+                            navController.navigate("auto_playlist/liked")
+                        }
                     }
-                    if (showExported) {
-                        AuraTile(AuraIcons.Export, stringResource(R.string.action_exported),
-                            { navController.navigate("auto_playlist/exported") }, tile)
+                    libraryCategoryRow(stringResource(R.string.podcasts)) {
+                        navController.navigate("podcasts")
                     }
-                    if (showExportedVideos) {
-                        AuraTile(AuraIcons.Video, stringResource(R.string.exported_videos_playlist),
-                            { navController.navigate("auto_playlist/exported_videos") }, tile)
-                    }
-                    if (showTop) {
-                        AuraTile(AuraIcons.Speed, stringResource(R.string.my_top) + " $topSize",
-                            { navController.navigate("top_playlist/$topSize") }, tile)
-                    }
-                    AuraTile(AuraIcons.Album, stringResource(R.string.favorite_albums),
-                        { navController.navigate("favorite_albums") }, tile)
-                    AuraTile(AuraIcons.Radio, stringResource(R.string.release_radar_title),
-                        { navController.navigate("release_radar") }, tile)
-                    AuraTile(AuraIcons.Lyrics, stringResource(R.string.podcasts),
-                        { navController.navigate("podcasts") }, tile)
                 }
             }
 
-            if (artistItems.isNotEmpty()) {
-                item(key = "aura_hub_artists_header") {
-                    AuraSectionHeader(title = stringResource(R.string.filter_artists))
+            if (recentlyAdded.isNotEmpty()) {
+                item(key = "aura_hub_recent_header") {
+                    AuraSectionHeader(title = stringResource(R.string.library_recently_added))
                 }
-                items(artistItems, key = { "artist_${it.id}" }) { item ->
-                    val visual = auraTypeVisual(AuraContentKind.Artist)
-                    AuraSongRow(
-                        title = item.artist.name,
-                        subtitle = pluralStringResource(R.plurals.n_song, item.songCount, item.songCount),
-                        thumbnailUrl = item.artist.thumbnailUrl,
-                        seed = item.id,
-                        artworkShape = visual.shape,
-                        artworkSize = visual.rowWidth,
-                        typeChip = visual.label,
-                        onClick = { navController.navigate("artist/${item.id}") },
-                        onLongClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            menuState.show {
-                                ArtistMenu(item, coroutineScope, menuState::dismiss)
+                item(key = "aura_hub_recent_grid") {
+                    val visual = auraTypeVisual(AuraContentKind.Album)
+                    FlowRow(
+                        maxItemsInEachRow = 2,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = AuraSpacing.Gutter, vertical = 8.dp),
+                    ) {
+                        recentlyAdded.forEach { item ->
+                            when (item) {
+                                is Playlist -> AuraCoverCard(
+                                    title = item.playlist.name,
+                                    subtitle = stringResource(R.string.filter_playlists),
+                                    thumbnailUrl = item.thumbnails.firstOrNull(),
+                                    seed = item.id,
+                                    width = visual.shelfWidth,
+                                    onClick = { navController.navigate("local_playlist/${item.id}") },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                is Album -> AuraCoverCard(
+                                    title = item.album.title,
+                                    subtitle = item.artists.joinToString { it.name },
+                                    thumbnailUrl = item.album.thumbnailUrl,
+                                    seed = item.id,
+                                    width = visual.shelfWidth,
+                                    isActive = item.id == mediaMetadata?.album?.id,
+                                    isPlaying = isPlaying,
+                                    onClick = { navController.navigate("album/${item.id}") },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                else -> Unit
                             }
-                        },
-                        onMenuClick = {
-                            menuState.show { ArtistMenu(item, coroutineScope, menuState::dismiss) }
-                        },
-                        // Sorting, syncing and bookmarking all reorder / insert into this list while it
-                        // is on screen; without a placement animation each of those is a hard cut. The
-                        // key above is stable, which is the only condition animateItem needs. Its
-                        // defaults are the same spring AuraMotion.standard() is.
-                        modifier = Modifier
-                            .animateItem()
-                            .padding(horizontal = AuraSpacing.Gutter),
-                    )
-                }
-            }
-
-            item(key = "aura_hub_playlists_header") {
-                AuraSectionHeader(title = stringResource(R.string.filter_playlists))
-            }
-            items(nonArtistItems, key = { it.id }) { item ->
-                when (item) {
-                    is Playlist -> {
-                        val visual = auraTypeVisual(AuraContentKind.Playlist)
-                        AuraSongRow(
-                        title = item.playlist.name,
-                        subtitle = "${visual.label} · " + pluralStringResource(
-                            R.plurals.n_song,
-                            item.songCount,
-                            item.songCount,
-                        ),
-                        thumbnailUrl = item.thumbnails.firstOrNull(),
-                        seed = item.id,
-                        artworkShape = visual.shape,
-                        artworkSize = visual.rowWidth,
-                        typeChip = visual.label,
-                        onClick = { navController.navigate("local_playlist/${item.id}") },
-                        onLongClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            menuState.show { PlaylistMenu(item, coroutineScope, menuState::dismiss) }
-                        },
-                        onMenuClick = {
-                            menuState.show { PlaylistMenu(item, coroutineScope, menuState::dismiss) }
-                        },
-                        modifier = Modifier
-                            .animateItem()
-                            .padding(horizontal = AuraSpacing.Gutter),
-                    )
+                        }
                     }
-
-                    is Album -> {
-                        val visual = auraTypeVisual(AuraContentKind.Album)
-                        AuraSongRow(
-                        title = item.album.title,
-                        subtitle = "${visual.label} · ${item.artists.joinToString { it.name }}",
-                        thumbnailUrl = item.album.thumbnailUrl,
-                        seed = item.id,
-                        isActive = item.id == mediaMetadata?.album?.id,
-                        isPlaying = isPlaying,
-                        artworkShape = visual.shape,
-                        artworkSize = visual.rowWidth,
-                        typeChip = visual.label,
-                        onClick = { navController.navigate("album/${item.id}") },
-                        onLongClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            menuState.show {
-                                AlbumMenu(item, navController, menuState::dismiss)
-                            }
-                        },
-                        onMenuClick = {
-                            menuState.show { AlbumMenu(item, navController, menuState::dismiss) }
-                        },
-                        modifier = Modifier
-                            .animateItem()
-                            .padding(horizontal = AuraSpacing.Gutter),
-                    )
-                    }
-
-                    else -> Unit
                 }
             }
         }
     }
+}
+
+@Composable
+private fun libraryCategoryRow(title: String, onClick: () -> Unit) {
+    AuraSectionHeader(
+        title = title,
+        onClick = onClick,
+        modifier = Modifier.padding(vertical = 2.dp),
+    )
 }
 
 // ── 2. Canciones ──────────────────────────────────────────────────────────────────────────────────
@@ -1125,14 +1082,10 @@ fun AuraLibraryPlaylistsTab(
                     AuraTile(AuraIcons.Export, stringResource(R.string.action_exported),
                         { navController.navigate("auto_playlist/exported") }, tile)
                 }
-                if (showExportedVideos) {
-                    AuraTile(AuraIcons.Video, stringResource(R.string.exported_videos_playlist),
-                        { navController.navigate("auto_playlist/exported_videos") }, tile)
-                }
-                if (showTop) {
-                    AuraTile(AuraIcons.Speed, stringResource(R.string.my_top) + " $topSize",
-                        { navController.navigate("top_playlist/$topSize") }, tile)
-                }
+                    if (showExportedVideos) {
+                        AuraTile(AuraIcons.Video, stringResource(R.string.exported_videos_playlist),
+                            { navController.navigate("auto_playlist/exported_videos") }, tile)
+                    }
             }
         }
         item(key = "aura_playlists_header", span = { GridItemSpan(maxLineSpan) }) {

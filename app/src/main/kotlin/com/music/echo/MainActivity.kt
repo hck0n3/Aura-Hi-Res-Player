@@ -862,8 +862,14 @@ class MainActivity : ComponentActivity() {
                 val (previousTab, setPreviousTab) = rememberSaveable { mutableStateOf("home") }
 
                 val (listenTogetherInTopBar) = rememberPreference(ListenTogetherInTopBarKey, defaultValue = true)
-                val navigationItems = remember(listenTogetherInTopBar) { 
-                    if (listenTogetherInTopBar) {
+                val navigationItems = remember(listenTogetherInTopBar, newUiShell) {
+                    if (newUiShell) {
+                        if (listenTogetherInTopBar) {
+                            Screens.NewUiMainScreens
+                        } else {
+                            Screens.NewUiMainScreens + Screens.ListenTogether
+                        }
+                    } else if (listenTogetherInTopBar) {
                         Screens.MainScreens.filter { it != Screens.ListenTogether }
                     } else {
                         Screens.MainScreens
@@ -888,7 +894,9 @@ class MainActivity : ComponentActivity() {
                 val topLevelScreens = remember {
                     listOf(
                         Screens.Home.route,
+                        Screens.Novedades.route,
                         Screens.Library.route,
+                        Screens.Search.route,
                         Screens.ListenTogether.route,
                         "settings",
                     )
@@ -926,15 +934,10 @@ class MainActivity : ComponentActivity() {
                     navigationItems.map { it.route }.toSet()
                 }
 
-                val shouldShowNavigationBar = remember(currentRoute, navigationItemRoutes, newUiShell) {
+                val shouldShowNavigationBar = remember(currentRoute, navigationItemRoutes) {
                     currentRoute == null ||
                         navigationItemRoutes.contains(currentRoute) ||
-                        currentRoute!!.startsWith("search/") ||
-                        // The render makes Ajustes the FOURTH bottom-bar cell and draws that cell in
-                        // teal ON the Ajustes screen (`nv on`), i.e. under the new UI Ajustes is a
-                        // top-level destination and keeps the bar. GATED: with the flag off this term
-                        // is false and "settings" is a bar-less route exactly as it is today.
-                        (newUiShell && currentRoute == "settings")
+                        currentRoute!!.startsWith("search/")
                 }
 
                 // Routes whose NEW screen draws its own [AuraScreenHeader]. The render has no opaque
@@ -952,6 +955,7 @@ class MainActivity : ComponentActivity() {
                 val auraOwnsHeader = newUiShell &&
                     (
                         currentRoute == Screens.Home.route ||
+                            currentRoute == Screens.Novedades.route ||
                             currentRoute == Screens.Library.route ||
                             currentRoute == Screens.Search.route ||
                             currentRoute == "settings"
@@ -1461,6 +1465,7 @@ class MainActivity : ComponentActivity() {
 
                 val currentTitle = when (navBackStackEntry?.destination?.route) {
                     Screens.Home.route -> "Aura Hi-Res Player"
+                    Screens.Novedades.route -> stringResource(R.string.tab_novedades)
                     Screens.Search.route -> stringResource(R.string.search)
                     Screens.Library.route -> stringResource(R.string.filter_library)
                     Screens.ListenTogether.route -> stringResource(R.string.together)
@@ -1816,26 +1821,6 @@ class MainActivity : ComponentActivity() {
                                                 },
                                                 onItemClick = onNavItemClick,
                                                 bottomInset = bottomInset,
-                                                // The render's fourth cell. It is a TAB, so it
-                                                // navigates on exactly the NavOptions the other three
-                                                // use — see [navigateAsTab]. `launchSingleTop` alone
-                                                // was what made Biblioteca unusable: it left Ajustes
-                                                // stacked ON TOP of Biblioteca, and the next Biblioteca
-                                                // tap then popped both with `saveState`, which
-                                                // androidx-navigation stores as ONE deque keyed by the
-                                                // deepest popped destination (library) — so
-                                                // `restoreState` put Ajustes straight back on top.
-                                                // Self-perpetuating, hence "no muestra nada y me manda
-                                                // ajustes".
-                                                onSettingsClick = {
-                                                    // Same guard the other cells have: re-navigating to
-                                                    // the tab you are already on would pop and rebuild
-                                                    // the entry, losing the Ajustes scroll position.
-                                                    if (currentRoute != "settings") {
-                                                        navController.navigateAsTab("settings")
-                                                    }
-                                                },
-                                                settingsSelected = currentRoute == "settings",
                                                 modifier = Modifier
                                                     .align(Alignment.BottomCenter)
                                                     .fillMaxWidth(),

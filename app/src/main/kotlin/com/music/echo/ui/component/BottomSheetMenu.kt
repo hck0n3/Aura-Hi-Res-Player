@@ -116,8 +116,10 @@ fun AnimatedBottomSheet(
         dragHandle = dragHandle,
         contentWindowInsets = contentWindowInsets,
         properties = properties,
-        content = lastContent,
-    )
+    ) {
+        iad1tya.echo.music.ui.newui.AuraFrostWindowIfPremium()
+        lastContent()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

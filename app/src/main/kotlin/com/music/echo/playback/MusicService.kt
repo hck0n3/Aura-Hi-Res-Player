@@ -2795,13 +2795,11 @@ class MusicService :
                         // "trabones"/cuts on playback and at the crossfade swap, which the secondary player
                         // inherited). Reconciled below. (High-Performance Mode uses 60s.)
                         maxBufferMs,
-                        // bufferForPlaybackMs: video mode merges TWO streams. 2.5s still rebuffered
-                        // on many networks in the first seconds of streaming video — raise the first
-                        // start cushion so A/V both have media before playWhenReady fires.
-                        if (useSmallBuffer) 2_500 else 4_000,
-                        // bufferForPlaybackAfterRebufferMs: after a stall, wait even longer before
-                        // resuming so the dual fetch does not ping-pong STATE_BUFFERING.
-                        if (useSmallBuffer) 4_500 else 7_000,
+                        // Songs must start as soon as the first packets arrive. 2.5–4s was a video-merge
+                        // cushion that made every skip feel late. Keep a short start gate; rebuffer still
+                        // waits longer so a stall does not ping-pong STATE_BUFFERING.
+                        if (useSmallBuffer) 400 else 700,
+                        if (useSmallBuffer) 1_500 else 2_000,
                     )
                     // 64MB byte ceiling guards against OOM with multiple pre-loaded/crossfade players,
                     // but prioritizeTimeOverSizeThresholds(true) lets the TIME buffer win so the min/max
@@ -9853,10 +9851,10 @@ class MusicService :
     }
 
     /**
-     * AIMP-style smooth entry: ramp the player from silence to the user's real volume over ~400ms with an
-     * equal-power sine ease (gentle start, natural arrival). Volume-only — no seek, no buffer, no curve or
-     * crossfade machinery touched. The finally ALWAYS restores the exact user volume (mute-aware), so a
-     * cancelled ramp (rapid skips re-enter here; each cancels the previous) can never strand it low.
+     * AIMP-style smooth entry: wait until audio is actually rendering, then a short ~400ms sine ramp
+     * so the skip is not a slam. Owner: songs were taking too long to start — the old 1.6s quieterstep
+     * swell (first quarter almost silent) felt like the track had not begun. Volume-only. The finally
+     * ALWAYS restores the exact user volume (mute-aware), so a cancelled ramp can never strand it low.
      */
     private fun fadeInOnManualChange() {
         manualFadeInJob?.cancel()
@@ -9867,32 +9865,26 @@ class MusicService :
         self = scope.launch {
             try {
                 player.volume = 0f
-                // WAIT for the audio to actually RENDER before ramping (bounded): a manual switch to a
-                // streamed song needs 0.5-3s of resolve+buffer, and a wall-clock ramp from the transition
-                // callback finished into SILENCE — the real audio then entered at full level ("sigue
-                // entrando de golpe", the owner's exact report on 0.6.126). isPlaying == playWhenReady
-                // AND READY == samples flowing; on timeout (paused start, resolve failure) the finally
-                // restores the exact volume — held-at-zero is inaudible in every timeout scenario.
+                // WAIT for the audio to actually RENDER before ramping (bounded): a wall-clock ramp from
+                // the transition callback finished into SILENCE and the real audio then slammed in.
                 var waited = 0L
                 while (isActive && waited < 8_000L &&
                     !(player.isPlaying && player.playbackState == Player.STATE_READY)
                 ) {
-                    delay(50)
-                    waited += 50
+                    delay(40)
+                    waited += 40
                 }
                 if (!isActive || !player.isPlaying) return@launch
-                // ~1.6s, SMOOTHERSTEP-eased sine (owner iterated three times: explosive intros must enter
-                // gently, and the 1.1s window still read as "muy rápido" — the swell has to be NOTICED).
-                // Smootherstep (6t⁵−15t⁴+10t³) has zero FIRST and SECOND derivative at both ends — the
-                // ramp leaves silence imperceptibly, swells through the middle and lands softly at the
-                // exact user volume. First ~25% of the window stays under ≈-20dB.
-                val steps = 48
-                val stepTime = 1_600L / steps
+                // Audible on the first step (~−12 dB), full level in ~400ms. Equal-power sine, no
+                // smootherstep hold-at-silence.
+                val steps = 16
+                val stepTime = 400L / steps
                 for (i in 1..steps) {
                     if (!isActive || isCrossfading) break
                     val p = i / steps.toFloat()
-                    val eased = p * p * p * (p * (p * 6f - 15f) + 10f) // smootherstep
-                    player.volume = target * kotlin.math.sin(eased * (Math.PI / 2.0).toFloat())
+                    val floor = 0.25f
+                    player.volume = target * (floor + (1f - floor) *
+                        kotlin.math.sin(p * (Math.PI / 2.0).toFloat()))
                     delay(stepTime)
                 }
             } finally {

@@ -1,24 +1,22 @@
-# Aura Hi-Res Player 0.6.187
+# Aura Hi-Res Player 0.6.188
 
-Avisos que duran 24 h, descargas con anillo estilo Apple (también en el reproductor), Lista IA más exacta y guía de iconos en Acerca de.
+Diseño premium: barra Inicio · Novedades · Biblioteca · Buscar, hojas negras con blur, y el aviso de letras traducidas ya no tapa el texto.
 
 ---
 
-## Avisos
+## Diseño premium
 
-- Marcar leído ya no borra el aviso: permanece en Avisos hasta 24 horas después de su publicación.
-- Sin flash de la lista completa al abrir.
+- Barra nueva: Inicio, Novedades, Biblioteca y Buscar. Ajustes sigue en la hoja de cuenta.
+- Novedades (estilo Apple, datos de YouTube Music): radar, lo más nuevo, playlists actualizadas, lo que todos escuchan y Próximamente con presave.
+- Inicio queda como Listen Now (personal). Los estrenos van a Novedades.
+- Biblioteca: categorías Apple + Recién añadido.
+- Menús, diálogos y hojas: negro translúcido con desenfoque, no una placa gris plana.
+- «Letras traducidas» avisa 3 segundos y desaparece para no tapar la letra.
 
-## Descargas
+## Reproducción
 
-- Icono de descarga (flecha): el check queda solo para «ya reproducida».
-- Anillo que se rellena mientras descarga offline o exporta MP3/vídeo — también en el botón del reproductor.
+- Al cambiar de canción el audio arranca antes (menos espera de buffer al saltar).
 
-## Lista IA
+## Reportes
 
-- Obediencia estricta a lo pedido (temperatura 0, sin radio de «similares»).
-- Si pides un artista, no mete otros.
-
-## Acerca de
-
-- Nueva guía de iconografía: significado de cada botón e indicador (reproductor, navegación y estados).
+- Puedes adjuntar capturas de pantalla antes de enviar el correo.

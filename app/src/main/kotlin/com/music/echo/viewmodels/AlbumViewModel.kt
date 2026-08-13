@@ -7,6 +7,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.music.innertube.YouTube
 import com.music.innertube.models.AlbumItem
+import com.music.innertube.models.ArtistItem
+import com.music.innertube.models.PlaylistItem
+import com.music.innertube.models.YTItem
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -40,6 +43,9 @@ constructor(
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
     var otherVersions = MutableStateFlow<List<AlbumItem>>(emptyList())
     var releasesForYou = MutableStateFlow<List<AlbumItem>>(emptyList())
+    var moreFromArtist = MutableStateFlow<List<AlbumItem>>(emptyList())
+    var youMightAlsoLike = MutableStateFlow<List<YTItem>>(emptyList())
+    var appearsOn = MutableStateFlow<List<PlaylistItem>>(emptyList())
     var description = MutableStateFlow<String?>(null)
     var descriptionRuns = MutableStateFlow<List<com.music.innertube.models.Run>?>(null)
 
@@ -105,14 +111,43 @@ constructor(
                     }
 
                     val albumArtists = it.album.artists
-                    if (albumArtists?.size == 1) {
-                        albumArtists.firstOrNull()?.id?.let { artistId ->
-                            viewModelScope.launch(Dispatchers.IO) {
-                                val artistEntity = database.getArtistById(artistId)
-                                if (artistEntity?.thumbnailUrl == null) {
-                                    YouTube.artist(artistId).onSuccess { artistPage ->
+                    val firstArtistId = albumArtists?.firstOrNull()?.id
+                    val singleArtist = albumArtists?.size == 1
+                    if (firstArtistId != null) {
+                        viewModelScope.launch(Dispatchers.IO) {
+                            YouTube.artist(firstArtistId).onSuccess { artistPage ->
+                                moreFromArtist.value = artistPage.sections.asSequence()
+                                    .flatMap { section -> section.items }
+                                    .filterIsInstance<AlbumItem>()
+                                    .filter { album -> album.id != albumId }
+                                    .distinctBy { album -> album.id }
+                                    .take(12)
+                                    .toList()
+                                appearsOn.value = artistPage.sections.asSequence()
+                                    .flatMap { section -> section.items }
+                                    .filterIsInstance<PlaylistItem>()
+                                    .distinctBy { playlist -> playlist.id }
+                                    .take(12)
+                                    .toList()
+                                val similar = artistPage.sections.asSequence()
+                                    .filter { section -> isSimilarArtistSection(section.title) }
+                                    .flatMap { section -> section.items }
+                                    .distinctBy { item -> item.id }
+                                    .take(12)
+                                    .toList()
+                                youMightAlsoLike.value = similar.ifEmpty {
+                                    artistPage.sections.asSequence()
+                                        .flatMap { section -> section.items }
+                                        .filterIsInstance<ArtistItem>()
+                                        .distinctBy { artist -> artist.id }
+                                        .take(12)
+                                        .toList()
+                                }
+                                if (singleArtist) {
+                                    val artistEntity = database.getArtistById(firstArtistId)
+                                    if (artistEntity?.thumbnailUrl == null) {
                                         database.query {
-                                            getArtistById(artistId)?.let { currentArtist ->
+                                            getArtistById(firstArtistId)?.let { currentArtist ->
                                                 update(currentArtist, artistPage)
                                             }
                                         }
@@ -182,5 +217,15 @@ constructor(
                 _hasFailed.value = !succeeded
             }
         }
+    }
+
+    private fun isSimilarArtistSection(title: String): Boolean {
+        val t = title.lowercase()
+        return t.contains("similar") ||
+            t.contains("also like") ||
+            t.contains("fans might") ||
+            t.contains("artistas similares") ||
+            t.contains("you might") ||
+            t.contains("quizá")
     }
 }

@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-13T02:40:16Z",
+  "updatedAt": "2026-08-13T05:10:00Z",
   "items": [
+    {
+      "id": "aviso-20260813-051000",
+      "date": "2026-08-13",
+      "publishedAt": "2026-08-13T05:10:00Z",
+      "title": "Nuevo diseño premium",
+      "body": "Aura Hi-Res 0.6.188 ya está lista para todos.\n\nLa interfaz nueva se siente como un reproductor premium: Inicio, Novedades, Biblioteca y Buscar; menús y ventanas en negro translúcido con desenfoque; Novedades con estrenos y Próximamente; y las letras traducidas avisan 3 segundos y se quitan para no tapar el texto.\n\nActualiza desde el menú de tu cuenta (avatar) ▸ Actualizaciones. Gracias por estar en Aura.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260813-024016",
       "date": "2026-08-13",

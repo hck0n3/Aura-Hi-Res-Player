@@ -96,6 +96,14 @@ import iad1tya.echo.music.ui.menu.AlbumMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
+import iad1tya.echo.music.ui.menu.YouTubeArtistMenu
+import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
+import iad1tya.echo.music.ui.menu.YouTubeSongMenu
+import com.music.innertube.models.AlbumItem
+import com.music.innertube.models.ArtistItem
+import com.music.innertube.models.PlaylistItem
+import com.music.innertube.models.SongItem
+import com.music.innertube.models.YTItem
 import iad1tya.echo.music.ui.player.CanvasArtworkPlayer
 import iad1tya.echo.music.ui.screens.rememberAlbumCanvas
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
@@ -170,6 +178,9 @@ fun AuraAlbumScreen(
     val albumWithSongs by viewModel.albumWithSongs.collectAsState()
     val otherVersions by viewModel.otherVersions.collectAsState()
     val releasesForYou by viewModel.releasesForYou.collectAsState()
+    val moreFromArtist by viewModel.moreFromArtist.collectAsState()
+    val youMightAlsoLike by viewModel.youMightAlsoLike.collectAsState()
+    val appearsOn by viewModel.appearsOn.collectAsState()
     val description by viewModel.description.collectAsState()
     val descriptionRuns by viewModel.descriptionRuns.collectAsState()
     val hasFailed by viewModel.hasFailed.collectAsState()
@@ -491,41 +502,68 @@ fun AuraAlbumScreen(
 
                 val releases = releasesForYou.distinctBy { it.id }
                 if (releases.isNotEmpty()) {
-                    item(key = "aura_album_releases_label") {
-                        AuraSectionHeader(
-                            title = stringResource(R.string.releases_for_you),
-                            modifier = Modifier.animateItem(),
-                        )
-                    }
-                    item(key = "aura_album_releases_row") {
-                        AuraDetailShelf(modifier = Modifier.animateItem()) {
-                            itemsIndexed(
-                                items = releases,
-                                key = { position, _ -> "aura_album_release_$position" },
-                            ) { _, item ->
-                                AuraTypedYtCoverCard(
-                                    item = item,
-                                    cardScale = 1f,
-                                    isActive = mediaMetadata?.album?.id == item.id,
-                                    isPlaying = isPlaying,
-                                    onClick = { navController.navigate("album/${item.id}") },
-                                    onLongClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        menuState.show {
-                                            YouTubeAlbumMenu(
-                                                albumItem = item,
-                                                navController = navController,
-                                                onDismiss = menuState::dismiss,
-                                            )
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .animateItem()
-                                        .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
-                                )
-                            }
-                        }
-                    }
+                    auraAlbumRelatedShelf(
+                        key = "releases",
+                        titleRes = R.string.more_to_listen,
+                        items = releases,
+                        navController = navController,
+                        haptic = haptic,
+                        menuState = menuState,
+                        coroutineScope = coroutineScope,
+                        isTvOrCar = isTvOrCar,
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                    )
+                }
+
+                val fromArtist = moreFromArtist.distinctBy { it.id }
+                    .filter { album -> album.id != albumWithSongs?.album?.id && album.id !in releases.map { it.id }.toSet() }
+                if (fromArtist.isNotEmpty()) {
+                    auraAlbumRelatedShelf(
+                        key = "from_artist",
+                        titleRes = R.string.more_from_artist,
+                        items = fromArtist,
+                        navController = navController,
+                        haptic = haptic,
+                        menuState = menuState,
+                        coroutineScope = coroutineScope,
+                        isTvOrCar = isTvOrCar,
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                    )
+                }
+
+                val related = youMightAlsoLike.distinctBy { it.id }
+                    .filter { item -> item.id != albumWithSongs?.album?.id }
+                if (related.isNotEmpty()) {
+                    auraAlbumRelatedShelf(
+                        key = "also_like",
+                        titleRes = R.string.album_you_might_also_like,
+                        items = related,
+                        navController = navController,
+                        haptic = haptic,
+                        menuState = menuState,
+                        coroutineScope = coroutineScope,
+                        isTvOrCar = isTvOrCar,
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                    )
+                }
+
+                val featuredOn = appearsOn.distinctBy { it.id }
+                if (featuredOn.isNotEmpty()) {
+                    auraAlbumRelatedShelf(
+                        key = "appears_on",
+                        titleRes = R.string.appears_on,
+                        items = featuredOn,
+                        navController = navController,
+                        haptic = haptic,
+                        menuState = menuState,
+                        coroutineScope = coroutineScope,
+                        isTvOrCar = isTvOrCar,
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                    )
                 }
             } else if (notFound) {
                 // Terminal NOT_FOUND: the album is gone from YouTube. Deliberately NO retry — the
@@ -1053,6 +1091,78 @@ internal fun AuraDetailTopBar(
                 },
         )
         if (inSelectMode) selectionActions?.invoke() else actions?.invoke()
+    }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.auraAlbumRelatedShelf(
+    key: String,
+    titleRes: Int,
+    items: List<YTItem>,
+    navController: NavController,
+    haptic: androidx.compose.ui.hapticfeedback.HapticFeedback,
+    menuState: iad1tya.echo.music.ui.component.MenuState,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    isTvOrCar: Boolean,
+    mediaMetadata: iad1tya.echo.music.models.MediaMetadata?,
+    isPlaying: Boolean,
+) {
+    item(key = "aura_album_${key}_label") {
+        AuraSectionHeader(
+            title = stringResource(titleRes),
+            modifier = Modifier.animateItem(),
+        )
+    }
+    item(key = "aura_album_${key}_row") {
+        AuraDetailShelf(modifier = Modifier.animateItem()) {
+            itemsIndexed(
+                items = items,
+                key = { position, _ -> "aura_album_${key}_$position" },
+            ) { _, item ->
+                AuraTypedYtCoverCard(
+                    item = item,
+                    cardScale = 1f,
+                    isActive = mediaMetadata?.album?.id == item.id || mediaMetadata?.id == item.id,
+                    isPlaying = isPlaying,
+                    onClick = {
+                        when (item) {
+                            is AlbumItem -> navController.navigate("album/${item.id}")
+                            is ArtistItem -> navController.navigate("artist/${item.id}")
+                            is PlaylistItem -> navController.navigate("online_playlist/${item.id}")
+                            is SongItem -> Unit
+                        }
+                    },
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuState.show {
+                            when (item) {
+                                is AlbumItem -> YouTubeAlbumMenu(
+                                    albumItem = item,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                                is ArtistItem -> YouTubeArtistMenu(
+                                    artist = item,
+                                    onDismiss = menuState::dismiss,
+                                )
+                                is PlaylistItem -> YouTubePlaylistMenu(
+                                    playlist = item,
+                                    coroutineScope = coroutineScope,
+                                    onDismiss = menuState::dismiss,
+                                )
+                                is SongItem -> YouTubeSongMenu(
+                                    song = item,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .animateItem()
+                        .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
+                )
+            }
+        }
     }
 }
 

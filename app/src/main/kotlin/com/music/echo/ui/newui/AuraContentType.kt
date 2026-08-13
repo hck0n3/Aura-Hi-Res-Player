@@ -114,16 +114,16 @@ fun auraTypeVisual(kind: AuraContentKind): AuraTypeVisual {
             shelfWidth = 156.dp, rowWidth = 56.dp,
         )
         AuraContentKind.Ep -> AuraTypeVisual(
-            kind, label, icon, AuraShapes.Card, 1f,
-            shelfWidth = 142.dp, rowWidth = 54.dp, badgeShowsLabel = true,
+            kind, label, icon, AuraShapes.Artwork, 1f,
+            shelfWidth = 156.dp, rowWidth = 56.dp, badgeShowsLabel = true,
         )
         AuraContentKind.Single -> AuraTypeVisual(
-            kind, label, icon, AuraShapes.Card, 1f,
-            shelfWidth = 132.dp, rowWidth = 52.dp, badgeShowsLabel = true,
+            kind, label, icon, AuraShapes.Artwork, 1f,
+            shelfWidth = 156.dp, rowWidth = 56.dp, badgeShowsLabel = true,
         )
         AuraContentKind.Playlist -> AuraTypeVisual(
-            kind, label, icon, AuraShapes.Card, 1f,
-            shelfWidth = 148.dp, rowWidth = 54.dp,
+            kind, label, icon, AuraShapes.Artwork, 1f,
+            shelfWidth = 156.dp, rowWidth = 56.dp,
         )
         AuraContentKind.Artist -> AuraTypeVisual(
             kind, label, icon, CircleShape, 1f,

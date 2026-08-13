@@ -935,6 +935,7 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
         containerColor = if (premium) iad1tya.echo.music.ui.newui.AuraPalette.FrostFill
         else MaterialTheme.colorScheme.surface,
         title = {
+            if (premium) iad1tya.echo.music.ui.newui.AuraDialogWindowEffects(enabled = true)
             Text(stringResource(R.string.tempo_and_pitch))
         },
         dismissButton = {

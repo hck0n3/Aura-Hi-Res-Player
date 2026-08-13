@@ -143,6 +143,17 @@ object AuraIcons {
         }
     }
 
+    /**
+     * Downloaded / exported — same 24×24 tray as [Download], check instead of the arrow, so the
+     * player quick-access slot does not shift when the state flips.
+     */
+    val Downloaded: ImageVector by lazy {
+        stroked("Downloaded") {
+            moveTo(5f, 20f); horizontalLineToRelative(14f)
+            moveTo(7f, 11.5f); lineTo(10.5f, 15f); lineTo(17.5f, 7.5f)
+        }
+    }
+
     /** `#i-export` — "Exportar como MP3" (arrow out of a tray). */
     val Export: ImageVector by lazy {
         stroked("Export") {
@@ -307,6 +318,16 @@ object AuraIcons {
         stroked("Search", join = StrokeJoin.Miter) {
             circle(11f, 11f, 6f)
             moveTo(15.5f, 15.5f); lineTo(20f, 20f)
+        }
+    }
+
+    /** Apple Music "New" tab — 2×2 squares. Used only on the New UI bar. */
+    val Novedades: ImageVector by lazy {
+        stroked("Novedades", join = StrokeJoin.Miter) {
+            roundedRect(3.5f, 3.5f, 7.5f, 7.5f, 1.4f)
+            roundedRect(13f, 3.5f, 7.5f, 7.5f, 1.4f)
+            roundedRect(3.5f, 13f, 7.5f, 7.5f, 1.4f)
+            roundedRect(13f, 13f, 7.5f, 7.5f, 1.4f)
         }
     }
 

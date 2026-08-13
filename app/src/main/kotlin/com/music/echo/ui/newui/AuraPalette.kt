@@ -281,15 +281,11 @@ object AuraPalette {
     /**
      * Frosted overlay plate (dialogs / sheets / menus).
      *
-     * Must keep a real alpha — `compositeOver` alone yields an opaque color and the plate reads as a
-     * flat Material card (the owner complaint). RGB is the same GroundRaised film the shell uses;
-     * alpha opens so the dimmed UI behind shows through. Pair with window backdrop blur when the
-     * device allows it ([AuraFloatingSurface] / dialog window effects).
-     *
-     * Not an empty hole ([SurfaceFill] alone) and not fully opaque ([FloatingFill]). Account flyout
-     * stays on [FloatingFill] on purpose.
+     * True black with real alpha so the dimmed UI behind shows through, plus window backdrop
+     * blur when the device allows it ([AuraFloatingSurface] / [AuraDialogWindowEffects]).
+     * Not a blue-grey film and not a flat Material card.
      */
-    val FrostFill: Color get() = SurfaceFill.compositeOver(Ground).copy(alpha = 0.82f)
+    val FrostFill: Color get() = Color.Black.copy(alpha = 0.62f)
 
     /**
      * Card / chip hairline: `rgba(255,255,255,.10)`, or the user's Bordes colour.
@@ -301,6 +297,15 @@ object AuraPalette {
      */
     val SurfaceLine: Color
         get() = roleOverrides.outline ?: Color.White.copy(alpha = 0.10f)
+
+    /**
+     * Hairline on album / playlist / video / artist artwork — Apple Music's thin cover edge.
+     * Slightly stronger than [SurfaceLine] so it reads on a photograph, not only on chrome.
+     */
+    val ArtworkEdge: Color
+        get() = roleOverrides.outline?.copy(
+            alpha = (roleOverrides.outline!!.alpha * 1.6f).coerceIn(0.12f, 0.28f),
+        ) ?: Color.White.copy(alpha = 0.16f)
 
     /** Section separators (nav bar top, engine status bar top). */
     val Divider: Color

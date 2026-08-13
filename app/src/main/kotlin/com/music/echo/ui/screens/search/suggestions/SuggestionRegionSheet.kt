@@ -58,6 +58,7 @@ fun SuggestionRegionSheet(
         tonalElevation = 0.dp,
     ) {
         CompositionLocalProvider(LocalAuraFloatingChrome provides premium) {
+        iad1tya.echo.music.ui.newui.AuraFrostWindowIfPremium()
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = "Choose Suggestions Region",

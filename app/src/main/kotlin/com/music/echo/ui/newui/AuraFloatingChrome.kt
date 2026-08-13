@@ -43,7 +43,7 @@ import iad1tya.echo.music.utils.rememberPreference
  * frost plate ([SettingDialoge] → [AuraFloatingSurface]).
  */
 object AuraFloating {
-    val BlurRadiusPx = 48
+    val BlurRadiusPx = 56
     val Shape: CornerBasedShape get() = AuraShapes.Card
 }
 
@@ -78,7 +78,7 @@ fun AuraDialogWindowEffects(enabled: Boolean) {
         val window = (view.parent as? DialogWindowProvider)?.window
         if (window != null) {
             window.setBackgroundDrawable(ColorDrawable(android.graphics.Color.TRANSPARENT))
-            window.setDimAmount(0.38f)
+            window.setDimAmount(0.45f)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && blurOk) {
                 try {
                     window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
@@ -93,6 +93,12 @@ fun AuraDialogWindowEffects(enabled: Boolean) {
         }
         onDispose { }
     }
+}
+
+@Composable
+fun AuraFrostWindowIfPremium() {
+    val skin = rememberAuraPanelSkin()
+    AuraDialogWindowEffects(enabled = skin.enabled && skin.darkGround)
 }
 
 /**
@@ -155,7 +161,7 @@ fun auraFloatingContentColor(): Color {
 fun auraFloatingScrimColor(): Color {
     val skin = rememberAuraPanelSkin()
     // Lighter than Material's default so the frosted plate can still reveal the UI behind.
-    return if (skin.enabled && skin.darkGround) Color.Black.copy(alpha = 0.38f)
+    return if (skin.enabled && skin.darkGround) Color.Black.copy(alpha = 0.45f)
     else MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f)
 }
 

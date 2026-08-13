@@ -695,7 +695,7 @@
     <string name="migrate_another">Migrate another</string>
     <string name="migrate_export_failures_csv">Export unmatched (CSV)</string>
     <string name="owner_notices_title">Notices</string>
-    <string name="owner_notices_empty">No active notices. Messages expire after 24 hours or when you mark them read.</string>
+    <string name="owner_notices_empty">No active notices. Messages disappear 24 hours after you read them.</string>
     <string name="owner_notices_mark_all_read">Mark all read</string>
     <string name="owner_notices_mark_read">Mark read</string>
     <string name="owner_notices_settings_desc">Messages and alerts from Aura</string>

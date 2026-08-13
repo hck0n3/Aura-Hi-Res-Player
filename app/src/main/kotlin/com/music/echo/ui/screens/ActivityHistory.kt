@@ -75,6 +75,7 @@ fun ActivityHistoryBottomSheet(
         tonalElevation = 0.dp,
     ) {
         CompositionLocalProvider(LocalAuraFloatingChrome provides auraDark) {
+        iad1tya.echo.music.ui.newui.AuraFrostWindowIfPremium()
         Column(
             modifier = Modifier
                 .fillMaxWidth()

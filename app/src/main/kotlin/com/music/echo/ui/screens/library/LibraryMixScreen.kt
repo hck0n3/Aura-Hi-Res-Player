@@ -30,7 +30,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -86,6 +85,7 @@ import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.menu.AlbumMenu
 import iad1tya.echo.music.ui.menu.ArtistMenu
 import iad1tya.echo.music.ui.menu.PlaylistMenu
+import iad1tya.echo.music.ui.newui.AuraPullRefreshIndicator
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.LibraryMixViewModel
@@ -284,10 +284,9 @@ fun LibraryMixScreen(
         isRefreshing = isRefreshing,
         onRefresh = viewModel::refresh,
         indicator = {
-            PullToRefreshDefaults.LoadingIndicator(
+            AuraPullRefreshIndicator(
                 state = pullRefreshState,
                 isRefreshing = isRefreshing,
-                modifier = Modifier.align(Alignment.TopCenter),
             )
         }
     ) {
@@ -352,27 +351,11 @@ fun LibraryMixScreen(
                                     modifier = itemModifier
                                 )
                             }
-                            if (showTop) {
-                                AutoPlaylistButton(
-                                    title = stringResource(R.string.my_top) + " $topSize",
-                                    icon = R.drawable.trending_up,
-                                    iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                                    onClick = { navController.navigate("top_playlist/$topSize") },
-                                    modifier = itemModifier
-                                )
-                            }
                             AutoPlaylistButton(
                                 title = stringResource(R.string.favorite_albums),
                                 icon = R.drawable.album,
                                 iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                                 onClick = { navController.navigate("favorite_albums") },
-                                modifier = itemModifier
-                            )
-                            AutoPlaylistButton(
-                                title = stringResource(R.string.release_radar_title),
-                                icon = R.drawable.new_release,
-                                iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                                onClick = { navController.navigate("release_radar") },
                                 modifier = itemModifier
                             )
                             AutoPlaylistButton(
@@ -656,27 +639,11 @@ fun LibraryMixScreen(
                                     modifier = itemModifier
                                 )
                             }
-                            if (showTop) {
-                                AutoPlaylistButton(
-                                    title = stringResource(R.string.my_top) + " $topSize",
-                                    icon = R.drawable.trending_up,
-                                    iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                                    onClick = { navController.navigate("top_playlist/$topSize") },
-                                    modifier = itemModifier
-                                )
-                            }
                             AutoPlaylistButton(
                                 title = stringResource(R.string.favorite_albums),
                                 icon = R.drawable.album,
                                 iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
                                 onClick = { navController.navigate("favorite_albums") },
-                                modifier = itemModifier
-                            )
-                            AutoPlaylistButton(
-                                title = stringResource(R.string.release_radar_title),
-                                icon = R.drawable.new_release,
-                                iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                                onClick = { navController.navigate("release_radar") },
                                 modifier = itemModifier
                             )
                             AutoPlaylistButton(

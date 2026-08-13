@@ -2,7 +2,11 @@
 
 package iad1tya.echo.music.ui.screens.settings
 
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +31,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -67,6 +72,10 @@ fun FeedbackScreen(
     var kind by remember { mutableStateOf(SupportContact.Kind.BUG) }
     var message by remember { mutableStateOf("") }
     var attachLogs by remember { mutableStateOf(true) }
+    var screenshots by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    val screenshotPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(4),
+    ) { uris -> screenshots = uris }
 
     Scaffold(
         modifier = Modifier
@@ -171,6 +180,23 @@ fun FeedbackScreen(
                 Switch(checked = attachLogs, onCheckedChange = { attachLogs = it })
             }
 
+            Spacer(Modifier.height(8.dp))
+            TextButton(
+                onClick = {
+                    screenshotPicker.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    )
+                },
+            ) {
+                Text(
+                    text = if (screenshots.isEmpty()) {
+                        stringResource(R.string.feedback_attach_screenshot)
+                    } else {
+                        "${stringResource(R.string.feedback_attach_screenshot)} (${screenshots.size})"
+                    },
+                )
+            }
+
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = {
@@ -179,6 +205,7 @@ fun FeedbackScreen(
                         kind = kind,
                         userMessage = message,
                         attachLogs = attachLogs,
+                        screenshotUris = screenshots,
                     )
                     if (!ok) {
                         Toast.makeText(

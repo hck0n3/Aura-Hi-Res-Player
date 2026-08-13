@@ -33,7 +33,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.carousel.HorizontalCenteredHeroCarousel
 import androidx.compose.material3.carousel.rememberCarouselState
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -384,12 +383,9 @@ fun AuraHomeScreen(
             isRefreshing = isRefreshing,
             onRefresh = viewModel::refresh,
             indicator = {
-                PullToRefreshDefaults.LoadingIndicator(
+                AuraPullRefreshIndicator(
                     state = pullRefreshState,
                     isRefreshing = isRefreshing,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(LocalPlayerAwareWindowInsets.current.asPaddingValues()),
                 )
             },
         ) {
@@ -935,61 +931,8 @@ fun AuraHomeScreen(
                             }
                         }
 
-                        HomeSection.NewFromArtists -> {
-                            newFromArtists?.takeIf { it.isNotEmpty() }?.let { albums ->
-                                item(key = "aura_new_from_artists") {
-                                    Column(Modifier.animateItem()) {
-                                        AuraSectionHeader(
-                                            title = stringResource(R.string.home_new_from_artists),
-                                            onClick = { navController.navigate("release_radar") },
-                                        )
-                                        val albumW = auraTypeVisual(AuraContentKind.Album).shelfWidth * cardScale
-                                        AuraDoubleRowShelf(
-                                            rowHeight = auraShelfCardStackHeight(albumW),
-                                        ) {
-                                            lazyGridItems(albums.distinctBy { it.id }, key = { it.id }) { item ->
-                                                AuraTypedYtCoverCard(
-                                                    item = item,
-                                                    cardScale = cardScale,
-                                                    isActive = item.id == mediaMetadata?.album?.id,
-                                                    isPlaying = isPlaying,
-                                                    onClick = { openYtItem(item) },
-                                                    onLongClick = { ytItemMenu(item) },
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        HomeSection.NewReleases -> {
-                            explorePage?.newReleaseAlbums?.takeIf { it.isNotEmpty() }?.let { albums ->
-                                item(key = "aura_new_releases") {
-                                    Column(Modifier.animateItem()) {
-                                        AuraSectionHeader(
-                                            title = stringResource(R.string.new_release_albums),
-                                            onClick = { navController.navigate("new_release") },
-                                        )
-                                        val albumW = auraTypeVisual(AuraContentKind.Album).shelfWidth * cardScale
-                                        AuraDoubleRowShelf(
-                                            rowHeight = auraShelfCardStackHeight(albumW),
-                                        ) {
-                                            lazyGridItems(albums.distinctBy { it.id }, key = { it.id }) { item ->
-                                                AuraTypedYtCoverCard(
-                                                    item = item,
-                                                    cardScale = cardScale,
-                                                    isActive = item.id == mediaMetadata?.album?.id,
-                                                    isPlaying = isPlaying,
-                                                    onClick = { openYtItem(item) },
-                                                    onLongClick = { ytItemMenu(item) },
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        HomeSection.NewFromArtists -> Unit
+                        HomeSection.NewReleases -> Unit
 
                         HomeSection.TimeOfDayMix -> {
                             timeOfDayMix?.takeIf { it.songs.isNotEmpty() }?.let { mix ->
@@ -1511,7 +1454,7 @@ private fun AuraGroupedYtItemShelves(
 
 /** The render's horizontal shelf: gutter-aligned, 8 px gaps, sitting under a section rule. */
 @Composable
-private fun AuraShelf(
+internal fun AuraShelf(
     modifier: Modifier = Modifier,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
 ) {

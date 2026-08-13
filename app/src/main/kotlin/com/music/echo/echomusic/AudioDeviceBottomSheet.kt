@@ -321,6 +321,7 @@ fun AudioDeviceBottomSheet(onDismiss: () -> Unit, modifier: Modifier = Modifier)
         androidx.compose.runtime.CompositionLocalProvider(
             iad1tya.echo.music.ui.newui.LocalAuraFloatingChrome provides premiumSheet,
         ) {
+        iad1tya.echo.music.ui.newui.AuraFrostWindowIfPremium()
         Column(
             modifier = Modifier
                 .fillMaxWidth()

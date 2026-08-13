@@ -43,6 +43,7 @@ import iad1tya.echo.music.db.entities.PlaylistSongMap
 import iad1tya.echo.music.db.entities.RecognitionHistory
 import iad1tya.echo.music.db.entities.RelatedSongMap
 import iad1tya.echo.music.db.entities.ReleaseRadarItem
+import iad1tya.echo.music.db.entities.UpcomingReleaseEntity
 import iad1tya.echo.music.db.entities.SearchHistory
 import iad1tya.echo.music.db.entities.SetVideoIdEntity
 import iad1tya.echo.music.db.entities.Song
@@ -2164,6 +2165,18 @@ interface DatabaseDao {
 
     @Query("SELECT COUNT(*) FROM release_radar WHERE seen = 0")
     fun unseenReleaseCount(): Flow<Int>
+
+    @Upsert
+    suspend fun upsertUpcomingReleases(items: List<UpcomingReleaseEntity>)
+
+    @Query("SELECT * FROM upcoming_release ORDER BY releaseEpochMs ASC")
+    fun upcomingReleases(): Flow<List<UpcomingReleaseEntity>>
+
+    @Query("UPDATE upcoming_release SET presaved = :presaved WHERE id = :id")
+    suspend fun setUpcomingPresaved(id: String, presaved: Boolean)
+
+    @Query("DELETE FROM upcoming_release WHERE releaseEpochMs < :nowMs")
+    suspend fun prunePastUpcoming(nowMs: Long)
 
     // ---- Enhanced Shuffle ("Aleatorio mejorado") persistent per-context no-repeat memory ----
 

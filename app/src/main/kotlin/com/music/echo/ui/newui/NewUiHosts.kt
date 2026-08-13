@@ -215,6 +215,14 @@ fun HomeScreenHost(
     )
 }
 
+@Composable
+fun NovedadesScreenHost(navController: NavController) {
+    NewUiGate(
+        classic = { AuraNovedadesScreen(navController) },
+        new = { AuraNovedadesScreen(navController) },
+    )
+}
+
 // ── 5. Biblioteca ─────────────────────────────────────────────────────────────────────────────────
 
 @Composable

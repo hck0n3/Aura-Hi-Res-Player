@@ -504,7 +504,7 @@ fun PlayerSettings(
                 add(Material3SettingsItem(
                     icon = painterResource(R.drawable.play),
                     title = { Text("Entrada suave al cambiar de canción") },
-                    description = { Text("Al saltar o elegir otra canción a mano, la nueva entra con un fundido corto (estilo AIMP) en vez de golpe") },
+                    description = { Text("Al saltar o elegir otra canción a mano, la nueva entra enseguida con un fundido muy corto (estilo AIMP) en vez de golpe") },
                     trailingContent = {
                         Switch(
                             checked = fadeOnManualChange,
