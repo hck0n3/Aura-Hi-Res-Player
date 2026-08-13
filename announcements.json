@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-13T06:25:00Z",
+  "updatedAt": "2026-08-13T12:50:51Z",
   "items": [
+    {
+      "id": "aviso-20260813-125051",
+      "date": "2026-08-13",
+      "publishedAt": "2026-08-13T12:50:51Z",
+      "title": "AURA ESTA EN MANTENIMEINTO",
+      "body": "PUEDE QUE LAGUNAS DE SUS FUNCIONES NO ESTEN DISPONIBLES  PRONTO ESTAREMOS  FUNCIONANDO CON NORMALIDAD",
+      "priority": "info"
+    },
     {
       "id": "aviso-20260813-062500",
       "date": "2026-08-13",
