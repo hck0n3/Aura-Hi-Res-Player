@@ -29,6 +29,13 @@ interface Queue {
      */
     val contextId: String? get() = null
 
+    /**
+     * Song ids that must count as already heard when this shuffle lap starts (Continue, not Start over).
+     * Filled by the screen from persistent shuffle memory ∪ [iad1tya.echo.music.db.entities.SongEntity.totalPlayTime]
+     * so songs heard with Aleatorio mejorado OFF still sit behind the unplayed remainder.
+     */
+    val seedPlayedIds: Set<String> get() = emptySet()
+
     suspend fun getInitialStatus(): Status
 
     fun hasNextPage(): Boolean

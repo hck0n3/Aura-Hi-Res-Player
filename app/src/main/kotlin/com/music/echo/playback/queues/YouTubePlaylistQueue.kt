@@ -18,6 +18,10 @@ class YouTubePlaylistQueue(
     private val startIndex: Int = 0,
     override val preloadItem: MediaMetadata? = null,
     override val startShuffled: Boolean = false,
+    // Followed / YouTube playlists: "OL:<id>" so Aleatorio mejorado is the same bucket as a saved
+    // copy of this list. Null would leave shuffle as a one-shot scramble with no memory.
+    override val contextId: String? = iad1tya.echo.music.playback.ShuffleContexts.onlinePlaylist(playlistId),
+    override val seedPlayedIds: Set<String> = emptySet(),
 ) : Queue {
     private var continuation: String? = initialContinuation
     private var retryCount = 0

@@ -1284,7 +1284,7 @@
     <string name="cd_audio_output">Audio output</string>
     <string name="video">Video</string>
     <string name="cd_selection_actions">Selection actions</string>
-    <string name="cd_shuffle_already_played">Already played in this shuffle</string>
+    <string name="cd_shuffle_already_played">Already played</string>
     <string name="cd_collection_more_options">More collection options</string>
     <string name="cd_playlist_more_options">More playlist options</string>
     <string name="cd_change_sort_order">Change sort order</string>

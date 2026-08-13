@@ -1,25 +1,14 @@
-# Aura Hi-Res Player 0.6.191
+# Aura Hi-Res Player 0.6.192
 
-Corrección: la búsqueda vuelve a mostrar canciones, el artista carga de verdad, y Novedades ya no repite el mismo disco.
+Aleatorio con memoria en álbumes, EP y playlists que sigues, y el visto de ya oída aunque esa opción esté apagada.
 
 ---
 
-## Búsqueda
+## Aleatorio con memoria
 
-- Buscar vuelve a mostrar canciones, álbumes y listas, no solo dos artistas.
-- Si no carga, aparece Reintentar en vez de quedarse girando.
-
-## Artista
-
-- Canciones populares de YouTube Music arriba; Tu biblioteca debajo, una sola vez.
-
-## Novedades
-
-- El mismo álbum o canción ya no se repite en varias filas.
-
-## Biblioteca
-
-- El inicio de Biblioteca vuelve a las tarjetas con portada (Me gusta, exportadas, Top, álbumes, radar, podcasts).
+- El aleatorio que no repite ahora funciona en álbumes, EP, playlists tuyas y playlists que sigues, no solo en las que creas.
+- Si ya habías oído canciones de esa lista, al tocar Aleatorio te pregunta si continuar o empezar de cero.
+- Las canciones que ya sonaron se marcan con un visto aunque «Aleatorio mejorado» esté apagado.
 
 ## Cómo actualizar
 

@@ -114,9 +114,13 @@ import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.db.entities.PlaylistSongMap
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.ShuffleContexts
 import iad1tya.echo.music.playback.queues.YouTubePlaylistQueue
 import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.LocalMenuState
+import iad1tya.echo.music.ui.component.rememberHeardSongIds
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.component.NavigationTitle
 import iad1tya.echo.music.ui.component.YouTubeGridItem
 import iad1tya.echo.music.ui.component.YouTubeListItem
@@ -171,6 +175,9 @@ fun OnlinePlaylistScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val error by viewModel.error.collectAsState()
+    val onlineShuffleContextId = playlist?.let { ShuffleContexts.onlinePlaylist(it.id) }
+    val shufflePlayedSet = rememberPlayedShuffleSet(onlineShuffleContextId)
+    val heardIds = rememberHeardSongIds(songs.map { it.id })
 
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
@@ -333,6 +340,8 @@ fun OnlinePlaylistScreen(
                             isActive = mediaMetadata?.id == songItem.id,
                             isPlaying = isPlaying,
                             isSelected = inSelectMode && songItem.id in selection,
+                            playedInShuffle = songItem.id in shufflePlayedSet ||
+                                songItem.id in heardIds,
                             shape = listItemShape(index, filteredSongs.size),
                             modifier = Modifier
                                 .combinedClickable(
@@ -349,7 +358,8 @@ fun OnlinePlaylistScreen(
                                                     playlistTitle = playlist.title,
                                                     initialSongs = filteredSongs.map { it.second },
                                                     initialContinuation = viewModel.continuation,
-                                                    startIndex = index
+                                                    startIndex = index,
+                                                    contextId = onlineShuffleContextId,
                                                 )
                                             )
                                         }
@@ -609,6 +619,9 @@ private fun OnlinePlaylistHeader(
     val isPlaying by playerConnection.isEffectivelyPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val isTvOrCar = rememberIsTvOrCar()
+    val headerShuffleContextId = ShuffleContexts.onlinePlaylist(playlist.id)
+    val shufflePlayedSet = rememberPlayedShuffleSet(headerShuffleContextId)
+    val heardIds = rememberHeardSongIds(songs.map { it.id })
 
     val hasExplicitContent = remember(songs) {
         songs.any { it.explicit }
@@ -788,7 +801,8 @@ private fun OnlinePlaylistHeader(
                                     playlistId = playlist.id,
                                     playlistTitle = playlist.title,
                                     initialSongs = songs,
-                                    initialContinuation = continuation
+                                    initialContinuation = continuation,
+                                    contextId = ShuffleContexts.onlinePlaylist(playlist.id),
                                 )
                             )
                         }
@@ -1012,18 +1026,24 @@ private fun OnlinePlaylistHeader(
                     checked = false,
                     onCheckedChange = {
                         if (songs.isNotEmpty()) {
+                            val contextId = ShuffleContexts.onlinePlaylist(playlist.id)
+                            val seed = ShuffleContexts.seedPlayedIds(
+                                resetMemory = false,
+                                songIds = songs.map { it.id },
+                                shufflePlayed = shufflePlayedSet,
+                                playTimeMs = { id -> if (id in heardIds) 1L else 0L },
+                            )
+                            val (unheard, heard) = songs.partition { it.id !in seed }
+                            val ordered = unheard.shuffled() + heard.shuffled()
                             playerConnection.playQueue(
                                 YouTubePlaylistQueue(
                                     playlistId = playlist.id,
                                     playlistTitle = playlist.title,
-                                    initialSongs = songs.shuffled(),
+                                    initialSongs = ordered,
                                     initialContinuation = continuation,
-                                    // Turn shuffle MODE on once the items land: pre-scrambling alone left the
-                                    // shuffle icon off and the order frozen. HONEST SCOPE: no contextId is
-                                    // passed (no scheme exists for online playlists yet), so the persistent
-                                    // per-context no-repeat memory stays off here — only the in-memory
-                                    // session set applies.
+                                    contextId = contextId,
                                     startShuffled = true,
+                                    seedPlayedIds = seed,
                                 )
                             )
                         }

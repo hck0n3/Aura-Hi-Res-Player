@@ -1455,6 +1455,13 @@ interface DatabaseDao {
     @Query("UPDATE song SET totalPlayTime = totalPlayTime + :playTime WHERE id = :songId")
     fun incrementTotalPlayTime(songId: String, playTime: Long)
 
+    /** Lifetime-heard ids in [ids] (visual ✓ + shuffle Continue seed). Empty [ids] is a no-op at the caller. */
+    @Query("SELECT id FROM song WHERE totalPlayTime > 0 AND id IN (:ids)")
+    suspend fun songIdsWithPlayTime(ids: List<String>): List<String>
+
+    @Query("SELECT id FROM song WHERE totalPlayTime > 0 AND id IN (:ids)")
+    fun songIdsWithPlayTimeFlow(ids: List<String>): Flow<List<String>>
+
     @Query("UPDATE playCount SET count = count + 1 WHERE song = :songId AND year = :year AND month = :month")
     fun incrementPlayCount(songId: String, year: Int, month: Int)
 

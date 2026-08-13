@@ -1329,6 +1329,7 @@ fun YouTubeListItem(
     // 16:9 widens video-song rows (e.g. the search results' Videos items); 1f keeps every existing
     // caller's square thumbnail untouched.
     thumbnailRatio: Float = 1f,
+    playedInShuffle: Boolean = false,
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
 
@@ -1361,8 +1362,20 @@ fun YouTubeListItem(
                         )
                 )
             },
-            trailingContent = trailingContent,
-            modifier = modifier,
+            trailingContent = {
+                if (playedInShuffle && !isActive) {
+                    androidx.compose.material3.Icon(
+                        painter = painterResource(R.drawable.check),
+                        contentDescription = stringResource(R.string.cd_shuffle_already_played),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .size(16.dp),
+                    )
+                }
+                trailingContent()
+            },
+            modifier = if (playedInShuffle && !isActive) modifier.alpha(0.5f) else modifier,
             isSelected = isSelected,
             isActive = isActive,
             shape = shape,

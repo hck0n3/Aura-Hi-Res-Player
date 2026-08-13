@@ -1174,7 +1174,7 @@
     <string name="cd_audio_output">Salida de audio</string>
     <string name="video">Vídeo</string>
     <string name="cd_selection_actions">Acciones de la selección</string>
-    <string name="cd_shuffle_already_played">Ya reproducida en aleatorio</string>
+    <string name="cd_shuffle_already_played">Ya reproducida</string>
     <string name="cd_collection_more_options">Más opciones de la colección</string>
     <string name="cd_playlist_more_options">Más opciones de la lista</string>
     <string name="cd_change_sort_order">Cambiar el criterio de orden</string>

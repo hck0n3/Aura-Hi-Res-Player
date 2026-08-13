@@ -414,7 +414,8 @@ fun AutoPlaylistScreen(
                             isActive = song.song.id == mediaMetadata?.id,
                             isPlaying = isPlaying,
                             showInLibraryIcon = true,
-                            playedInShuffle = song.song.id in shufflePlayedSet,
+                            playedInShuffle = song.song.id in shufflePlayedSet ||
+                                song.song.totalPlayTime > 0L,
                             shape = listItemShape(index, filteredSongs.size),
                             trailingContent = {
                                 if (inSelectMode) {

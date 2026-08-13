@@ -85,6 +85,7 @@ import iad1tya.echo.music.constants.DataSaverEnabledKey
 import iad1tya.echo.music.constants.HideExplicitKey
 import iad1tya.echo.music.constants.HideVideoSongsKey
 import iad1tya.echo.music.db.entities.Album
+import iad1tya.echo.music.playback.ShuffleContexts
 import iad1tya.echo.music.playback.queues.LocalAlbumRadio
 import iad1tya.echo.music.ui.component.EnhancedShuffleChip
 import iad1tya.echo.music.ui.component.LinkSegment
@@ -214,6 +215,8 @@ fun AuraAlbumScreen(
         if (hideVideoSongs) songs = songs.filter { !it.song.isVideo }
         songs.likedFirst().distinctBy { it.id }
     }
+    val albumShuffleContextId = albumWithSongs?.let { ShuffleContexts.album(it.album.id) }
+    val albumPlayedSet = rememberPlayedShuffleSet(albumShuffleContextId)
 
     var inSelectMode by rememberSaveable { mutableStateOf(false) }
     val selection = rememberSaveable(
@@ -344,7 +347,8 @@ fun AuraAlbumScreen(
                             title = song.song.title,
                             subtitle = song.artists.joinToString { it.name }.takeIf { it.isNotBlank() },
                             highlighted = song.id == mediaMetadata?.id,
-                            dimmed = song.song.totalPlayTime > 0L && song.id != mediaMetadata?.id,
+                            dimmed = (song.song.totalPlayTime > 0L || song.id in albumPlayedSet) &&
+                                song.id != mediaMetadata?.id,
                             contentDescription = song.song.title,
                             onClick = {
                                 when {
@@ -358,6 +362,7 @@ fun AuraAlbumScreen(
                                             LocalAlbumRadio(
                                                 album.copy(songs = filteredSongs),
                                                 startIndex = index,
+                                                contextId = albumShuffleContextId,
                                             ),
                                         )
                                     }
@@ -391,10 +396,12 @@ fun AuraAlbumScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                                 ) {
-                                    if (song.song.totalPlayTime > 0L && song.id != mediaMetadata?.id) {
+                                    if ((song.song.totalPlayTime > 0L || song.id in albumPlayedSet) &&
+                                        song.id != mediaMetadata?.id
+                                    ) {
                                         AuraIconGlyph(
                                             icon = AuraIcons.Check,
-                                            contentDescription = "Ya reproducida",
+                                            contentDescription = stringResource(R.string.cd_shuffle_already_played),
                                             size = 16.dp,
                                             tint = AuraPalette.Teal,
                                         )
@@ -780,21 +787,29 @@ private fun AuraAlbumHeader(
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
 
-    val albumShuffleContextId = "AL:" + album.album.id
+    val albumShuffleContextId = ShuffleContexts.album(album.album.id)
     val albumPlayedForStart = rememberPlayedShuffleSet(albumShuffleContextId)
     val onShuffleClick = rememberShuffleMemoryPrompt(
         contextId = albumShuffleContextId,
-        playedCount = album.songs.count { it.id in albumPlayedForStart },
+        playedCount = album.songs.count {
+            it.id in albumPlayedForStart || it.song.totalPlayTime > 0L
+        },
         totalCount = album.songs.size,
     ) { resetMemory ->
         playerConnection.service.getAutomix(playlistId)
         // The RAW album, never the liked-first display list: shuffling a biased list stays biased.
         // Still a LocalAlbumRadio, so YouTube's album-radio continuation (what plays AFTER the album)
         // survives and the no-repeat memory is added on top of it.
+        val seed = ShuffleContexts.seedPlayedIds(
+            resetMemory = resetMemory,
+            songIds = album.songs.map { it.id },
+            shufflePlayed = albumPlayedForStart,
+            playTimeMs = { id -> album.songs.firstOrNull { it.id == id }?.song?.totalPlayTime ?: 0L },
+        )
         val (unheard, heard) = if (resetMemory) {
             album.songs to emptyList()
         } else {
-            album.songs.partition { it.id !in albumPlayedForStart }
+            album.songs.partition { it.id !in seed }
         }
         val openerId = (unheard.ifEmpty { heard }).randomOrNull()?.id
         playerConnection.playQueue(
@@ -806,6 +821,7 @@ private fun AuraAlbumHeader(
                     ?: 0,
                 contextId = albumShuffleContextId,
                 startShuffled = true,
+                seedPlayedIds = seed,
             ),
         )
     }
@@ -913,7 +929,9 @@ private fun AuraAlbumHeader(
         // "Aleatorio mejorado · X/Y reproducidas" — the shared chip, which hides itself when the
         // feature is off.
         EnhancedShuffleChip(
-            playedCount = album.songs.count { it.id in albumPlayedForStart },
+            playedCount = album.songs.count {
+                it.id in albumPlayedForStart || it.song.totalPlayTime > 0L
+            },
             total = album.songs.size,
             modifier = Modifier.padding(top = 10.dp),
         )
@@ -955,7 +973,9 @@ private fun AuraAlbumHeader(
                         // The RAW album in TRACK ORDER: an album is an ordered work, and the display
                         // list is liked-first. MusicService.playQueue re-applies the hide-explicit /
                         // hide-video filters to every queue it builds, so nothing is lost by it.
-                        playerConnection.playQueue(LocalAlbumRadio(album))
+                        playerConnection.playQueue(
+                            LocalAlbumRadio(album, contextId = albumShuffleContextId),
+                        )
                     }
                 },
                 modifier = Modifier

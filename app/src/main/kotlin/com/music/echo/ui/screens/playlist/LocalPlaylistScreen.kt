@@ -132,6 +132,7 @@ import iad1tya.echo.music.db.entities.PlaylistSong
 import iad1tya.echo.music.extensions.move
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.ShuffleContexts
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.ui.component.ActionPromptDialog
 import iad1tya.echo.music.ui.component.DefaultDialog
@@ -188,7 +189,11 @@ fun LocalPlaylistScreen(
     val playlist by viewModel.playlist.collectAsState()
     val songs by viewModel.playlistSongs.collectAsState()
     // Enhanced Shuffle: reactive per-context played-set for the "ya reproducida" dim/check + the X/Y chip.
-    val shufflePlayedSet = rememberPlayedShuffleSet("PL:" + viewModel.playlistId)
+    val shufflePlayedSet = rememberPlayedShuffleSet(
+        playlist?.playlist?.let {
+            ShuffleContexts.forPlaylist(it.isEditable, it.id, it.browseId)
+        } ?: ("PL:" + viewModel.playlistId),
+    )
     val mutableSongs = remember { mutableStateListOf<PlaylistSong>() }
     val playlistLength =
         remember(songs) {
@@ -740,7 +745,8 @@ fun LocalPlaylistScreen(
                             isActive = song.song.id == mediaMetadata?.id,
                             isPlaying = isPlaying,
                             showInLibraryIcon = true,
-                            playedInShuffle = song.song.id in shufflePlayedSet,
+                            playedInShuffle = song.song.id in shufflePlayedSet ||
+                                song.song.song.totalPlayTime > 0L,
                             shape = listItemShape(
                                 index = index,
                                 count = if (isSearching) filteredSongs.size else mutableSongs.size
@@ -803,7 +809,11 @@ fun LocalPlaylistScreen(
                                                         title = playlist!!.playlist.name,
                                                         items = songs.map { it.song.toMediaItem() },
                                                         startIndex = songs.indexOfFirst { it.map.id == song.map.id },
-                                                        contextId = "PL:" + viewModel.playlistId,
+                                                        contextId = ShuffleContexts.forPlaylist(
+                                                            playlist?.playlist?.isEditable == true,
+                                                            viewModel.playlistId,
+                                                            playlist?.playlist?.browseId,
+                                                        ),
                                                     ),
                                                 )
                                             }
@@ -1185,13 +1195,18 @@ fun LocalPlaylistHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             
+            val playlistContextId = ShuffleContexts.forPlaylist(
+                playlist.playlist.isEditable,
+                playlist.playlist.id,
+                playlist.playlist.browseId,
+            )
             TextButton(
                 onClick = {
                     playerConnection.playQueue(
                         ListQueue(
                             title = playlist.playlist.name,
                             items = songs.map { it.song.toMediaItem() },
-                            contextId = "PL:" + playlist.playlist.id,
+                            contextId = playlistContextId,
                         )
                     )
                 },
@@ -1219,32 +1234,36 @@ fun LocalPlaylistHeader(
             }
 
             
-            val playedForStart = rememberPlayedShuffleSet("PL:" + playlist.playlist.id)
+            val playedForStart = rememberPlayedShuffleSet(playlistContextId)
             // Ask "continue or start over" only when this playlist already has no-repeat memory.
             val onShuffleClick = rememberShuffleMemoryPrompt(
-                contextId = "PL:" + playlist.playlist.id,
-                playedCount = songs.count { it.song.id in playedForStart },
+                contextId = playlistContextId,
+                playedCount = songs.count {
+                    it.song.id in playedForStart || it.song.song.totalPlayTime > 0L
+                },
                 totalCount = songs.size,
             ) { resetMemory ->
-                // UNPLAYED-FIRST start: slot 0 is what actually PLAYS first, and a uniform pick over
-                // the whole list started with an already-heard song P/T of the time (the owner's
-                // "repeats when I activate" symptom). Partitioning keeps the full list (the memory-
-                // aware order re-sorts #2..N anyway) but guarantees an unheard opener while any remain.
-                // After a reset the memory is empty, so a plain shuffle IS the unplayed-first order.
+                val seed = ShuffleContexts.seedPlayedIds(
+                    resetMemory = resetMemory,
+                    songIds = songs.map { it.song.id },
+                    shufflePlayed = playedForStart,
+                    playTimeMs = { id ->
+                        songs.firstOrNull { it.song.id == id }?.song?.song?.totalPlayTime ?: 0L
+                    },
+                )
                 val ordered = if (resetMemory) {
                     songs.shuffled()
                 } else {
-                    val (unheard, heard) = songs.partition { it.song.id !in playedForStart }
+                    val (unheard, heard) = songs.partition { it.song.id !in seed }
                     unheard.shuffled() + heard.shuffled()
                 }
                 playerConnection.playQueue(
                     ListQueue(
                         title = playlist.playlist.name,
                         items = ordered.map { it.song.toMediaItem() },
-                        contextId = "PL:" + playlist.playlist.id,
-                        // Turn shuffle MODE on so the enhanced no-repeat memory drives the order and
-                        // records plays (pre-shuffling alone bypassed it → replayed played songs).
+                        contextId = playlistContextId,
                         startShuffled = true,
+                        seedPlayedIds = seed,
                     )
                 )
             }
@@ -1379,8 +1398,16 @@ fun LocalPlaylistHeader(
         // Enhanced Shuffle: "activo · X/Y reproducidas" pill — visible whenever the feature is ON, so the
         // user knows this playlist's shuffle carries persistent no-repeat memory and can watch it progress.
         run {
-            val playedSet = rememberPlayedShuffleSet("PL:" + playlist.playlist.id)
-            val playedCount = remember(playedSet, songs) { songs.count { it.song.id in playedSet } }
+            val playedSet = rememberPlayedShuffleSet(
+                ShuffleContexts.forPlaylist(
+                    playlist.playlist.isEditable,
+                    playlist.playlist.id,
+                    playlist.playlist.browseId,
+                ),
+            )
+            val playedCount = remember(playedSet, songs) {
+                songs.count { it.song.id in playedSet || it.song.song.totalPlayTime > 0L }
+            }
             EnhancedShuffleChip(
                 playedCount = playedCount,
                 total = songs.size,

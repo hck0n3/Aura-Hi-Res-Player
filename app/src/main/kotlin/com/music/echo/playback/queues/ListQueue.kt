@@ -19,6 +19,7 @@ class ListQueue(
     // enhanced-shuffle system (no memory-aware order, no played recording → replayed played songs).
     // Transient intent — deliberately NOT persisted with the queue (restore must not re-force it).
     override val startShuffled: Boolean = false,
+    override val seedPlayedIds: Set<String> = emptySet(),
 ) : Queue {
     override val preloadItem: MediaMetadata? = null
 

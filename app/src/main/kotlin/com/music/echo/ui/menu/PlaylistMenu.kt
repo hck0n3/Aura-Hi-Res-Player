@@ -76,6 +76,7 @@ import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.playback.AudioExportService
 import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.ShuffleContexts
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.DefaultDialog
@@ -123,7 +124,11 @@ fun PlaylistMenu(
     val menuShuffleContextId = if (autoPlaylist == true || downloadPlaylist == true) {
         "AP:" + playlist.playlist.id
     } else {
-        "PL:" + playlist.playlist.id
+        ShuffleContexts.forPlaylist(
+            playlist.playlist.isEditable,
+            playlist.playlist.id,
+            playlist.playlist.browseId,
+        )
     }
     val menuPlayedSet = rememberPlayedShuffleSet(menuShuffleContextId)
     val dbPlaylist by database.playlist(playlist.id).collectAsState(initial = playlist)
@@ -149,27 +154,30 @@ fun PlaylistMenu(
     // the sheet is only dismissed from inside the callback, so closing it can't kill the dialog.
     val onMenuShuffleClick = rememberShuffleMemoryPrompt(
         contextId = menuShuffleContextId,
-        playedCount = songs.count { it.id in menuPlayedSet },
+        playedCount = songs.count { it.id in menuPlayedSet || it.song.totalPlayTime > 0L },
         totalCount = songs.size,
     ) { resetMemory ->
         onDismiss()
         if (songs.isNotEmpty()) {
-            // UNPLAYED-FIRST start: opener must be unheard while any remain. After a reset the memory
-            // is empty, so a plain shuffle already is that order.
+            val seed = ShuffleContexts.seedPlayedIds(
+                resetMemory = resetMemory,
+                songIds = songs.map { it.id },
+                shufflePlayed = menuPlayedSet,
+                playTimeMs = { id -> songs.firstOrNull { it.id == id }?.song?.totalPlayTime ?: 0L },
+            )
             val ordered = if (resetMemory) {
                 songs.shuffled()
             } else {
-                val (unheard, heard) = songs.partition { it.id !in menuPlayedSet }
+                val (unheard, heard) = songs.partition { it.id !in seed }
                 unheard.shuffled() + heard.shuffled()
             }
             playerConnection.playQueue(
                 ListQueue(
                     title = playlist.playlist.name,
                     items = ordered.map(Song::toMediaItem),
-                    // Enhanced shuffle: this menu's Shuffle used to bypass the whole no-repeat system
-                    // (no context, shuffle MODE off) → replayed played songs — the owner's reported path.
                     contextId = menuShuffleContextId,
                     startShuffled = true,
+                    seedPlayedIds = seed,
                 )
             )
         }

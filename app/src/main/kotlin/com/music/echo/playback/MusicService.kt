@@ -948,6 +948,8 @@ class MusicService :
     // when the queue has no enhanced memory (raw YT radio, album/artist, etc.) → classic in-memory shuffle.
     // Set in playQueue from the ListQueue's contextId (carried across restart via PersistQueue.contextId).
     @Volatile private var shuffleContextId: String? = null
+    /** Continue-shuffle seed from the screen; consumed once in [applyPendingSeedPlayedIds]. */
+    @Volatile private var pendingSeedPlayedIds: Set<String> = emptySet()
 
     /**
      * COVERAGE — how many items the CURRENT CONTEXT actually loaded, and WHICH context that number
@@ -3430,6 +3432,7 @@ class MusicService :
             // ListQueue carries the contextId saved in PersistQueue, so memory resumes.
             if (currentQueue === queue) {
                 shuffleContextId = queue.contextId
+                pendingSeedPlayedIds = if (enhancedShuffleHint) queue.seedPlayedIds else emptySet()
                 contextAdoptionPendingAt = 0L // adopted: the transition path may record again
                 // COVERAGE of this context — the SIZE OF THE LIST, taken from the very items that just became
                 // the timeline, and stamped with the context it describes. Deliberately NOT radioSeedPool.size:
@@ -3505,6 +3508,7 @@ class MusicService :
                         }
                     }
                 }
+                applyPendingSeedPlayedIds()
                 applyShuffleOrder(player.currentMediaItemIndex, player.mediaItemCount, shufflePlaylistFirst)
                 // Enhanced Shuffle FIX (replay bug, part 1): this queue started while shuffle was ALREADY
                 // ON, so onShuffleModeEnabledChanged — the only place the persistent memory was loaded —
@@ -6356,6 +6360,8 @@ class MusicService :
                 }
             }
 
+            applyPendingSeedPlayedIds()
+
             val shufflePlaylistFirst = dataStore.get(ShufflePlaylistFirstKey, false)
             val currentIndex = player.currentMediaItemIndex
             val totalCount = player.mediaItemCount
@@ -6391,6 +6397,25 @@ class MusicService :
     /** COVERAGE of the LIVE context, or [EnhancedShuffleCycle.COVERAGE_UNKNOWN] when it is not known. */
     private fun currentContextCoverage(): Int =
         EnhancedShuffleCycle.coverageOf(shuffleContextId, contextCoverageId, contextCoverageSize)
+
+    /**
+     * Merge the screen's Continue seed (shuffle memory ∪ lifetime plays) into this session, then persist
+     * those ids so a process death does not resurrect them as unplayed. Consumed once; Start over sends
+     * an empty set so history is not re-imported.
+     */
+    private fun applyPendingSeedPlayedIds() {
+        val ids = pendingSeedPlayedIds
+        pendingSeedPlayedIds = emptySet()
+        if (!enhancedShuffleHint || ids.isEmpty()) return
+        shufflePlayedIds.addAll(ids)
+        val ctx = shuffleContextId ?: return
+        val now = System.currentTimeMillis()
+        scope.launch(enhancedShuffleWriteDispatcher) {
+            ids.forEach { id ->
+                runCatching { database.insertEnhancedPlayed(EnhancedShufflePlayedEntity(ctx, id, now)) }
+            }
+        }
+    }
 
     /**
      * Enhanced Shuffle: true when every id in the CURRENT timeline is already in [shufflePlayedIds] — i.e.
@@ -9275,6 +9300,10 @@ class MusicService :
             !pauseListenHistoryHint
         ) {
             database.query {
+                // UPDATE totalPlayTime is a no-op if the song row does not exist yet. Insert first so
+                // the "already played" checkmark (independent of Aleatorio mejorado) actually appears
+                // on albums, EPs and YouTube playlists the user just heard.
+                mediaItem.metadata?.let { insert(it) }
                 incrementTotalPlayTime(mediaItem.mediaId, playbackStats.totalPlayTimeMs)
                 try {
                     insert(

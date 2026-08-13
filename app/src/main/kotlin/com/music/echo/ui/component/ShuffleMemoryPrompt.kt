@@ -21,7 +21,7 @@ import kotlinx.coroutines.withContext
 /**
  * Shuffle button gate for the Enhanced Shuffle ("Aleatorio mejorado") no-repeat memory.
  *
- * Every Shuffle button that owns a `contextId` ("PL:", "AP:", "AL:", "AR:", "LIB:") routes its onClick
+ * Every Shuffle button that owns a `contextId` ("PL:", "OL:", "AP:", "AL:", "AR:", "LIB:") routes its onClick
  * through this. When that context already has played-song memory the user is asked whether to CONTINUE the
  * current no-repeat lap or START OVER; with no memory (or with the feature off, since
  * [rememberPlayedShuffleSet] then returns an empty set) nothing is asked and the button behaves exactly as

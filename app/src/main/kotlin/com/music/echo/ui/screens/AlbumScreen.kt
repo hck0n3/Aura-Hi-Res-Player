@@ -114,6 +114,7 @@ import iad1tya.echo.music.constants.AlbumCanvasEnabledKey
 import iad1tya.echo.music.db.entities.Album
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.ShuffleContexts
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.LocalAlbumRadio
 import iad1tya.echo.music.ui.component.AlbumGradient
@@ -182,6 +183,9 @@ fun AlbumScreen(
         artistName = albumWithSongs?.artists?.firstOrNull()?.name,
         firstSongTitle = albumWithSongs?.songs?.firstOrNull()?.song?.title
     )
+
+    val albumShuffleContextId = albumWithSongs?.let { ShuffleContexts.album(it.album.id) }
+    val albumPlayedSet = rememberPlayedShuffleSet(albumShuffleContextId)
 
     val filteredSongs = remember(albumWithSongs, hideExplicit, hideVideoSongs) {
         var songs = albumWithSongs?.songs ?: emptyList()
@@ -566,7 +570,10 @@ fun AlbumScreen(
                                     // .playQueue re-applies filterExplicit + filterVideoSongs to every queue
                                     // it builds (MusicService.kt, getInitialStatus()).
                                     playerConnection.playQueue(
-                                        LocalAlbumRadio(albumWithSongs)
+                                        LocalAlbumRadio(
+                                            albumWithSongs,
+                                            contextId = "AL:" + albumWithSongs.album.id,
+                                        )
                                     )
                                 }
                             },
@@ -617,32 +624,29 @@ fun AlbumScreen(
                         // The prefix is deliberately NOT "PL:": DatabaseDao's startup orphan prune deletes
                         // every "PL:%" context with no matching `playlist` row, so a PL:-namespaced album
                         // would lose its no-repeat memory on every launch. Nothing prunes "AL:%".
-                        val albumShuffleContextId = "AL:" + albumWithSongs.album.id
+                        val albumShuffleContextId = ShuffleContexts.album(albumWithSongs.album.id)
                         val albumPlayedForStart = rememberPlayedShuffleSet(albumShuffleContextId)
                         // Ask "continue or start over" only when this album already has no-repeat memory.
                         val onAlbumShuffleClick = rememberShuffleMemoryPrompt(
                             contextId = albumShuffleContextId,
-                            playedCount = albumWithSongs.songs.count { it.id in albumPlayedForStart },
+                            playedCount = albumWithSongs.songs.count {
+                                it.id in albumPlayedForStart || it.song.totalPlayTime > 0L
+                            },
                             totalCount = albumWithSongs.songs.size,
                         ) { resetMemory ->
                             playerConnection.service.getAutomix(playlistId)
-                            // Shuffle the RAW album, not the display list: `filteredSongs` is
-                            // liked-first, and shuffling it would still bias the result. The
-                            // hide-explicit / hide-video prefs are applied by MusicService.playQueue.
-                            //
-                            // Still a LocalAlbumRadio: contextId now lives on the Queue interface, so
-                            // the album keeps YouTube's album-radio continuation (what plays AFTER the
-                            // album) and gains persistent no-repeat memory. Converting it to a
-                            // ListQueue would have silently swapped that continuation for Aura's own
-                            // radio — a behaviour change nobody asked for.
-                            //
-                            // UNPLAYED-FIRST start: the opener is guaranteed to be an unheard track
-                            // while any remain (a uniform pick could re-open with a just-heard song).
-                            // After a reset the memory is empty, so any track is a valid opener.
+                            val seed = ShuffleContexts.seedPlayedIds(
+                                resetMemory = resetMemory,
+                                songIds = albumWithSongs.songs.map { it.id },
+                                shufflePlayed = albumPlayedForStart,
+                                playTimeMs = { id ->
+                                    albumWithSongs.songs.firstOrNull { it.id == id }?.song?.totalPlayTime ?: 0L
+                                },
+                            )
                             val (unheard, heard) = if (resetMemory) {
                                 albumWithSongs.songs to emptyList()
                             } else {
-                                albumWithSongs.songs.partition { it.id !in albumPlayedForStart }
+                                albumWithSongs.songs.partition { it.id !in seed }
                             }
                             val openerId = (unheard.ifEmpty { heard }).randomOrNull()?.id
                             playerConnection.playQueue(
@@ -653,9 +657,8 @@ fun AlbumScreen(
                                         ?.coerceAtLeast(0)
                                         ?: 0,
                                     contextId = albumShuffleContextId,
-                                    // Turn shuffle MODE on once the items land — the pre-scramble alone
-                                    // left the shuffle icon off and the order frozen.
                                     startShuffled = true,
+                                    seedPlayedIds = seed,
                                 ),
                             )
                         }
@@ -772,6 +775,7 @@ fun AlbumScreen(
                         isActive = song.id == mediaMetadata?.id,
                         isPlaying = isPlaying,
                         showInLibraryIcon = true,
+                        playedInShuffle = song.id in albumPlayedSet || song.song.totalPlayTime > 0L,
                         shape = listItemShape(index, filteredSongs.size),
                         trailingContent = {
                             if (inSelectMode) {
@@ -816,6 +820,7 @@ fun AlbumScreen(
                                             LocalAlbumRadio(
                                                 albumWithSongs.copy(songs = filteredSongs),
                                                 startIndex = index,
+                                                contextId = "AL:" + albumWithSongs.album.id,
                                             ),
                                         )
                                     }

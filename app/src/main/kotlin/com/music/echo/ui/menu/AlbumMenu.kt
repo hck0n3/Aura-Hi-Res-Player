@@ -77,6 +77,7 @@ import iad1tya.echo.music.db.entities.SpeedDialItem
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.ShuffleContexts
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.ui.component.AlbumListItem
 import iad1tya.echo.music.ui.component.ListDialog
@@ -128,7 +129,7 @@ fun AlbumMenu(
     // from inside the callback (same pattern as this menu's existing ListDialogs).
     val onMenuShuffleClick = rememberShuffleMemoryPrompt(
         contextId = menuShuffleContextId,
-        playedCount = songs.count { it.id in menuPlayedSet },
+        playedCount = songs.count { it.id in menuPlayedSet || it.song.totalPlayTime > 0L },
         totalCount = songs.size,
     ) { resetMemory ->
         onDismiss()
@@ -136,28 +137,26 @@ fun AlbumMenu(
             album.album.playlistId?.let { playlistId ->
                 playerConnection.service.getAutomix(playlistId)
             }
-            // UNPLAYED-FIRST start: the opener is guaranteed to be an unheard track while any remain.
-            // After a reset the memory is empty, so a plain shuffle already is that order.
+            val seed = ShuffleContexts.seedPlayedIds(
+                resetMemory = resetMemory,
+                songIds = songs.map { it.id },
+                shufflePlayed = menuPlayedSet,
+                playTimeMs = { id -> songs.firstOrNull { it.id == id }?.song?.totalPlayTime ?: 0L },
+            )
             val ordered = if (resetMemory) {
                 songs.shuffled()
             } else {
-                val (unheard, heard) = songs.partition { it.id !in menuPlayedSet }
+                val (unheard, heard) = songs.partition { it.id !in seed }
                 unheard.shuffled() + heard.shuffled()
             }
             playerConnection.playQueue(
                 ListQueue(
                     title = album.album.title,
                     items = ordered.map(Song::toMediaItem),
-                    // Persistent per-album no-repeat memory: without a contextId the whole anti-repeat
-                    // system is in-memory only and dies with the process (the phone kills the app → the
-                    // same songs come back).
                     contextId = menuShuffleContextId,
-                    // A pre-scrambled list with shuffle MODE still OFF is a FROZEN order: the anti-repeat
-                    // system never runs, so tapping this again re-scrambles uniformly and can replay what
-                    // was just heard. Registry rows 92(b)/94(b) fixed exactly this for the playlist menu;
-                    // the album/artist menus were left behind.
                     startShuffled = true,
-                )
+                    seedPlayedIds = seed,
+                ),
             )
         }
     }

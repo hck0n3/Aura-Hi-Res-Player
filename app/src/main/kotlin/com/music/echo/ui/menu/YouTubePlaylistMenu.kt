@@ -82,6 +82,8 @@ import iad1tya.echo.music.models.MediaMetadata
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.AudioExportService
 import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.ShuffleContexts
+import iad1tya.echo.music.playback.queues.YouTubePlaylistQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
 import iad1tya.echo.music.ui.component.DefaultDialog
 import iad1tya.echo.music.ui.component.ListDialog
@@ -90,6 +92,9 @@ import iad1tya.echo.music.ui.component.Material3MenuItemData
 import iad1tya.echo.music.ui.component.NewAction
 import iad1tya.echo.music.ui.component.NewActionGrid
 import iad1tya.echo.music.ui.component.YouTubeListItem
+import iad1tya.echo.music.ui.component.rememberHeardSongIds
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.joinByBullet
@@ -123,6 +128,56 @@ fun YouTubePlaylistMenu(
     val isPinned by database.speedDialDao.isPinned(playlist.id).collectAsState(initial = false)
     val (enableExportAsMp3) = rememberPreference(key = EnableExportAsMp3Key, defaultValue = true)
     val (_, onExportDirectoryUriChange) = rememberPreference(key = ExportDirectoryUriKey, defaultValue = "")
+    val menuShuffleContextId = ShuffleContexts.onlinePlaylist(playlist.id)
+    val menuPlayedSet = rememberPlayedShuffleSet(menuShuffleContextId)
+    val menuHeardIds = rememberHeardSongIds(songs.map { it.id })
+    val onMenuShuffleClick = rememberShuffleMemoryPrompt(
+        contextId = menuShuffleContextId,
+        playedCount = songs.count { it.id in menuPlayedSet || it.id in menuHeardIds },
+        totalCount = songs.size,
+    ) { resetMemory ->
+        onDismiss()
+        coroutineScope.launch {
+            val list = songs.ifEmpty {
+                withContext(Dispatchers.IO) {
+                    YouTube.playlist(playlist.id).completed().getOrNull()?.songs.orEmpty()
+                }
+            }
+            if (list.isEmpty()) return@launch
+            val ids = list.map { it.id }
+            val heardFromDb = if (resetMemory) {
+                emptySet()
+            } else {
+                withContext(Dispatchers.IO) {
+                    ids.chunked(500).flatMap { chunk ->
+                        runCatching { database.songIdsWithPlayTime(chunk) }.getOrDefault(emptyList())
+                    }.toHashSet()
+                }
+            }
+            val seed = ShuffleContexts.seedPlayedIds(
+                resetMemory = resetMemory,
+                songIds = ids,
+                shufflePlayed = menuPlayedSet,
+                playTimeMs = { id -> if (id in menuHeardIds || id in heardFromDb) 1L else 0L },
+            )
+            val ordered = if (resetMemory) {
+                list.shuffled()
+            } else {
+                val (unheard, heard) = list.partition { it.id !in seed }
+                unheard.shuffled() + heard.shuffled()
+            }
+            playerConnection.playQueue(
+                YouTubePlaylistQueue(
+                    playlistId = playlist.id,
+                    playlistTitle = playlist.title,
+                    initialSongs = ordered,
+                    contextId = menuShuffleContextId,
+                    startShuffled = true,
+                    seedPlayedIds = seed,
+                ),
+            )
+        }
+    }
 
     var showChoosePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showImportPlaylistDialog by rememberSaveable { mutableStateOf(false) }
@@ -555,7 +610,7 @@ fun YouTubePlaylistMenu(
             NewActionGrid(
                 actions = buildList {
                     if (!isGuest) {
-                        playlist.playEndpoint?.let { playEndpoint ->
+                        playlist.playEndpoint?.let {
                             add(
                                 NewAction(
                                     icon = {
@@ -568,7 +623,14 @@ fun YouTubePlaylistMenu(
                                     },
                                     text = stringResource(R.string.play),
                                     onClick = {
-                                        playerConnection.playQueue(YouTubeQueue(playEndpoint))
+                                        playerConnection.playQueue(
+                                            YouTubePlaylistQueue(
+                                                playlistId = playlist.id,
+                                                playlistTitle = playlist.title,
+                                                initialSongs = songs,
+                                                contextId = menuShuffleContextId,
+                                            ),
+                                        )
                                         onDismiss()
                                     }
                                 )
@@ -586,10 +648,7 @@ fun YouTubePlaylistMenu(
                                         )
                                     },
                                     text = stringResource(R.string.shuffle),
-                                    onClick = {
-                                        playerConnection.playQueue(YouTubeQueue(shuffleEndpoint))
-                                        onDismiss()
-                                    }
+                                    onClick = { onMenuShuffleClick() },
                                 )
                             )
                         }

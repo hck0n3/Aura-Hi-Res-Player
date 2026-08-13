@@ -801,7 +801,7 @@ fun PlayerSettings(
                 Material3SettingsItem(
                     icon = painterResource(R.drawable.shuffle),
                     title = { Text("Aleatorio mejorado") },
-                    description = { Text("El aleatorio recuerda qué canciones ya sonaron en cada lista (y en toda la biblioteca) y no repite ninguna hasta haberlas puesto todas. La memoria se mantiene aunque cierres la app o apagues y enciendas el aleatorio. Desactívalo para volver al aleatorio clásico.") },
+                    description = { Text("El aleatorio recuerda qué canciones ya sonaron en cada álbum, EP, playlist tuya, playlist que sigues y en la biblioteca, y no repite ninguna hasta haberlas puesto todas. La memoria se mantiene aunque cierres la app o apagues y enciendas el aleatorio. Las canciones que ya oíste se marcan con un visto aunque esta opción esté apagada. Desactívalo para volver al aleatorio clásico.") },
                     trailingContent = {
                         Switch(
                             checked = enhancedShuffle,

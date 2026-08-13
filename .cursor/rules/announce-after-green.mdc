@@ -1,0 +1,32 @@
+---
+description: Do not tell users an update is ready until it is actually downloadable
+alwaysApply: true
+---
+
+# Avisos de actualización — no adelantar el descargo
+
+El actualizador de la app lee `releases/latest`. Un aviso que dice "ya está lista para descargar"
+**antes** de que el tag estable exista y GitHub Actions esté en verde **engaña al usuario**.
+
+## Cuándo SÍ se puede publicar un aviso de "actualización lista"
+
+Solo después de **los tres**:
+
+1. Commit de release en `main`.
+2. **Todos** los checks de ese commit en `success` (Android Build & Sign, CodeQL, etc.).
+3. Tag estable `vX.Y.Z` **sin** `-beta`/`-test` pusheado, de modo que `releases/latest` apunta a ese APK.
+
+Hasta entonces: no añadir ítems en `announcements.json` que inviten a ir a Actualizaciones a instalar.
+
+## Si hace falta avisar antes (CI aún en curso)
+
+El cuerpo debe decir, en esas palabras o equivalentes:
+
+> En unos 30 minutos podrás disfrutar de esta actualización. Quédate pendiente.
+
+Nunca "ya está lista" / "actualiza ahora" mientras el tag no esté en `releases/latest`.
+
+## Avisos que no son de descarga
+
+Mantenimiento, errores conocidos, agradecimientos: se pueden publicar en cualquier momento, sin
+prometer un APK que aún no existe.

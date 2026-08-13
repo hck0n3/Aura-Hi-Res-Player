@@ -81,9 +81,14 @@ import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.db.entities.PlaylistSongMap
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.ShuffleContexts
 import iad1tya.echo.music.playback.queues.YouTubePlaylistQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
+import iad1tya.echo.music.ui.component.EnhancedShuffleChip
 import iad1tya.echo.music.ui.component.LocalMenuState
+import iad1tya.echo.music.ui.component.rememberHeardSongIds
+import iad1tya.echo.music.ui.component.rememberPlayedShuffleSet
+import iad1tya.echo.music.ui.component.rememberShuffleMemoryPrompt
 import iad1tya.echo.music.ui.menu.YouTubeAlbumMenu
 import iad1tya.echo.music.ui.menu.YouTubeArtistMenu
 import iad1tya.echo.music.ui.menu.YouTubePlaylistMenu
@@ -110,9 +115,9 @@ import kotlinx.coroutines.launch
  * Descargar / Compartir / ⋯ are the same calls and the same [YouTubePlaylistMenu].
  *
  * ## Honest scope, carried over from the classic screen
- * Aleatorio here passes **no `contextId`** — no id scheme exists for online playlists, so the
- * persistent "Aleatorio mejorado" no-repeat memory does not apply and the pill is NOT drawn. Drawing
- * it would be a badge for a memory that is not being kept.
+ * Aleatorio uses context `OL:<playlistId>` so followed YouTube lists share the same no-repeat
+ * memory as a saved copy of that list. The "already played" checkmark uses lifetime play time
+ * even when Aleatorio mejorado is off.
  *
  * @param scrollBehavior accepted for signature parity with the classic screen; this shape draws its own
  *   header instead of a `TopAppBar`, so there is no collapsing bar to drive with it.
@@ -145,6 +150,9 @@ fun AuraOnlinePlaylistScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val error by viewModel.error.collectAsState()
+    val onlineShuffleContextId = playlist?.let { ShuffleContexts.onlinePlaylist(it.id) }
+    val shufflePlayedSet = rememberPlayedShuffleSet(onlineShuffleContextId)
+    val heardIds = rememberHeardSongIds(songs.map { it.id })
 
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
 
@@ -299,6 +307,9 @@ fun AuraOnlinePlaylistScreen(
                             continuation = viewModel.continuation,
                             onSearch = { isSearching = true },
                             videoPlaylist = videoPlaylist,
+                            shuffleContextId = onlineShuffleContextId,
+                            shufflePlayedSet = shufflePlayedSet,
+                            heardIds = heardIds,
                             modifier = Modifier.animateItem(),
                         )
                     }
@@ -393,7 +404,11 @@ fun AuraOnlinePlaylistScreen(
                     val isActive = mediaMetadata?.id == songItem.id
                     val blocked = hideExplicit && songItem.explicit
                     val dbSong by database.song(songItem.id).collectAsState(initial = null)
-                    val alreadyPlayed = (dbSong?.song?.totalPlayTime ?: 0L) > 0L && !isActive
+                    val alreadyPlayed = (
+                        songItem.id in shufflePlayedSet ||
+                            songItem.id in heardIds ||
+                            (dbSong?.song?.totalPlayTime ?: 0L) > 0L
+                        ) && !isActive
 
                     AuraRow(
                         title = songItem.title,
@@ -413,6 +428,7 @@ fun AuraOnlinePlaylistScreen(
                                             initialSongs = songs,
                                             initialContinuation = viewModel.continuation,
                                             startIndex = index,
+                                            contextId = onlineShuffleContextId,
                                         ),
                                     )
                                 }
@@ -471,7 +487,7 @@ fun AuraOnlinePlaylistScreen(
                                 if (alreadyPlayed) {
                                     AuraIconGlyph(
                                         icon = AuraIcons.Check,
-                                        contentDescription = "Ya reproducida",
+                                        contentDescription = stringResource(R.string.cd_shuffle_already_played),
                                         size = 16.dp,
                                         tint = AuraPalette.Teal,
                                     )
@@ -702,6 +718,9 @@ private fun AuraOnlinePlaylistHeader(
     continuation: String?,
     onSearch: () -> Unit,
     videoPlaylist: Boolean = false,
+    shuffleContextId: String? = null,
+    shufflePlayedSet: Set<String> = emptySet(),
+    heardIds: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -792,6 +811,17 @@ private fun AuraOnlinePlaylistHeader(
             overflow = AuraDefaultOverflow,
         )
 
+        run {
+            val playedCount = remember(shufflePlayedSet, heardIds, songs) {
+                songs.count { it.id in shufflePlayedSet || it.id in heardIds }
+            }
+            EnhancedShuffleChip(
+                playedCount = playedCount,
+                total = songs.size,
+                modifier = Modifier.padding(top = 10.dp),
+            )
+        }
+
         Spacer(Modifier.height(18.dp))
 
         Row(
@@ -802,26 +832,40 @@ private fun AuraOnlinePlaylistHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Hybrid (Apple + YTM): primary actions keep their name; search/more stay icon-only.
+            val contextId = shuffleContextId ?: ShuffleContexts.onlinePlaylist(playlist.id)
+            val onShuffleClick = rememberShuffleMemoryPrompt(
+                contextId = contextId,
+                playedCount = songs.count { it.id in shufflePlayedSet || it.id in heardIds },
+                totalCount = songs.size,
+            ) { resetMemory ->
+                val seed = ShuffleContexts.seedPlayedIds(
+                    resetMemory = resetMemory,
+                    songIds = songs.map { it.id },
+                    shufflePlayed = shufflePlayedSet,
+                    playTimeMs = { id -> if (id in heardIds) 1L else 0L },
+                )
+                val ordered = if (resetMemory) {
+                    songs.shuffled()
+                } else {
+                    val (unheard, heard) = songs.partition { it.id !in seed }
+                    unheard.shuffled() + heard.shuffled()
+                }
+                playerConnection.playQueue(
+                    YouTubePlaylistQueue(
+                        playlistId = playlist.id,
+                        playlistTitle = playlist.title,
+                        initialSongs = ordered,
+                        initialContinuation = continuation,
+                        contextId = contextId,
+                        startShuffled = true,
+                        seedPlayedIds = seed,
+                    ),
+                )
+            }
             AuraHeaderButton(
                 icon = AuraIcons.Shuffle,
                 label = stringResource(R.string.shuffle_label),
-                onClick = {
-                    if (songs.isNotEmpty()) {
-                        playerConnection.playQueue(
-                            YouTubePlaylistQueue(
-                                playlistId = playlist.id,
-                                playlistTitle = playlist.title,
-                                initialSongs = songs.shuffled(),
-                                initialContinuation = continuation,
-                                // Turn shuffle MODE on once the items land: pre-scrambling alone left
-                                // the shuffle icon off and the order frozen. HONEST SCOPE: no contextId
-                                // is passed (no scheme exists for online playlists yet), so the
-                                // persistent per-context no-repeat memory stays off here.
-                                startShuffled = true,
-                            ),
-                        )
-                    }
-                },
+                onClick = onShuffleClick,
                 accent = false,
                 enabled = songs.isNotEmpty(),
                 modifier = Modifier.weight(1f).tvFocusable(isTvOrCar, scaleFocused = 1f),
@@ -837,6 +881,7 @@ private fun AuraOnlinePlaylistHeader(
                                 playlistTitle = playlist.title,
                                 initialSongs = songs,
                                 initialContinuation = continuation,
+                                contextId = shuffleContextId ?: ShuffleContexts.onlinePlaylist(playlist.id),
                             ),
                         )
                     }

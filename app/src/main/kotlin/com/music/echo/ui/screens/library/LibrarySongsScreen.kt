@@ -67,6 +67,7 @@ import iad1tya.echo.music.constants.SongSortTypeKey
 import iad1tya.echo.music.constants.SongViewTypeKey
 import iad1tya.echo.music.constants.YtmSyncKey
 import iad1tya.echo.music.extensions.toMediaItem
+import iad1tya.echo.music.playback.ShuffleContexts
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.ui.component.ChipsRow
 import iad1tya.echo.music.ui.component.HideOnScrollFAB
@@ -286,7 +287,7 @@ fun LibrarySongsScreen(
         // Enhanced Shuffle: "activo · X/Y reproducidas" pill for this tab (feature-gated inside).
         if (libraryContextId != null) {
             val playedCount = remember(shufflePlayedSet, filteredSongs) {
-                filteredSongs.count { it.id in shufflePlayedSet }
+                filteredSongs.count { it.id in shufflePlayedSet || it.song.totalPlayTime > 0L }
             }
             EnhancedShuffleChip(
                 playedCount = playedCount,
@@ -344,7 +345,7 @@ fun LibrarySongsScreen(
                             showLikedIcon = true,
                             showDownloadIcon = filter != SongFilter.DOWNLOADED,
                             showSize = filter == SongFilter.DOWNLOADED,
-                            playedInShuffle = song.id in shufflePlayedSet,
+                            playedInShuffle = song.id in shufflePlayedSet || song.song.totalPlayTime > 0L,
                             shape = listItemShape(index, filteredSongs.size),
                             trailingContent = {
                                 IconButton(
@@ -475,16 +476,21 @@ fun LibrarySongsScreen(
         // memory; with none, the tap plays straight away exactly as before.
         val onShuffleClick = rememberShuffleMemoryPrompt(
             contextId = libraryContextId,
-            playedCount = filteredSongs.count { it.id in shufflePlayedSet },
+            playedCount = filteredSongs.count { it.id in shufflePlayedSet || it.song.totalPlayTime > 0L },
             totalCount = filteredSongs.size,
         ) { resetMemory ->
-            // UNPLAYED-FIRST start: the opener must be an unheard song while any remain (a uniform
-            // pick over the whole tab started with a repeat). After a reset the memory is empty, so a
-            // plain shuffle already is that order.
+            val seed = ShuffleContexts.seedPlayedIds(
+                resetMemory = resetMemory,
+                songIds = filteredSongs.map { it.id },
+                shufflePlayed = shufflePlayedSet,
+                playTimeMs = { id ->
+                    filteredSongs.firstOrNull { it.id == id }?.song?.totalPlayTime ?: 0L
+                },
+            )
             val ordered = if (resetMemory) {
                 filteredSongs.shuffled()
             } else {
-                val (unheard, heard) = filteredSongs.partition { it.id !in shufflePlayedSet }
+                val (unheard, heard) = filteredSongs.partition { it.id !in seed }
                 unheard.shuffled() + heard.shuffled()
             }
             playerConnection.playQueue(
@@ -492,8 +498,8 @@ fun LibrarySongsScreen(
                     title = context.getString(R.string.queue_all_songs),
                     items = ordered.map { it.toMediaItem() },
                     contextId = libraryContextId,
-                    // Enhanced shuffle: enable shuffle MODE (memory-aware order + recording).
                     startShuffled = true,
+                    seedPlayedIds = seed,
                 ),
             )
         }

@@ -87,6 +87,7 @@ import iad1tya.echo.music.constants.SongSortTypeKey
 import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.ShuffleContexts
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.ui.component.DefaultDialog
 import iad1tya.echo.music.ui.component.DraggableScrollbar
@@ -331,7 +332,8 @@ internal fun AuraSongCollectionScaffold(
                 val onCheckedChange: (Boolean) -> Unit = { checked ->
                     if (checked) selection.add(song.id) else selection.remove(song.id)
                 }
-                val dimmed = song.id in shufflePlayedSet && song.id != mediaMetadata?.id
+                val dimmed = (song.id in shufflePlayedSet || song.song.totalPlayTime > 0L) &&
+                    song.id != mediaMetadata?.id
                 val playFromFiltered = {
                         when {
                             inSelectMode -> onCheckedChange(!selected)
@@ -658,7 +660,9 @@ internal fun AuraCollectionHeader(
         // when this collection has no persistent memory bucket.
         if (contextId != null) {
             val playedSet = rememberPlayedShuffleSet(contextId)
-            val playedCount = remember(playedSet, songs) { songs.count { it.song.id in playedSet } }
+            val playedCount = remember(playedSet, songs) {
+                songs.count { it.id in playedSet || it.song.totalPlayTime > 0L }
+            }
             EnhancedShuffleChip(
                 playedCount = playedCount,
                 total = songs.size,
@@ -678,13 +682,19 @@ internal fun AuraCollectionHeader(
             val playedForStart = rememberPlayedShuffleSet(contextId)
             val onShuffleClick = rememberShuffleMemoryPrompt(
                 contextId = contextId,
-                playedCount = songs.count { it.id in playedForStart },
+                playedCount = songs.count { it.id in playedForStart || it.song.totalPlayTime > 0L },
                 totalCount = songs.size,
             ) { resetMemory ->
+                val seed = ShuffleContexts.seedPlayedIds(
+                    resetMemory = resetMemory,
+                    songIds = songs.map { it.id },
+                    shufflePlayed = playedForStart,
+                    playTimeMs = { id -> songs.firstOrNull { it.id == id }?.song?.totalPlayTime ?: 0L },
+                )
                 val ordered = if (resetMemory) {
                     songs.shuffled()
                 } else {
-                    val (unheard, heard) = songs.partition { it.id !in playedForStart }
+                    val (unheard, heard) = songs.partition { it.id !in seed }
                     unheard.shuffled() + heard.shuffled()
                 }
                 playerConnection.playQueue(
@@ -693,6 +703,7 @@ internal fun AuraCollectionHeader(
                         items = ordered.map { it.toMediaItem() },
                         contextId = contextId,
                         startShuffled = true,
+                        seedPlayedIds = seed,
                     ),
                 )
             }

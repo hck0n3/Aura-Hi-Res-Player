@@ -100,6 +100,7 @@ import iad1tya.echo.music.db.entities.PlaylistSong
 import iad1tya.echo.music.extensions.move
 import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.playback.ExoDownloadService
+import iad1tya.echo.music.playback.ShuffleContexts
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.ui.component.DefaultDialog
 import iad1tya.echo.music.ui.component.DraggableScrollbar
@@ -185,7 +186,9 @@ fun AuraLocalPlaylistScreen(
 
     val playlist by viewModel.playlist.collectAsState()
     val songs by viewModel.playlistSongs.collectAsState()
-    val contextId = "PL:" + viewModel.playlistId
+    val contextId = playlist?.playlist?.let {
+        ShuffleContexts.forPlaylist(it.isEditable, it.id, it.browseId)
+    } ?: ("PL:" + viewModel.playlistId)
     val shufflePlayedSet = rememberPlayedShuffleSet(contextId)
     val mutableSongs = remember { mutableStateListOf<PlaylistSong>() }
 
@@ -782,7 +785,7 @@ fun AuraLocalPlaylistScreen(
                                     if (dimmed) {
                                         AuraIconGlyph(
                                             icon = AuraIcons.Check,
-                                            contentDescription = "Ya reproducida",
+                                            contentDescription = stringResource(R.string.cd_shuffle_already_played),
                                             size = 16.dp,
                                             tint = AuraPalette.Teal,
                                         )
@@ -1094,7 +1097,9 @@ private fun AuraLocalPlaylistHeader(
 
         run {
             val playedSet = rememberPlayedShuffleSet(contextId)
-            val playedCount = remember(playedSet, songs) { songs.count { it.song.id in playedSet } }
+            val playedCount = remember(playedSet, songs) {
+                songs.count { it.song.id in playedSet || it.song.song.totalPlayTime > 0L }
+            }
             EnhancedShuffleChip(
                 playedCount = playedCount,
                 total = songs.size,
@@ -1114,16 +1119,23 @@ private fun AuraLocalPlaylistHeader(
             val playedForStart = rememberPlayedShuffleSet(contextId)
             val onShuffleClick = rememberShuffleMemoryPrompt(
                 contextId = contextId,
-                playedCount = songs.count { it.song.id in playedForStart },
+                playedCount = songs.count {
+                    it.song.id in playedForStart || it.song.song.totalPlayTime > 0L
+                },
                 totalCount = songs.size,
             ) { resetMemory ->
-                // UNPLAYED-FIRST start: slot 0 is what actually PLAYS first, and a uniform pick over the
-                // whole list started with an already-heard song most of the time. After a reset the
-                // memory is empty, so a plain shuffle IS the unplayed-first order.
+                val seed = ShuffleContexts.seedPlayedIds(
+                    resetMemory = resetMemory,
+                    songIds = songs.map { it.song.id },
+                    shufflePlayed = playedForStart,
+                    playTimeMs = { id ->
+                        songs.firstOrNull { it.song.id == id }?.song?.song?.totalPlayTime ?: 0L
+                    },
+                )
                 val ordered = if (resetMemory) {
                     songs.shuffled()
                 } else {
-                    val (unheard, heard) = songs.partition { it.song.id !in playedForStart }
+                    val (unheard, heard) = songs.partition { it.song.id !in seed }
                     unheard.shuffled() + heard.shuffled()
                 }
                 playerConnection.playQueue(
@@ -1132,6 +1144,7 @@ private fun AuraLocalPlaylistHeader(
                         items = ordered.map { it.song.toMediaItem() },
                         contextId = contextId,
                         startShuffled = true,
+                        seedPlayedIds = seed,
                     ),
                 )
             }
