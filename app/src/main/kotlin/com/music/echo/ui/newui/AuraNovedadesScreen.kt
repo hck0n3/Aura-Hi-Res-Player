@@ -298,7 +298,6 @@ fun AuraNovedadesScreen(
                                     onDismiss = menuState::dismiss,
                                 )
                             }
-                            }
                         },
                     )
                 }
