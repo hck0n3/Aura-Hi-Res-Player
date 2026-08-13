@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-13T13:10:00Z",
+  "updatedAt": "2026-08-13T15:15:00Z",
   "items": [
+    {
+      "id": "aviso-20260813-151500",
+      "date": "2026-08-13",
+      "publishedAt": "2026-08-13T15:15:00Z",
+      "title": "Aura Hi-Res 0.6.192: aleatorio con memoria",
+      "body": "Aura Hi-Res 0.6.192 ya está lista para descargar.\n\n• El aleatorio que no repite ahora funciona en álbumes, EP, playlists tuyas y playlists que sigues, no solo en las que creas.\n• Si ya habías oído canciones de esa lista, al tocar Aleatorio te pregunta si continuar o empezar de cero.\n• Las canciones que ya sonaron se marcan con un visto aunque «Aleatorio mejorado» esté apagado.\n\nActualiza desde el menú de tu cuenta (avatar) ▸ Actualizaciones. Gracias por estar en Aura.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260813-131000",
       "date": "2026-08-13",
