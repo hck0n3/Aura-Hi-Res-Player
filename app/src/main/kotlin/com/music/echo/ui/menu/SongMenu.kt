@@ -314,6 +314,7 @@ fun SongMenu(
     if (showExportFormatDialog) {
         ExportFormatChooserDialog(
             songId = song.id,
+            hasMusicVideo = song.song.isVideo,
             onDismiss = { showExportFormatDialog = false },
             onChoose = { format ->
                 if (format == ExportFormat.Offline) return@ExportFormatChooserDialog

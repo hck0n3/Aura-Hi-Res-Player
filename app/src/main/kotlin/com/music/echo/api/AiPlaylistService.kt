@@ -123,6 +123,8 @@ object AiPlaylistService {
             baseUrl = baseUrl,
             model = model,
             maxRetries = maxRetries,
+            // Low temperature: owner complaint was improvisation / drifting off the brief.
+            temperature = 0.25,
         ) { content -> AiPlaylistParser.parse(content, count, era) }
     }
 
@@ -167,6 +169,7 @@ object AiPlaylistService {
             baseUrl = baseUrl,
             model = model,
             maxRetries = maxRetries,
+            temperature = 0.3,
         ) { content -> AiPlaylistParser.parseEdit(content, visibleCount) }
     }
 
@@ -195,6 +198,7 @@ object AiPlaylistService {
         baseUrl: String,
         model: String,
         maxRetries: Int,
+        temperature: Double = 0.7,
         parse: (String) -> Result<T>,
     ): Result<T> {
         // 1. User key override: their provider/baseUrl/model, exactly the pre-existing behavior.
@@ -208,6 +212,7 @@ object AiPlaylistService {
                 model = model,
                 messages = messages,
                 maxTokens = maxTokens,
+                temperature = temperature,
                 parse = parse,
                 maxRetries = maxRetries,
             )
@@ -222,6 +227,7 @@ object AiPlaylistService {
             model = AURA_WORKER_MODEL,
             messages = messages,
             maxTokens = maxTokens,
+            temperature = temperature,
             parse = parse,
             maxRetries = KEYLESS_MAX_RETRIES,
             retryEmptyContent = false,
@@ -241,6 +247,7 @@ object AiPlaylistService {
                 model = pollModel,
                 messages = messages,
                 maxTokens = maxTokens,
+                temperature = temperature,
                 parse = parse,
                 maxRetries = POLLINATIONS_MAX_RETRIES,
                 retryEmptyContent = true,
@@ -274,12 +281,13 @@ object AiPlaylistService {
         parse: (String) -> Result<T>,
         maxRetries: Int,
         retryEmptyContent: Boolean = true,
+        temperature: Double = 0.7,
     ): Result<T> {
         val requestJson = JSONObject().apply {
             if (model.isNotBlank()) put("model", model)
             put("messages", messages)
-            // 0.7: enough variety for song picks, but tighter than 0.8 so the strict-JSON output drifts less.
-            put("temperature", 0.7)
+            // Generate uses ~0.25 so the model sticks to the brief; modify stays a bit freer.
+            put("temperature", temperature)
             put("max_tokens", maxTokens)
             // Keyless fallbacks (Pollinations "openai", some Workers AI models) route to REASONING models
             // that otherwise burn the whole token budget on hidden reasoning and return null content

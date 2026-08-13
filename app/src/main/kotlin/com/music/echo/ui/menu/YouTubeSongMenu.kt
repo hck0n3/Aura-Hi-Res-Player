@@ -173,6 +173,7 @@ fun YouTubeSongMenu(
     if (showExportFormatDialog) {
         ExportFormatChooserDialog(
             songId = song.id,
+            hasMusicVideo = song.isVideoSong,
             onDismiss = { showExportFormatDialog = false },
             onChoose = { format ->
                 if (format == ExportFormat.Offline) return@ExportFormatChooserDialog

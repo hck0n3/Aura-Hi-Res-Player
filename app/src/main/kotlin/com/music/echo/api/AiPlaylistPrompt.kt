@@ -7,30 +7,35 @@ package iad1tya.echo.music.api
 object AiPlaylistPrompt {
     fun buildMessages(prompt: String, count: Int): List<ChatMessage> {
         val system = """
-            Eres un curador musical experto. Devuelve SOLO un objeto JSON válido, sin texto adicional
-            y sin formato markdown, con esta forma exacta:
+            Eres un curador musical que OBEDECE la petición del usuario al pie de la letra.
+            Devuelve SOLO un objeto JSON válido, sin texto adicional y sin formato markdown, con esta
+            forma exacta:
             {"name": string, "tracks": [{"title": string, "artist": string, "year": number}]}
-            Reglas:
+            Reglas OBLIGATORIAS (si dudas, omite la canción; NUNCA improvises):
             - Incluye EXACTAMENTE $count canciones en "tracks".
-            - "name" es un título corto (máximo 40 caracteres) para la playlist.
+            - "name" es un título corto (máximo 40 caracteres) que refleja la petición, no un invento.
             - Cada canción debe ser real, con "title" y "artist" verificables.
-            - "year" es el año (4 dígitos) de la publicación ORIGINAL de esa grabación, no el de una
-              recopilación, reedición ni regrabación posterior. Úsalo también para distinguir la
-              versión original de una versión de otro artista.
-            - Si la petición indica una época, década, año o artista concreto, TODAS las canciones
-              deben cumplirlo: comprueba el "year" de cada canción ANTES de incluirla y descártala
-              si no encaja.
+            - "year" es el año (4 dígitos) de la publicación ORIGINAL de esa grabación.
+            - Cumple ESTRICTAMENTE lo pedido: género, subgénero, artista(s), idioma, época, mood y
+              cualquier restricción ("solo X", "sin Y", "nada de Z"). No añadas temas, géneros ni
+              artistas que el usuario NO pidió.
+            - Si piden UN artista o grupo concreto, TODAS las canciones deben ser de ese artista/grupo
+              (o colaboraciones claras donde ese artista es crédito principal). No rellenes con
+              "similares", "recomendados" ni del mismo género.
+            - Si piden un GÉNERO o subgénero concreto, NO sustituyas por uno "relacionado" ni más amplio
+              (ej.: no cambies punk por rock alternativo; no cambies salsa por latín genérico).
+            - NO improvises ni "mejores" ni "clásicos" que salgan del brief. Ante la duda, elige otra
+              canción REAL que encaje con certeza — o deja hueco (el sistema rellenará después).
+            - Si la petición indica época/década/año, comprueba el "year" ANTES de incluirla.
             - No repitas canciones ni añadas explicaciones.
-            - Respeta EXACTAMENTE el género, subgénero, estado de ánimo, idioma y época pedidos.
-            - NO sustituyas por un subgénero relacionado ni más amplio.
-            - Ejemplo de ERROR que NO debes cometer: si piden "punk de los 70", devolver un tema de
-              rock alternativo de 2010 (género más amplio y década equivocada), o la regrabación de
-              2015 de un tema de 1977. Lo correcto es una canción publicada realmente en esa década
-              y en ese subgénero exacto.
-            - Cada canción debe pertenecer claramente al tema pedido; ante la duda, elige una canción real que encaje con certeza.
-            - Respeta el idioma implícito de la petición.
+            - Ejemplo de ERROR que NO debes cometer: piden "solo Bad Bunny" y devuelves a J Balvin o
+              reggaeton genérico; o piden "punk de los 70" y devuelves rock alternativo de 2010.
         """.trimIndent()
-        val user = "Crea una playlist de $count canciones que cumpla ESTRICTAMENTE esta petición: \"$prompt\". Todas deben encajar en el género/idioma/tono pedido."
+        val user = """
+            Petición del usuario (OBLIGATORIA — no reinterpretarla ni ampliarla): "$prompt"
+            Crea una playlist de EXACTAMENTE $count canciones que cumpla ESA petición y nada más.
+            No improvises géneros, artistas ni temas fuera de lo pedido.
+        """.trimIndent().trim()
         return listOf(
             ChatMessage(role = "system", content = system),
             ChatMessage(role = "user", content = user),
@@ -71,6 +76,7 @@ object AiPlaylistPrompt {
             - "additions" contiene canciones reales que hay que añadir, con "title" y "artist"
               verificables. No añadas ninguna que ya esté en la lista.
             - Haz el cambio MÍNIMO que cumpla la instrucción: no quites ni añadas nada que no se pida.
+              No improvises ni "mejores" extras.
             - Si la instrucción solo pide quitar, deja "additions" vacío; si solo pide añadir, deja
               "remove" vacío.
             - Ejemplo de ERROR que NO debes cometer: ante "quita las lentas", quitar media playlist o
@@ -85,7 +91,7 @@ object AiPlaylistPrompt {
             Playlist actual (${visible.size} canciones):
             $numbered
 
-            Instrucción del usuario: "$prompt"
+            Instrucción del usuario (OBLIGATORIA — cambio mínimo, sin improvisar): "$prompt"
         """.trimIndent()
         return listOf(
             ChatMessage(role = "system", content = system),

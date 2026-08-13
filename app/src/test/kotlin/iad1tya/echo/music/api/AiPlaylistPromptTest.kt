@@ -31,6 +31,12 @@ class AiPlaylistPromptTest {
         assertTrue(system.contains("ERROR que NO debes cometer"))
     }
 
+    @Test fun systemMessageForbidsImprovisation() {
+        val system = AiPlaylistPrompt.buildMessages("solo Bad Bunny", 10)[0].content
+        assertTrue(system.contains("NUNCA improvises") || system.contains("NO improvises"))
+        assertTrue(system.contains("OBEDECE") || system.contains("OBLIGATORIAS"))
+    }
+
     // --- modify -----------------------------------------------------------------------------
 
     @Test fun modifyNumbersTheTracksOneBasedAndCarriesTheInstruction() {

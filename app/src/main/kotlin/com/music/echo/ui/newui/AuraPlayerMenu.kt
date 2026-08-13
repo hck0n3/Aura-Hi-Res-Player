@@ -226,6 +226,8 @@ fun AuraPlayerMenu(
         ExportFormatChooserDialog(
             songId = mediaMetadata.id,
             includeOfflineDownload = true,
+            hasMusicVideo = mediaMetadata.isVideoSong ||
+                !mediaMetadata.podcastVideoUrl.isNullOrEmpty(),
             onDismiss = { showExportFormatDialog = false },
             onChoose = { format ->
                 when (format) {

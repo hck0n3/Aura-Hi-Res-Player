@@ -4,6 +4,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -18,7 +19,7 @@ class SongResolverTest {
             title = "t", artist = "a", videoId = "vid",
             localMatch = { _, _ -> "local" },
             fromVideoId = { "video" },
-            search = { searched = true; "search" },
+            search = { _, _ -> searched = true; "search" },
         )
         assertEquals("local", result)
         assertFalse(searched)
@@ -30,22 +31,28 @@ class SongResolverTest {
             title = "t", artist = "a", videoId = "vid",
             localMatch = { _, _ -> null },
             fromVideoId = { id -> if (id == "vid") "video" else null },
-            search = { searched = true; "search" },
+            search = { _, _ -> searched = true; "search" },
         )
         assertEquals("video", result)
         assertFalse(searched)
     }
 
     @Test fun searchFallbackWhenNoLocalNoVideo() = runBlocking {
-        var captured: String? = null
+        var capturedQuery: String? = null
+        var capturedArtist: String? = null
         val result = SongResolver.resolveOrdered(
             title = "Song", artist = "Artist", videoId = null,
             localMatch = { _, _ -> null },
             fromVideoId = { null },
-            search = { query -> captured = query; "search" },
+            search = { query, artist ->
+                capturedQuery = query
+                capturedArtist = artist
+                "search"
+            },
         )
         assertEquals("search", result)
-        assertEquals("Song Artist", captured)
+        assertEquals("Song Artist", capturedQuery)
+        assertEquals("Artist", capturedArtist)
     }
 
     @Test fun videoIdMissingFromMapFallsBackToSearch() = runBlocking {
@@ -53,7 +60,7 @@ class SongResolverTest {
             title = "Song", artist = "", videoId = "missing",
             localMatch = { _, _ -> null },
             fromVideoId = { null },
-            search = { "search" },
+            search = { _, _ -> "search" },
         )
         assertEquals("search", result)
     }
@@ -64,7 +71,7 @@ class SongResolverTest {
             title = "", artist = "", videoId = null,
             localMatch = { _, _ -> null },
             fromVideoId = { null },
-            search = { searched = true; "search" },
+            search = { _, _ -> searched = true; "search" },
         )
         assertNull(result)
         assertFalse(searched)
@@ -76,8 +83,15 @@ class SongResolverTest {
             title = "OnlyTitle", artist = "", videoId = null,
             localMatch = { _, _ -> null },
             fromVideoId = { null },
-            search = { query -> captured = query; "x" },
+            search = { query, _ -> captured = query; "x" },
         )
         assertEquals("OnlyTitle", captured)
+    }
+
+    @Test fun artistMatchesIsAccentInsensitive() {
+        assertTrue(SongResolver.artistMatches("Bad Bunny", "bad bunny"))
+        assertTrue(SongResolver.artistMatches("José José", "Jose Jose"))
+        assertTrue(SongResolver.artistMatches("Bad Bunny & Jhayco", "Bad Bunny"))
+        assertFalse(SongResolver.artistMatches("J Balvin", "Bad Bunny"))
     }
 }

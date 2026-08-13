@@ -1,18 +1,18 @@
-# Aura Hi-Res Player 0.6.184
+# Aura Hi-Res Player 0.6.185
 
-Corrección del crash al dar Me gusta, descargas de playlist/álbum que no hacían nada, y reportes de error más completos desde la hoja de cuenta.
+Lista IA más fiel a lo que pides, progreso de descarga que se rellena como en Apple Music, y «Exportar como vídeo» solo en vídeos musicales de verdad.
 
 ---
 
-## Estabilidad
+## Lista IA
 
-- Ya no se cierra la app al dar Me gusta (con descarga automática): el reproductor no se tocaba en el hilo correcto.
-- Descargar una playlist de YouTube desde el menú ⋮ (Inicio, búsqueda, artista…) vuelve a encolar las canciones; antes a veces no hacía nada.
-- Mismo arreglo en menús de álbum (YouTube y biblioteca) cuando la lista aún no había cargado.
+- Obedece la petición (artista, género, restricciones) sin improvisar temas o géneros «parecidos».
+- Temperatura más baja y mejor emparejado de artista al buscar las canciones en YouTube.
 
-## Reportar y sugerir
+## Descargas
 
-- Acceso directo en la hoja de cuenta, justo debajo de Avisos.
-- Al enviar una sugerencia, el texto sí aparece en el borrador del correo.
-- Los adjuntos de diagnóstico incluyen registro de la app, último fallo, salidas del sistema y reproducción reciente.
-- El instructivo pide describir qué estabas haciendo justo antes del problema.
+- El indicador de descarga se rellena con el porcentaje real (estilo Apple Music) en filas, rejillas, álbum/playlist y el reproductor.
+
+## Exportar
+
+- «Como vídeo» solo aparece si la canción tiene un vídeo musical real (OMV/UGC), no en pistas solo-audio con portada animada.

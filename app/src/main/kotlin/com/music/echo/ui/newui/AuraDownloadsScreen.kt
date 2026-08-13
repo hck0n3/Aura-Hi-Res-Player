@@ -603,23 +603,7 @@ private fun rememberAuraActiveDownloads(enabled: Boolean): List<Download> {
  */
 @Composable
 private fun rememberAuraDownloadProgress(enabled: Boolean): State<Map<String, Float>> {
-    val downloadUtil = LocalDownloadUtil.current
-    val downloads by downloadUtil.downloads.collectAsState()
-    val hasActive = enabled && downloads.values.any {
-        it.state == Download.STATE_DOWNLOADING || it.state == Download.STATE_QUEUED
-    }
-    val progress = remember { mutableStateOf<Map<String, Float>>(emptyMap()) }
-
-    LaunchedEffect(hasActive) {
-        if (!hasActive) {
-            progress.value = emptyMap()
-            return@LaunchedEffect
-        }
-        while (isActive) {
-            progress.value = downloadUtil.downloadManager.currentDownloads
-                .associate { it.request.id to it.percentDownloaded }
-            delay(1000)
-        }
-    }
-    return progress
+    // Shared live poller in DownloadUtil — same Apple Music fill as song rows / player.
+    val live by LocalDownloadUtil.current.liveProgress.collectAsState()
+    return androidx.compose.runtime.rememberUpdatedState(if (enabled) live else emptyMap())
 }

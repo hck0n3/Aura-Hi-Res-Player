@@ -235,6 +235,7 @@ fun PlayerMenu(
     if (showExportFormatDialog) {
         ExportFormatChooserDialog(
             songId = mediaMetadata.id,
+            hasMusicVideo = mediaMetadata.isVideoSong,
             onDismiss = { showExportFormatDialog = false },
             onChoose = { format ->
                 if (format == ExportFormat.Offline) return@ExportFormatChooserDialog

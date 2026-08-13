@@ -41,13 +41,16 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -107,6 +110,51 @@ constructor(
     }
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
+
+    /**
+     * Live `mediaId -> percentDownloaded` (0–100, or [C.PERCENTAGE_UNSET] / negative while unknown).
+     * [downloads] only refreshes on *state* changes; this map is polled from
+     * [DownloadManager.getCurrentDownloads] while anything is queued/downloading so UI arcs can
+     * fill like Apple Music instead of spinning forever.
+     */
+    val liveProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
+
+    private var progressPollJob: Job? = null
+
+    private fun hasActiveTransfers(): Boolean {
+        if (downloads.value.values.any {
+                it.state == Download.STATE_DOWNLOADING || it.state == Download.STATE_QUEUED
+            }
+        ) {
+            return true
+        }
+        return runCatching { downloadManager.currentDownloads.isNotEmpty() }.getOrDefault(false)
+    }
+
+    /** Start/stop the 500 ms poller based on whether anything is actually transferring. */
+    private fun syncProgressPolling() {
+        if (!hasActiveTransfers()) {
+            progressPollJob?.cancel()
+            progressPollJob = null
+            liveProgress.value = emptyMap()
+            return
+        }
+        if (progressPollJob?.isActive == true) return
+        progressPollJob = scope.launch {
+            while (isActive) {
+                liveProgress.value = runCatching {
+                    downloadManager.currentDownloads.associate { d ->
+                        d.request.id to d.percentDownloaded
+                    }
+                }.getOrDefault(emptyMap())
+                if (!hasActiveTransfers()) {
+                    liveProgress.value = emptyMap()
+                    break
+                }
+                delay(500)
+            }
+        }
+    }
 
     // Factory order matters: resolver OUTSIDE, chunker INSIDE. ResolvingDataSource resolves the
     // stream URL (cipher/PoToken + FormatEntity/SongEntity upserts) ONCE per download, then the
@@ -285,6 +333,7 @@ constructor(
                                 set(download.request.id, download)
                             }
                         }
+                        syncProgressPolling()
 
                         // media3 hands us the cause of the failure and it used to be dropped on the
                         // floor: the DB simply recorded "not downloaded". The user then reports a song
@@ -314,6 +363,16 @@ constructor(
                             }
                         }
                     }
+
+                    override fun onDownloadRemoved(
+                        downloadManager: DownloadManager,
+                        download: Download,
+                    ) {
+                        downloads.update { map ->
+                            map.toMutableMap().apply { remove(download.request.id) }
+                        }
+                        syncProgressPolling()
+                    }
                 }
             )
         }
@@ -331,6 +390,7 @@ constructor(
             }
         }
         downloads.value = result
+        syncProgressPolling()
     }
 
     fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }

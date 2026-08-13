@@ -378,6 +378,7 @@ private fun AuraPlayerShape(
     val videoCompanionDownload by downloadUtil
         .getDownload(mediaMetadata?.id?.let { videoDownloadMediaId(it) } ?: "")
         .collectAsState(initial = null)
+    val liveDownloadProgress by downloadUtil.liveProgress.collectAsState()
 
     val listenTogetherManager = LocalListenTogetherManager.current
     val listenTogetherRoleState = listenTogetherManager?.role?.collectAsState(initial = RoomRole.NONE)
@@ -660,6 +661,8 @@ private fun AuraPlayerShape(
         ExportFormatChooserDialog(
             songId = downloadChooserMeta.id,
             includeOfflineDownload = true,
+            hasMusicVideo = downloadChooserMeta.isVideoSong ||
+                !downloadChooserMeta.podcastVideoUrl.isNullOrEmpty(),
             onDismiss = { showDownloadOrExportDialog = false },
             onChoose = { format ->
                 when (format) {
@@ -1441,9 +1444,14 @@ private fun AuraPlayerShape(
                                     videoCompanionDownload?.state == Download.STATE_DOWNLOADING
                                 ))
                         val downloadProgressFraction = run {
-                            val audioPct = download?.percentDownloaded ?: -1f
+                            val id = meta.id
+                            val audioPct = liveDownloadProgress[id]
+                                ?: download?.percentDownloaded
+                                ?: -1f
                             val videoPct = if (isVideo) {
-                                videoCompanionDownload?.percentDownloaded ?: -1f
+                                liveDownloadProgress[videoDownloadMediaId(id)]
+                                    ?: videoCompanionDownload?.percentDownloaded
+                                    ?: -1f
                             } else {
                                 -1f
                             }

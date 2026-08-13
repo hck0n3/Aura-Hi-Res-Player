@@ -626,7 +626,7 @@ fun SongListItem(
         if (showDownloadIcon) {
             val download by LocalDownloadUtil.current.getDownload(song.id)
                 .collectAsState(initial = null)
-            Icon.Download(download?.state)
+            Icon.Download(download?.state, songId = song.id)
         }
     },
     isSelected: Boolean = false,
@@ -726,7 +726,7 @@ fun SongGridItem(
         }
         if (showDownloadIcon) {
             val download by LocalDownloadUtil.current.getDownload(song.id).collectAsState(initial = null)
-            Icon.Download(download?.state)
+            Icon.Download(download?.state, songId = song.id)
         }
     },
     isActive: Boolean = false,
@@ -867,6 +867,7 @@ fun AlbumListItem(
         }
 
         val allDownloads by downloadUtil.downloads.collectAsState()
+        val liveProgress by downloadUtil.liveProgress.collectAsState()
 
         val downloadState by remember(songs, allDownloads) {
             androidx.compose.runtime.mutableIntStateOf(
@@ -881,6 +882,13 @@ fun AlbumListItem(
                 }
             )
         }
+        val aggregatePercent = remember(songs, liveProgress, downloadState) {
+            if (downloadState != STATE_DOWNLOADING && downloadState != STATE_QUEUED) null
+            else {
+                val vals = songs.mapNotNull { liveProgress[it.id]?.takeIf { p -> p >= 0f } }
+                if (vals.isEmpty()) null else vals.average().toFloat()
+            }
+        }
 
         if (showLikedIcon && album.album.bookmarkedAt != null) {
             Icon.Favorite()
@@ -888,7 +896,7 @@ fun AlbumListItem(
         if (album.album.explicit) {
             Icon.Explicit()
         }
-        Icon.Download(downloadState)
+        Icon.Download(downloadState, percent = aggregatePercent)
     },
     isActive: Boolean = false,
     isPlaying: Boolean = false,
@@ -930,6 +938,7 @@ fun AlbumGridItem(
         }
 
         val allDownloads by downloadUtil.downloads.collectAsState()
+        val liveProgress by downloadUtil.liveProgress.collectAsState()
 
         val downloadState by remember(songs, allDownloads) {
             androidx.compose.runtime.mutableIntStateOf(
@@ -944,6 +953,13 @@ fun AlbumGridItem(
                 }
             )
         }
+        val aggregatePercent = remember(songs, liveProgress, downloadState) {
+            if (downloadState != STATE_DOWNLOADING && downloadState != STATE_QUEUED) null
+            else {
+                val vals = songs.mapNotNull { liveProgress[it.id]?.takeIf { p -> p >= 0f } }
+                if (vals.isEmpty()) null else vals.average().toFloat()
+            }
+        }
 
         if (album.album.bookmarkedAt != null) {
             Icon.Favorite()
@@ -951,7 +967,7 @@ fun AlbumGridItem(
         if (album.album.explicit) {
             Icon.Explicit()
         }
-        Icon.Download(downloadState)
+        Icon.Download(downloadState, percent = aggregatePercent)
     },
     isActive: Boolean = false,
     isPlaying: Boolean = false,
@@ -1030,6 +1046,7 @@ fun PlaylistListItem(
         }
 
         val allDownloads by downloadUtil.downloads.collectAsState()
+        val liveProgress by downloadUtil.liveProgress.collectAsState()
 
         val downloadState by remember(songs, allDownloads) {
             androidx.compose.runtime.mutableIntStateOf(
@@ -1044,8 +1061,15 @@ fun PlaylistListItem(
                 }
             )
         }
+        val aggregatePercent = remember(songs, liveProgress, downloadState) {
+            if (downloadState != STATE_DOWNLOADING && downloadState != STATE_QUEUED) null
+            else {
+                val vals = songs.mapNotNull { liveProgress[it.id]?.takeIf { p -> p >= 0f } }
+                if (vals.isEmpty()) null else vals.average().toFloat()
+            }
+        }
 
-        Icon.Download(downloadState)
+        Icon.Download(downloadState, percent = aggregatePercent)
     },
     trailingContent: @Composable RowScope.() -> Unit = {},
     shape: Shape = androidx.compose.ui.graphics.RectangleShape,
@@ -1114,6 +1138,7 @@ fun PlaylistGridItem(
         }
 
         val allDownloads by downloadUtil.downloads.collectAsState()
+        val liveProgress by downloadUtil.liveProgress.collectAsState()
 
         val downloadState by remember(songs, allDownloads) {
             mutableIntStateOf(
@@ -1128,8 +1153,14 @@ fun PlaylistGridItem(
                 }
             )
         }
-
-        Icon.Download(downloadState)
+        val aggregatePercent = remember(songs, liveProgress, downloadState) {
+            if (downloadState != STATE_DOWNLOADING && downloadState != STATE_QUEUED) null
+            else {
+                val vals = songs.mapNotNull { liveProgress[it.id]?.takeIf { p -> p >= 0f } }
+                if (vals.isEmpty()) null else vals.average().toFloat()
+            }
+        }
+        Icon.Download(downloadState, percent = aggregatePercent)
     },
     fillMaxWidth: Boolean = false,
 ) = GridItem(
@@ -1290,7 +1321,7 @@ fun YouTubeListItem(
 
         if (item is SongItem) {
             val download by LocalDownloadUtil.current.getDownload(item.id).collectAsState(null)
-            Icon.Download(download?.state)
+            Icon.Download(download?.state, songId = item.id)
         }
     },
     shape: Shape = RectangleShape,
@@ -1374,7 +1405,7 @@ fun YouTubeGridItem(
         
         if (item is SongItem) {
             val download by LocalDownloadUtil.current.getDownload(item.id).collectAsState(null)
-            Icon.Download(download?.state)
+            Icon.Download(download?.state, songId = item.id)
         }
     },
     thumbnailRatio: Float = if (item is SongItem) 16f / 9 else 1f,
@@ -2098,9 +2129,14 @@ object Icon {
         state: Int?,
         /** 0–100 from Exo [Download.percentDownloaded]; null / negative = indeterminate. */
         percent: Float? = null,
+        /** When set, live fill is read from [iad1tya.echo.music.playback.DownloadUtil.liveProgress]. */
+        songId: String? = null,
     ) {
         val skin = LocalAuraItemSkin.current
-        val progressFraction = percent?.takeIf { it >= 0f }?.let { (it / 100f).coerceIn(0f, 1f) }
+        val liveMap by LocalDownloadUtil.current.liveProgress.collectAsState()
+        val resolvedPercent = percent
+            ?: songId?.let { id -> liveMap[id] }
+        val progressFraction = resolvedPercent?.takeIf { it >= 0f }?.let { (it / 100f).coerceIn(0f, 1f) }
         when (state) {
             // Render, Biblioteca: "Marca de verificación = descargada".
             STATE_COMPLETED -> if (skin.enabled) {

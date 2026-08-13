@@ -47,11 +47,10 @@ private sealed class VideoProbe {
 }
 
 /**
- * Frost chooser: optional offline download, then MP3 vs video. Video is enabled only after a live
- * stream probe succeeds (not merely [iad1tya.echo.music.models.MediaMetadata.isVideoSong], which is
- * often false for YTM catalog rows that still have a video stream).
+ * Frost chooser: optional offline download, then MP3 vs video.
  *
- * When [includeOfflineDownload] is false (menus), behaviour matches the former MP3/Video-only dialog.
+ * "As video" is shown ONLY when [hasMusicVideo] is true (OMV/UGC — a real music video, not an
+ * art-track ATV). The live stream probe then confirms the mux is resolvable before enabling the row.
  */
 @Composable
 fun ExportFormatChooserDialog(
@@ -59,12 +58,19 @@ fun ExportFormatChooserDialog(
     onDismiss: () -> Unit,
     onChoose: (ExportFormat) -> Unit,
     includeOfflineDownload: Boolean = false,
+    /** Official / UGC music video (not ATV art-track). When false, the video row is omitted. */
+    hasMusicVideo: Boolean = false,
 ) {
     val context = LocalContext.current
-    var videoProbe by remember(songId) { mutableStateOf<VideoProbe>(VideoProbe.Loading) }
+    var videoProbe by remember(songId, hasMusicVideo) {
+        mutableStateOf<VideoProbe>(
+            if (!hasMusicVideo) VideoProbe.Unavailable(R.string.export_video_unavailable)
+            else VideoProbe.Loading,
+        )
+    }
 
-    LaunchedEffect(songId) {
-        if (songId.isBlank() || songId.isLocalMediaId()) {
+    LaunchedEffect(songId, hasMusicVideo) {
+        if (!hasMusicVideo || songId.isBlank() || songId.isLocalMediaId()) {
             videoProbe = VideoProbe.Unavailable(R.string.export_video_unavailable)
             return@LaunchedEffect
         }
@@ -145,27 +151,29 @@ fun ExportFormatChooserDialog(
                     onDismiss()
                 },
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            ExportFormatRow(
-                title = stringResource(R.string.export_as_video),
-                description = videoDescription,
-                enabled = videoEnabled,
-                trailing = if (videoProbe is VideoProbe.Loading) {
-                    {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = AuraPalette.Teal,
-                        )
-                    }
-                } else {
-                    null
-                },
-                onClick = {
-                    onChoose(ExportFormat.Video)
-                    onDismiss()
-                },
-            )
+            if (hasMusicVideo) {
+                Spacer(modifier = Modifier.height(8.dp))
+                ExportFormatRow(
+                    title = stringResource(R.string.export_as_video),
+                    description = videoDescription,
+                    enabled = videoEnabled,
+                    trailing = if (videoProbe is VideoProbe.Loading) {
+                        {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = AuraPalette.Teal,
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    onClick = {
+                        onChoose(ExportFormat.Video)
+                        onDismiss()
+                    },
+                )
+            }
         }
     }
 }
