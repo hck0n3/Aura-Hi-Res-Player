@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-13T15:15:00Z",
+  "updatedAt": "2026-08-13T16:53:00Z",
   "items": [
+    {
+      "id": "aviso-20260813-165300",
+      "date": "2026-08-13",
+      "publishedAt": "2026-08-13T16:53:00Z",
+      "title": "Aura Hi-Res 0.6.193: tu biblioteca se sincroniza sola",
+      "body": "Aura Hi-Res 0.6.193 ya está lista para descargar.\n\n• Toda la biblioteca (me gusta, playlists, suscripciones y lo que crees aquí) se actualiza en segundo plano cada 3 días.\n• Desde el avatar: «Sincronizar biblioteca ahora» (sigue aunque cierres la app) o «Programar sincronización» (cada 3 días, cada día, cada semana, o apagada).\n• Si ya habías puesto la sincronización automática en Desactivada, se respeta.\n\nActualiza desde el menú de tu cuenta (avatar) ▸ Actualizaciones. Gracias por estar en Aura.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260813-151500",
       "date": "2026-08-13",
