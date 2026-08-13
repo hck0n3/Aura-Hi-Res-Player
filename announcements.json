@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-13T21:44:00Z",
+  "updatedAt": "2026-08-13T22:24:00Z",
   "items": [
+    {
+      "id": "aviso-20260813-222400",
+      "date": "2026-08-13",
+      "publishedAt": "2026-08-13T22:24:00Z",
+      "title": "Aura Hi-Res 0.6.197: populares completas y filas premium",
+      "body": "Aura Hi-Res 0.6.197 ya está lista para descargar.\n\n• En un artista, las canciones populares salen todas (no solo las 5 primeras), de 4 en 4, y a la derecha se ve un recorte de la página siguiente.\n• Tu biblioteca del artista muestra todas las canciones, con el mismo gesto.\n• Listas, álbumes y EP usan el mismo renglón.\n• La que suena se marca en el título y con barras en la portada, sin recuadro que hinche la fila.\n\nActualiza desde el menú de tu cuenta (avatar) ▸ Actualizaciones. Gracias por estar en Aura.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260813-214400",
       "date": "2026-08-13",
