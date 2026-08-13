@@ -335,6 +335,14 @@ private fun SettingDialogeBody(
                     onClick = { onNavigate("settings/notices") },
                 ),
                 Material3SettingsItem(
+                    title = { Text("Actualizaciones") },
+                    description = {
+                        Text("Cambios de esta versión y nuevas actualizaciones")
+                    },
+                    icon = painterResource(R.drawable.update),
+                    onClick = { onNavigate("settings/update") },
+                ),
+                Material3SettingsItem(
                     title = { Text(stringResource(R.string.feedback_title)) },
                     description = {
                         Text(

@@ -51,7 +51,6 @@ import iad1tya.echo.music.ui.component.IconButton
 import iad1tya.echo.music.ui.component.Material3SettingsGroup
 import iad1tya.echo.music.ui.component.Material3SettingsItem
 import iad1tya.echo.music.ui.screens.Screens
-import iad1tya.echo.music.echomusic.updater.getUpdateAvailableState
 import iad1tya.echo.music.license.SubscriptionEntryScreen
 import iad1tya.echo.music.license.LicenseManager
 import iad1tya.echo.music.license.LicenseLogic
@@ -106,7 +105,6 @@ fun SettingsScreen(
     val statsText = stringResource(R.string.stats)
     val logsText = stringResource(R.string.logs)
     val aboutText = stringResource(R.string.about)
-    val updateText = "Aura Hi-Res Update"
     val subscribeText = "Suscripción Pro"
     // Wording taken verbatim from the reference render — do not paraphrase.
     val newUiText = "Interfaz nueva"
@@ -166,19 +164,6 @@ fun SettingsScreen(
         )
 
         val itemsList = buildList {
-            // Updates first so the row is always visible without scrolling past accounts/appearance.
-            if (updateText.lowercase().contains(searchLower) ||
-                searchLower.contains("actualiz")
-            ) {
-                add(
-                    Material3SettingsItem(
-                        icon = painterResource(R.drawable.download),
-                        title = { Text(updateText) },
-                        description = { Text("Cambios de esta versión y nuevas actualizaciones") },
-                        onClick = { navController.navigate("settings/update") }
-                    )
-                )
-            }
             if (showSubscribeEntry && subscribeText.lowercase().contains(searchLower)) {
                 add(
                     Material3SettingsItem(

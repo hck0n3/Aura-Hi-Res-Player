@@ -148,7 +148,6 @@ fun AuraSettingsScreen(
     val logsText = stringResource(R.string.logs)
     val logsDescText = stringResource(R.string.logs_desc)
     val aboutText = stringResource(R.string.about)
-    val updateText = "Aura Hi-Res Update"
     val subscribeText = "Suscripción Pro"
     val settingsWordText = stringResource(R.string.settings)
 
@@ -158,7 +157,6 @@ fun AuraSettingsScreen(
     val groupPlayerSound = stringResource(R.string.player_and_audio)
     val groupContentLyrics = "Contenido y letras"
     val groupAccounts = "Cuentas y sincronización"
-    val groupUpdates = "Actualizaciones"
     val groupBackupMigration = "Copias y migración"
 
     val noResultsText = stringResource(R.string.settings_search_no_results, searchQuery)
@@ -170,30 +168,6 @@ fun AuraSettingsScreen(
 
     // ── The index ─────────────────────────────────────────────────────────────────────────────────
     val groups = buildList {
-        // Own group near the top so updates are findable without searching (owner request).
-        add(
-            AuraSettingsGroup(
-                icon = AuraIcons.Download,
-                title = groupUpdates,
-                entries = listOf(
-                    AuraSettingsEntry(
-                        title = updateText,
-                        description = "Cambios de esta versión y nuevas actualizaciones",
-                    ) { navController.navigate("settings/update") },
-                    AuraSettingsEntry(
-                        title = stringResource(R.string.owner_notices_title),
-                        description = stringResource(R.string.owner_notices_settings_desc),
-                    ) { navController.navigate("settings/notices") },
-                    AuraSettingsEntry(
-                        title = stringResource(R.string.feedback_title),
-                        description = stringResource(
-                            R.string.feedback_settings_desc,
-                            iad1tya.echo.music.utils.SupportContact.EMAIL,
-                        ),
-                    ) { navController.navigate("settings/feedback") },
-                ),
-            )
-        )
         add(
             AuraSettingsGroup(
                 icon = AuraIcons.Equalizer,
@@ -291,7 +265,7 @@ fun AuraSettingsScreen(
         )
     }
 
-    // The four destinations that belong to none of the render's seven groups. See the KDoc.
+    // Destinations that belong to none of the render's seven groups. See the KDoc.
     val more = listOf(
         AuraSettingsGroup(
             icon = AuraIcons.Settings,
@@ -310,6 +284,29 @@ fun AuraSettingsScreen(
                 AuraSettingsEntry(logsText, description = logsDescText) {
                     navController.navigate("settings/logs")
                 }
+            ),
+        ),
+        AuraSettingsGroup(
+            icon = AuraIcons.Settings,
+            title = stringResource(R.string.owner_notices_title),
+            entries = listOf(
+                AuraSettingsEntry(
+                    title = stringResource(R.string.owner_notices_title),
+                    description = stringResource(R.string.owner_notices_settings_desc),
+                ) { navController.navigate("settings/notices") },
+            ),
+        ),
+        AuraSettingsGroup(
+            icon = AuraIcons.Share,
+            title = stringResource(R.string.feedback_title),
+            entries = listOf(
+                AuraSettingsEntry(
+                    title = stringResource(R.string.feedback_title),
+                    description = stringResource(
+                        R.string.feedback_settings_desc,
+                        iad1tya.echo.music.utils.SupportContact.EMAIL,
+                    ),
+                ) { navController.navigate("settings/feedback") },
             ),
         ),
         AuraSettingsGroup(
