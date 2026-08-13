@@ -26,7 +26,7 @@ El dueño es el beta tester. Si algo de esta lista desaparece en un cambio, **es
 
 ## Artista (New UI)
 
-- Sección **Tu biblioteca** visible en la página de YouTube (el FAB local↔online está muerto). **Canciones populares (YTM) arriba; Tu biblioteca debajo**, una sola vez. No repetir la shelf “De tu biblioteca / From your library” de YTM. Espaciado de secciones = mismo [AuraSectionHeader] (`SectionTop`) en todas.
+- Sección **Tu biblioteca** visible en la página de YouTube (el FAB local↔online está muerto). Orden: **canciones populares (YTM) → álbumes → vídeos → Tu biblioteca**, una sola vez. No pegarla bajo las populares (aplasta el diseño). No repetir la shelf “De tu biblioteca / From your library” de YTM. Espaciado de secciones = mismo [AuraSectionHeader] (`SectionTop`) en todas.
 - Tocar una canción de biblioteca o top → cola con el resto de esa lista (`allLibrarySongs` / sección completa).
 - Flecha “ver todos” del encabezado de sección: clickable en toda la fila.
 

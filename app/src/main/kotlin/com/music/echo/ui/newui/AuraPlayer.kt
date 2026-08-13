@@ -1515,17 +1515,20 @@ private fun AuraPlayerShape(
                             modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
                         )
                         if (busy) {
+                            // Ring hugs the glyph (~28 dp). MinTouchTarget (48 dp) is the hit box
+                            // on the parent, not the spinner — a 48 dp halo dwarfed the row.
+                            val downloadRing = quickAccessGlyph + 8.dp
                             if (progressFraction != null) {
                                 CircularProgressIndicator(
                                     progress = { progressFraction },
-                                    modifier = Modifier.size(AuraSpacing.MinTouchTarget),
+                                    modifier = Modifier.size(downloadRing),
                                     strokeWidth = 2.dp,
                                     color = AuraPalette.Teal,
                                     trackColor = AuraPalette.OnGround.copy(alpha = 0.18f),
                                 )
                             } else {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(AuraSpacing.MinTouchTarget),
+                                    modifier = Modifier.size(downloadRing),
                                     strokeWidth = 2.dp,
                                     color = AuraPalette.Teal,
                                     trackColor = AuraPalette.OnGround.copy(alpha = 0.18f),

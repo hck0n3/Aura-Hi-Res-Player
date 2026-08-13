@@ -1119,6 +1119,7 @@ fun ListenTogetherDialog(
     val waitingForApprovalText = stringResource(R.string.waiting_for_approval)
     val invalidRoomCodeText = stringResource(R.string.invalid_room_code)
     val joinRequestDeniedText = stringResource(R.string.join_request_denied)
+    val connectionFailedText = stringResource(R.string.listen_together_connection_failed)
 
     
     if (selectedUserForMenu != null && selectedUsername != null) {
@@ -1338,6 +1339,26 @@ fun ListenTogetherDialog(
                         context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     val clip = android.content.ClipData.newPlainText("ListenTogetherRoom", event.roomCode)
                     clipboard.setPrimaryClip(clip)
+                }
+
+                is ListenTogetherEvent.ConnectionError -> {
+                    joinErrorMessage = connectionFailedText
+                    isJoiningRoom = false
+                    isCreatingRoom = false
+                }
+                is ListenTogetherEvent.ServerError -> {
+                    if (isJoiningRoom || isCreatingRoom) {
+                        joinErrorMessage = event.message.ifBlank { connectionFailedText }
+                        isJoiningRoom = false
+                        isCreatingRoom = false
+                    }
+                }
+                is ListenTogetherEvent.Disconnected -> {
+                    if (isJoiningRoom || isCreatingRoom) {
+                        joinErrorMessage = connectionFailedText
+                        isJoiningRoom = false
+                        isCreatingRoom = false
+                    }
                 }
 
                 else -> {  }
@@ -2023,7 +2044,7 @@ fun ListenTogetherDialog(
                         )
 
                         
-                        if (isJoiningRoom) {
+                        if (isJoiningRoom || isCreatingRoom) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center,
@@ -2036,7 +2057,11 @@ fun ListenTogetherDialog(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = waitingForApprovalText,
+                                    text = if (isCreatingRoom) {
+                                        stringResource(R.string.creating_room)
+                                    } else {
+                                        waitingForApprovalText
+                                    },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Medium
@@ -2099,14 +2124,14 @@ fun ListenTogetherDialog(
                                     isCreatingRoom = true
                                     isJoiningRoom = false
                                     joinErrorMessage = null
-                                    listenTogetherManager.connect()
                                     listenTogetherManager.createRoom(finalUsername)
                                 } else {
                                     Toast.makeText(context, R.string.error_username_empty, Toast.LENGTH_SHORT).show()
                                 }
                             },
                             modifier = Modifier.weight(1f),
-                            enabled = (usernameInput.trim().isNotBlank() || savedUsername.isNotBlank()),
+                            enabled = (usernameInput.trim().isNotBlank() || savedUsername.isNotBlank()) &&
+                                !isCreatingRoom && !isJoiningRoom,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary
                             )
@@ -2136,14 +2161,14 @@ fun ListenTogetherDialog(
                                         isJoiningRoom = true
                                         isCreatingRoom = false
                                         joinErrorMessage = null
-                                        listenTogetherManager.connect()
                                         listenTogetherManager.joinRoom(roomCodeInput, finalUsername)
                                     } else {
                                         Toast.makeText(context, R.string.error_username_empty, Toast.LENGTH_SHORT).show()
                                     }
                                 },
                                 modifier = Modifier.weight(1f),
-                                enabled = (usernameInput.trim().isNotBlank() || savedUsername.isNotBlank()),
+                                enabled = (usernameInput.trim().isNotBlank() || savedUsername.isNotBlank()) &&
+                                    !isCreatingRoom && !isJoiningRoom,
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.secondary
                                 )

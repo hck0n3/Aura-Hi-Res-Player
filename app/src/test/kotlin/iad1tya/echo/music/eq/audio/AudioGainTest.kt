@@ -152,10 +152,32 @@ class AudioGainTest {
         assertEquals("unknown track not boosted", 0.0, loudnessMakeupDb(d, enabled = true), 1e-9)
     }
 
+    @Test fun playingLoudnessIsFrozenForTheSameTrack() {
+        assertTrue(isPlayingLoudnessFrozen("abc", "abc"))
+    }
+
+    @Test fun playingLoudnessIsNotFrozenForANewTrack() {
+        assertTrue(!isPlayingLoudnessFrozen("next", "abc"))
+        assertTrue(!isPlayingLoudnessFrozen("abc", null))
+        assertTrue(!isPlayingLoudnessFrozen(null, "abc"))
+        assertTrue(!isPlayingLoudnessFrozen(null, null))
+    }
+
+    @Test fun likeDownloadLoudnessWouldRaiseVolumeIfAppliedLive() {
+        val startedAt = effectiveLoudnessDb(null, null)
+        val fromDownload = effectiveLoudnessDb(-2.0, null)
+        assertTrue(isPlayingLoudnessFrozen("song", "song"))
+        val liveGain = normalizationMultiplier(startedAt, enabled = true)
+        val wouldJumpTo = normalizationMultiplier(fromDownload, enabled = true)
+        assertTrue("download loudness would have raised volume", wouldJumpTo > liveGain + 1e-3f)
+    }
+
     @Test fun safeVolumeAttenuatesWhenPreampPositive() {
-        val base = 1.0f
+        // Only trims when Safe Volume is actually boosting (linear gain > 1). Unity is left alone.
+        val base = 2.0f
         val trimmed = safeVolumeGainWithEqPreamp(base, preampDb = 6.0)
         assertTrue(trimmed < base)
+        assertTrue(trimmed > 0f)
     }
 
     @Test fun safeVolumeIgnoresNonPositivePreamp() {

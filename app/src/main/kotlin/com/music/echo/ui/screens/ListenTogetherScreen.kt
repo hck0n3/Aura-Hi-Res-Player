@@ -391,6 +391,7 @@ fun ListenTogetherScreen(
                     onRoomCodeChange = { roomCodeInput = it },
                     savedUsername = savedUsername,
                     isJoiningRoom = isJoiningRoom,
+                    isCreatingRoom = isCreatingRoom,
                     joinErrorMessage = joinErrorMessage,
                     waitingForApprovalText = waitingForApprovalText,
                     bringIntoViewRequester = bringIntoViewRequester,
@@ -403,7 +404,6 @@ fun ListenTogetherScreen(
                             isCreatingRoom = true
                             isJoiningRoom = false
                             joinErrorMessage = null
-                            listenTogetherManager.connect()
                             listenTogetherManager.createRoom(finalUsername)
                         } else {
                             Toast.makeText(context, R.string.error_username_empty, Toast.LENGTH_SHORT).show()
@@ -422,7 +422,6 @@ fun ListenTogetherScreen(
                             isJoiningRoom = true
                             isCreatingRoom = false
                             joinErrorMessage = null
-                            listenTogetherManager.connect()
                             listenTogetherManager.joinRoom(roomCodeInput, finalUsername)
                         } else {
                             Toast.makeText(context, R.string.error_username_empty, Toast.LENGTH_SHORT).show()
@@ -1185,6 +1184,7 @@ private fun JoinCreateRoomSection(
     onRoomCodeChange: (String) -> Unit,
     savedUsername: String,
     isJoiningRoom: Boolean,
+    isCreatingRoom: Boolean,
     joinErrorMessage: String?,
     waitingForApprovalText: String,
     bringIntoViewRequester: BringIntoViewRequester,
@@ -1348,9 +1348,9 @@ private fun JoinCreateRoomSection(
             }
 
             AnimatedVisibility(
-                visible = isJoiningRoom,
+                visible = isJoiningRoom || isCreatingRoom,
                 enter = fadeIn() + slideInVertically(),
-                exit = fadeOut() + slideOutVertically()
+                exit = fadeOut() + shrinkVertically()
             ) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -1372,7 +1372,7 @@ private fun JoinCreateRoomSection(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = waitingForApprovalText,
+                            text = if (isCreatingRoom) stringResource(R.string.creating_room) else waitingForApprovalText,
                             style = if (skin.enabled) AuraType.RowSubtitle else MaterialTheme.typography.bodyMedium,
                             color = if (skin.enabled) skin.ink else MaterialTheme.colorScheme.onPrimaryContainer,
                             fontWeight = FontWeight.Medium,
@@ -1425,7 +1425,7 @@ private fun JoinCreateRoomSection(
                 Button(
                     onClick = onCreateRoom,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = hasUsername,
+                    enabled = hasUsername && !isCreatingRoom && !isJoiningRoom,
                     shape = if (skin.enabled) AuraShapes.Pill else RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary,
@@ -1445,7 +1445,7 @@ private fun JoinCreateRoomSection(
                 Button(
                     onClick = onJoinRoom,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = hasUsername && hasRoomCode,
+                    enabled = hasUsername && hasRoomCode && !isJoiningRoom && !isCreatingRoom,
                     shape = if (skin.enabled) AuraShapes.Pill else RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (skin.enabled && skin.darkGround) AuraPalette.Blue

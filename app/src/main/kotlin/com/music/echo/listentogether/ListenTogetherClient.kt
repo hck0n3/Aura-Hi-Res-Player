@@ -141,6 +141,10 @@ class ListenTogetherClient @Inject constructor(
         private const val INITIAL_RECONNECT_DELAY_MS = 1000L  
         private const val MAX_RECONNECT_DELAY_MS = 120000L  
         private const val PING_INTERVAL_MS = 25000L
+        /** Galaxy / Private DNS / HuggingFace sleep: TCP can connect and the HTTP 101 never arrives. */
+        private const val HANDSHAKE_TIMEOUT_MS = 20_000L
+        /** Connected but CREATE_ROOM/JOIN_ROOM never answered (JSON ignored, space waking, etc.). */
+        private const val ROOM_ACTION_TIMEOUT_MS = 15_000L
         private const val MAX_LOG_ENTRIES = 500
         private const val SESSION_GRACE_PERIOD_MS = 10 * 60 * 1000L  
 
@@ -384,7 +388,11 @@ class ListenTogetherClient @Inject constructor(
 
     private var webSocket: WebSocket? = null
     private var pingJob: Job? = null
+    private var handshakeWatchdog: Job? = null
+    private var roomActionWatchdog: Job? = null
     private var reconnectAttempts = 0
+    @Volatile private var lastPingSentAtMs: Long = 0L
+    @Volatile private var smoothedOneWayMs: Long = 0L
     
     
     private var sessionToken: String? = null
@@ -428,6 +436,12 @@ class ListenTogetherClient @Inject constructor(
         .writeTimeout(30, TimeUnit.SECONDS)
         .pingInterval(30, TimeUnit.SECONDS)
         .build()
+
+    /**
+     * Guest-side one-way delay from this device's PING/PONG (RTT/2, EMA-smoothed).
+     * 0 until the first pong — PLAY then applies the host position as-is.
+     */
+    fun oneWayLatencyMs(): Long = smoothedOneWayMs.coerceIn(0L, ListenTogetherSync.MAX_ONE_WAY_COMPENSATION_MS)
 
     private fun getServerUrl(): String {
         val savedUrl = context.dataStore.get(ListenTogetherServerUrlKey, DEFAULT_SERVER_URL)
@@ -486,6 +500,7 @@ class ListenTogetherClient @Inject constructor(
         }
 
         _connectionState.value = ConnectionState.CONNECTING
+        armHandshakeWatchdog()
 
         // P49: getServerUrl() is a blocking DataStore read (runBlocking { data.first() }).
         // Run it (and the socket-handshake setup) off the caller's thread so a UI-thread
@@ -508,6 +523,8 @@ class ListenTogetherClient @Inject constructor(
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 log(LogLevel.INFO, "Connected to server")
+                handshakeWatchdog?.cancel()
+                handshakeWatchdog = null
                 _connectionState.value = ConnectionState.CONNECTED
                 reconnectAttempts = 0
                 startPingJob()
@@ -563,10 +580,12 @@ class ListenTogetherClient @Inject constructor(
             is PendingAction.CreateRoom -> {
                 log(LogLevel.INFO, "Executing pending create room", action.username)
                 sendMessage(MessageTypes.CREATE_ROOM, CreateRoomPayload(action.username))
+                armRoomActionWatchdog()
             }
             is PendingAction.JoinRoom -> {
                 log(LogLevel.INFO, "Executing pending join room", "${action.roomCode} as ${action.username}")
                 sendMessage(MessageTypes.JOIN_ROOM, JoinRoomPayload(action.roomCode.uppercase(), action.username))
+                armRoomActionWatchdog()
             }
         }
     }
@@ -577,6 +596,10 @@ class ListenTogetherClient @Inject constructor(
         releaseWakeLock() 
         pingJob?.cancel()
         pingJob = null
+        handshakeWatchdog?.cancel()
+        handshakeWatchdog = null
+        roomActionWatchdog?.cancel()
+        roomActionWatchdog = null
         webSocket?.close(1000, "User disconnected")
         webSocket = null
         _connectionState.value = ConnectionState.DISCONNECTED
@@ -603,10 +626,49 @@ class ListenTogetherClient @Inject constructor(
         pingJob?.cancel()
         pingJob = scope.launch {
             while (true) {
-                delay(PING_INTERVAL_MS)
+                lastPingSentAtMs = System.currentTimeMillis()
                 sendMessageNoPayload(MessageTypes.PING)
+                delay(PING_INTERVAL_MS)
             }
         }
+    }
+
+    private fun armHandshakeWatchdog() {
+        handshakeWatchdog?.cancel()
+        handshakeWatchdog = scope.launch {
+            delay(HANDSHAKE_TIMEOUT_MS)
+            if (_connectionState.value != ConnectionState.CONNECTING) return@launch
+            log(LogLevel.ERROR, "WebSocket handshake timed out")
+            val ws = webSocket
+            webSocket = null
+            if (ws != null) {
+                // onFailure -> handleConnectionFailure (reconnects if create/join is queued).
+                ws.cancel()
+            } else {
+                handleConnectionFailure(java.net.SocketTimeoutException("WebSocket handshake timed out"))
+            }
+        }
+    }
+
+    private fun armRoomActionWatchdog() {
+        roomActionWatchdog?.cancel()
+        roomActionWatchdog = scope.launch {
+            delay(ROOM_ACTION_TIMEOUT_MS)
+            if (_roomState.value != null || _role.value != RoomRole.NONE) return@launch
+            log(LogLevel.ERROR, "Create/join room timed out — server never answered")
+            emitEvent(ListenTogetherEvent.ConnectionError("Room action timed out"))
+        }
+    }
+
+    private fun recordPongRtt() {
+        val sent = lastPingSentAtMs
+        if (sent <= 0L) return
+        lastPingSentAtMs = 0L
+        val rtt = (System.currentTimeMillis() - sent).coerceAtLeast(0L)
+        val oneWay = rtt / 2L
+        val prev = smoothedOneWayMs
+        smoothedOneWayMs = if (prev <= 0L) oneWay else (prev * 3L + oneWay) / 4L
+        log(LogLevel.DEBUG, "Pong RTT", "${rtt}ms one-way=${smoothedOneWayMs}ms")
     }
     
     @Suppress("DEPRECATION")
@@ -733,8 +795,8 @@ class ListenTogetherClient @Inject constructor(
     private fun handleDisconnect() {
         pingJob?.cancel()
         pingJob = null
-        
-        
+        handshakeWatchdog?.cancel()
+        handshakeWatchdog = null
         
         _connectionState.value = ConnectionState.DISCONNECTED
         _pendingJoinRequests.value = emptyList()
@@ -752,13 +814,21 @@ class ListenTogetherClient @Inject constructor(
     private fun handleConnectionFailure(t: Throwable) {
         pingJob?.cancel()
         pingJob = null
+        handshakeWatchdog?.cancel()
+        handshakeWatchdog = null
         
         
-        val shouldReconnect = sessionToken != null || _roomState.value != null || pendingAction != null
-        
+        // Only auto-reconnect an existing room. A pending create/join must fail fast so the
+        // spinner is not 15 backoffs of a handshake that Galaxy/Knox/HF will never finish.
+        val shouldReconnect = sessionToken != null || _roomState.value != null
+
         if (!isNetworkAvailable) {
             log(LogLevel.WARNING, "Connection failure, waiting for network", t.message)
             _connectionState.value = ConnectionState.DISCONNECTED
+            if (pendingAction != null) {
+                pendingAction = null
+                emitEvent(ListenTogetherEvent.ConnectionError(t.message ?: "No network"))
+            }
             return
         }
         
@@ -793,14 +863,13 @@ class ListenTogetherClient @Inject constructor(
                     "Connection failed after $MAX_RECONNECT_ATTEMPTS attempts. ${t.message ?: "Unknown error"}"
                 ))
             } else {
-                
+                pendingAction = null
                 sessionToken = null
                 storedRoomCode = null
                 storedUsername = null
                 _roomState.value = null
                 _role.value = RoomRole.NONE
                 clearPersistedSession()
-                
                 emitEvent(ListenTogetherEvent.ConnectionError(t.message ?: "Unknown error"))
             }
         }
@@ -846,6 +915,8 @@ class ListenTogetherClient @Inject constructor(
                     
                     acquireWakeLock() 
                     log(LogLevel.INFO, "Room created", "Code: ${payload.roomCode}")
+                    roomActionWatchdog?.cancel()
+                    roomActionWatchdog = null
                     emitEvent(ListenTogetherEvent.RoomCreated(payload.roomCode, payload.userId))
                     
                     scope.launch(Dispatchers.Main) {
@@ -905,12 +976,16 @@ class ListenTogetherClient @Inject constructor(
                     
                     acquireWakeLock() 
                     log(LogLevel.INFO, "Joined room", "Code: ${payload.roomCode}")
+                    roomActionWatchdog?.cancel()
+                    roomActionWatchdog = null
                     emitEvent(ListenTogetherEvent.JoinApproved(payload.roomCode, payload.userId, payload.state))
                 }
                 
                 MessageTypes.JOIN_REJECTED -> {
                     val payload = codec.decodePayload(msgType, payloadBytes, detectedFormat) as? JoinRejectedPayload ?: return
                     log(LogLevel.WARNING, "Join rejected", payload.reason)
+                    roomActionWatchdog?.cancel()
+                    roomActionWatchdog = null
                     emitEvent(ListenTogetherEvent.JoinRejected(payload.reason))
                 }
                 
@@ -1134,7 +1209,7 @@ class ListenTogetherClient @Inject constructor(
                 }
                 
                 MessageTypes.PONG -> {
-                    log(LogLevel.DEBUG, "Pong received")
+                    recordPongRtt()
                 }
                 
                 MessageTypes.RECONNECTED -> {
@@ -1154,6 +1229,8 @@ class ListenTogetherClient @Inject constructor(
                     acquireWakeLock() 
                     log(LogLevel.INFO, "Successfully reconnected to room", 
                         "Code: ${payload.roomCode}, isHost: ${payload.isHost}, attempt was $reconnectAttempts")
+                    roomActionWatchdog?.cancel()
+                    roomActionWatchdog = null
                     emitEvent(ListenTogetherEvent.Reconnected(payload.roomCode, payload.userId, payload.state, payload.isHost))
                 }
                 
@@ -1220,7 +1297,7 @@ class ListenTogetherClient @Inject constructor(
         try {
             val data = codec.encode(type, payload)
             log(LogLevel.DEBUG, "Sending message", "$type (${codec.format.name})")
-            
+
             val success = webSocket?.send(okio.ByteString.of(*data)) ?: false
             if (!success) {
                 log(LogLevel.ERROR, "Failed to send message", type)
@@ -1248,6 +1325,7 @@ class ListenTogetherClient @Inject constructor(
         
         if (_connectionState.value == ConnectionState.CONNECTED) {
             sendMessage(MessageTypes.CREATE_ROOM, CreateRoomPayload(username))
+            armRoomActionWatchdog()
         } else {
             log(LogLevel.INFO, "Not connected, queueing create room action")
             pendingAction = PendingAction.CreateRoom(username)
@@ -1278,6 +1356,7 @@ class ListenTogetherClient @Inject constructor(
         
         if (_connectionState.value == ConnectionState.CONNECTED) {
             sendMessage(MessageTypes.JOIN_ROOM, JoinRoomPayload(roomCode.uppercase(), username))
+            armRoomActionWatchdog()
         } else {
             log(LogLevel.INFO, "Not connected, queueing join room action")
             pendingAction = PendingAction.JoinRoom(roomCode, username)

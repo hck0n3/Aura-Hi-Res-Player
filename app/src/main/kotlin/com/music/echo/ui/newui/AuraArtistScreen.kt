@@ -690,17 +690,21 @@ fun AuraArtistScreen(
                         }
                     }
                 } else {
-                    // Popular songs (YTM) first; "Tu biblioteca" after that, never instead of populares.
-                    // Play uses the FULL local catalogue (`allLibrarySongs`), never the preview rows.
-                    // YTM's own "From your library" shelf is filtered out so it does not repeat.
+                    // Popular → albums → videos, then "Tu biblioteca". Putting the local list under
+                    // populares packed the top of the page (owner: ruins the layout). Never instead of
+                    // populares. Play uses the FULL local catalogue (`allLibrarySongs`), never the
+                    // preview rows. YTM's own "From your library" shelf is filtered out so it does not
+                    // repeat.
                     val filteredLibraryPreview = filteredLibrarySongsYt.take(8)
-                    val insertLibraryAfterPopular = showedLocalLibraryPreview
-                    val firstNonPopularIndex = onlineArtistSections.indexOfFirst {
-                        !isArtistPopularSectionTitle(it.title)
-                    }.let { if (it < 0) onlineArtistSections.size else it }
+                    val showLibrarySection = showedLocalLibraryPreview
+                    val libraryInsertIndex = if (showLibrarySection) {
+                        artistLibraryInsertIndex(onlineArtistSections.map { it.title })
+                    } else {
+                        -1
+                    }
 
                     onlineArtistSections.forEachIndexed { sectionIndex, section ->
-                        if (insertLibraryAfterPopular && sectionIndex == firstNonPopularIndex) {
+                        if (sectionIndex == libraryInsertIndex) {
                             auraArtistLibraryPreviewItems(
                                 songs = filteredLibraryPreview,
                                 allSongs = filteredLibrarySongsYt,
@@ -912,7 +916,7 @@ fun AuraArtistScreen(
                             }
                         }
                     }
-                    if (insertLibraryAfterPopular && firstNonPopularIndex >= onlineArtistSections.size) {
+                    if (libraryInsertIndex >= onlineArtistSections.size) {
                         auraArtistLibraryPreviewItems(
                             songs = filteredLibraryPreview,
                             allSongs = filteredLibrarySongsYt,
@@ -1121,9 +1125,10 @@ private fun LazyListScope.auraArtistLibraryPreviewItems(
 }
 
 /**
- * Apple Music artist-page order: top songs, then Aura's "Tu biblioteca", then
- * latest, essentials, albums, videos, playlists, singles/EP, live, compilations,
- * appears-on, similar. Do not hide YouTube's populares to put library in that slot.
+ * Apple Music / YTM artist-page order for YouTube shelves. Aura's "Tu biblioteca" is NOT a
+ * YouTube shelf: [artistLibraryInsertIndex] draws it after albums and videos so the top of
+ * the page (populares + discs + videos) stays uncluttered. Do not hide populares to put
+ * library in that slot.
  */
 internal fun appleArtistSectionRank(title: String): Int {
     val t = title.trim().lowercase()
@@ -1159,6 +1164,23 @@ internal fun isArtistPopularSectionTitle(title: String): Boolean {
         t.contains("canciones más populares")
 }
 
+/** Videos are rank 5. "Tu biblioteca" is inserted after the last section at or below this rank. */
+internal const val ARTIST_LIBRARY_AFTER_MAX_RANK = 5
+
+/**
+ * Index in [sectionTitles] at which to draw Aura's local "Tu biblioteca" preview: after
+ * populares, latest, essentials, albums and videos (the last title whose
+ * [appleArtistSectionRank] is ≤ [ARTIST_LIBRARY_AFTER_MAX_RANK]). Playlists / singles /
+ * similar stay below it. Empty list → 0.
+ */
+internal fun artistLibraryInsertIndex(sectionTitles: List<String>): Int {
+    var lastAbove = -1
+    sectionTitles.forEachIndexed { i, title ->
+        if (appleArtistSectionRank(title) <= ARTIST_LIBRARY_AFTER_MAX_RANK) lastAbove = i
+    }
+    return lastAbove + 1
+}
+
 internal fun pinLatestArtistRelease(
     sections: List<ArtistSection>,
     latestTitle: String,
@@ -1177,7 +1199,7 @@ internal fun pinLatestArtistRelease(
 
 /**
  * YouTube Music often injects a "From your library" / "De tu biblioteca" shelf on artist pages.
- * Aura already draws [R.string.your_library] from the local catalogue after populares —
+ * Aura already draws [R.string.your_library] from the local catalogue after albums/videos —
  * showing both looks like a duplicated "Tu biblioteca".
  */
 private fun isArtistLibrarySectionTitle(

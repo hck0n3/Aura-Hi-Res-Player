@@ -1,14 +1,26 @@
-# Aura Hi-Res Player 0.6.193
+# Aura Hi-Res Player 0.6.194
 
-Tu biblioteca se sincroniza sola con tu cuenta cada 3 días, y también cuando tú quieras.
+Más estable al dar me gusta, Escuchar juntos menos pegado, artista más limpio y un círculo de descarga que no tapa el reproductor.
 
 ---
 
-## Biblioteca y cuenta
+## Reproducción
 
-- Toda la biblioteca (me gusta, playlists, suscripciones y lo que crees aquí) se actualiza en segundo plano cada 3 días.
-- Desde el avatar: «Sincronizar biblioteca ahora» (sigue aunque cierres la app) o «Programar sincronización» (cada 3 días, cada día, cada semana, o apagada).
-- Si ya habías puesto la sincronización automática en Desactivada, se respeta.
+- Dar me gusta (y que se descargue sola) ya no sube el volumen a mitad de canción.
+- El nivel se fija al empezar el tema; no se recalcula mientras suena.
+
+## Escuchar juntos
+
+- En Galaxy, Crear sala ya no se queda girando para siempre: si no conecta, ves un error y puedes reintentar.
+- Los móviles se corrigen más a menudo para que no suenen con eco de varios segundos.
+
+## Artista
+
+- Al explorar un artista: populares, luego álbumes, luego vídeos, y **después** lo que ya está en Tu biblioteca.
+
+## Reproductor
+
+- El círculo de «descargando» es pequeño, alrededor del icono, no un anillo enorme.
 
 ## Cómo actualizar
 

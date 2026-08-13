@@ -165,6 +165,7 @@ import iad1tya.echo.music.eq.audio.loudnessMakeupDb
 import iad1tya.echo.music.eq.audio.safeVolumeGainWithEqPreamp
 import iad1tya.echo.music.eq.audio.dbToLinear
 import iad1tya.echo.music.eq.audio.effectiveLoudnessDb
+import iad1tya.echo.music.eq.audio.isPlayingLoudnessFrozen
 import iad1tya.echo.music.eq.data.EQProfileRepository
 import iad1tya.echo.music.extensions.SilentHandler
 import iad1tya.echo.music.extensions.collect
@@ -713,15 +714,18 @@ class MusicService :
     private var isAudioEffectSessionOpened = false
     private var loudnessEnhancer: LoudnessEnhancer? = null
 
-    // Which mediaId we've already applied REAL loudness normalization to. Used so a format re-store for
-    // the SAME already-playing track (e.g. liking it kicks off an auto-download that re-saves the format)
-    // doesn't recompute the gain and audibly bump the volume mid-song.
-    private var lastNormalizedId: String? = null
+    // Which mediaId we've already applied loudness for THIS play. Frozen until the track changes:
+    // liking + auto-download used to re-store FormatEntity mid-song and the volume jumped. Volatile
+    // because the stream resolver (loader thread) also reads/writes it when priming from the same
+    // player-response that yields the URL — no extra network, no wait on Room.
+    @Volatile private var lastNormalizedId: String? = null
     // The id of the track currently playing, updated from onMediaItemTransition on the player thread. Lets the
     // ResolvingDataSource loader thread know "is this the current track?" WITHOUT a runBlocking hop to Main
     // (which could deadlock/stall stream resolution when Main is busy).
     @Volatile private var currentPlayingMediaId: String? = null
-    private var lastNormalizedHadLoudness: Boolean = false
+    // Live EQ processor of the audible player. The loader thread primes Safe Volume here before
+    // open() returns, so the first sample is already at the locked level.
+    @Volatile private var currentEqProcessor: CustomEqualizerAudioProcessor? = null
     // The gain/makeup actually applied for the current track. Re-asserted whenever setupLoudnessEnhancer is
     // re-invoked for the SAME track (e.g. an audio-effect-session re-open / processor flush when the screen
     // turns off or playback blips), so the chain can never be left at a stale/unity (raw, LOUDER) level — the
@@ -2865,6 +2869,7 @@ class MusicService :
             .build()
 
         playerEqProcessors[player] = eqProcessor
+        if (!isSecondary) currentEqProcessor = eqProcessor
         playerSilenceProcessors[player] = silenceProcessor
         playerNormProcessors[player] = normProcessor
         playerLimiterProcessors[player] = limiterProcessor
@@ -4899,6 +4904,41 @@ class MusicService :
         }
     }
 
+    /**
+     * Lock the live Safe Volume gain for [mediaId] from a stream resolve (same player-response as
+     * the URL — zero extra network). No-op if this isn't the audible track, or if this play is
+     * already frozen (like + auto-download must not move the volume).
+     *
+     * Safe to call from the loader thread: [currentEqProcessor] / [lastNormalizedId] are volatile
+     * and [CustomEqualizerAudioProcessor.applySafeVolume] is internally locked.
+     */
+    private fun lockLoudnessIfCurrent(
+        mediaId: String,
+        loudnessDb: Double?,
+        perceptualLoudnessDb: Double?,
+        measuredLoudnessDb: Double?,
+    ) {
+        val effective = effectiveLoudnessDb(loudnessDb, perceptualLoudnessDb, measuredLoudnessDb)
+        loudnessHintCache[mediaId] = effective
+        if (mediaId != currentPlayingMediaId) return
+        if (isPlayingLoudnessFrozen(mediaId, lastNormalizedId)) return
+        if (!normalizationEnabledHint && !safeVolumeEnabledHint) return
+        applyAndFreezeLoudness(mediaId, effective)
+    }
+
+    private fun applyAndFreezeLoudness(mediaId: String, loudnessDb: Double) {
+        val gain = normalizationMultiplier(loudnessDb, enabled = true)
+        val makeup = dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true))
+        lastAppliedGain = gain
+        lastAppliedMakeup = makeup
+        lastNormalizedId = mediaId
+        NormalizationGainAudioProcessor.gain = gain
+        TruePeakLimiterAudioProcessor.loudnessMakeup = makeup
+        if (safeVolumeEnabledHint) {
+            currentEqProcessor?.applySafeVolume(true, safeVolumeAppliedGain(gain * makeup))
+        }
+    }
+
     private fun setupLoudnessEnhancer() {
         val audioSessionId = player.audioSessionId
 
@@ -4921,8 +4961,8 @@ class MusicService :
 
         scope.launch {
             try {
-                val (currentMediaId, positionMs) = withContext(Dispatchers.Main) {
-                    Pair(player.currentMediaItem?.mediaId, player.currentPosition)
+                val currentMediaId = withContext(Dispatchers.Main) {
+                    player.currentMediaItem?.mediaId
                 }
 
                 val normalizeAudio = withContext(Dispatchers.IO) {
@@ -4941,48 +4981,18 @@ class MusicService :
                     Timber.tag(TAG).d("Audio normalization enabled: $normalizeAudio")
                     Timber.tag(TAG).d("Format loudnessDb: ${format?.loudnessDb}, perceptualLoudnessDb: ${format?.perceptualLoudnessDb}, measuredLoudnessDb: ${format?.measuredLoudnessDb}")
 
-
-                    // Normalize EVERY track to the same reference so none plays louder than another. Use
-                    // the real loudness when present, else a once-measured loudness (cached from a prior play),
-                    // else a conservative default (so non-YouTube tracks without metadata don't blast at their
-                    // raw level until measurement completes).
                     val hasRealLoudness = format?.loudnessDb != null || format?.perceptualLoudnessDb != null
-                    // "Known" = we have a usable loudness right now (metadata OR a cached measurement) → apply
-                    // instantly, no measurement. Only a TRULY unknown track (no metadata, never measured) is
-                    // measured live.
                     val hasKnownLoudness = hasRealLoudness || format?.measuredLoudnessDb != null
                     val loudnessDb = effectiveLoudnessDb(
                         format?.loudnessDb, format?.perceptualLoudnessDb, format?.measuredLoudnessDb,
                     )
-                    // Mirror into the in-memory hint cache so a future crossfade can pre-level this track without
-                    // a blocking disk read on the main thread (Fix B).
-                    if (hasKnownLoudness) currentMediaId?.let { loudnessHintCache[it] = loudnessDb }
+                    if (hasKnownLoudness) loudnessHintCache[currentMediaId] = loudnessDb
 
-                    // Apply the real-loudness upgrade ONLY near the START of the track (~first 8 s, where the
-                    // playback fetch returns it). After that, NEVER re-level the currently-playing track: liking
-                    // triggers an auto-download whose fetch can bring loudness for a track that started WITHOUT
-                    // it, and applying that mid-song is exactly what made the volume rise on like / fall on unlike.
-                    // DownloadUtil now also preserves existing loudness so a download can't CHANGE a
-                    // known-loudness track's row; this start-window is the safety net for tracks that genuinely
-                    // started with no loudness. combine() also de-dups on the loudness fields.
-                    // The applied gain/makeup for THIS track is IMMUTABLE once set. The ONLY allowed change is
-                    // the single legitimate early upgrade when YouTube's real loudness first arrives for a track
-                    // that started without it (within ~8 s of start) AND it actually changes the value. Every
-                    // other re-trigger of this function for the same playing track — a like/auto-download, the
-                    // next-track prefetch firing near the end, a session re-open on screen-off — RE-ASSERTS the
-                    // already-applied value and never moves the volume.
-                    val targetGain = normalizationMultiplier(loudnessDb, enabled = true)
-                    val targetMakeup = dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true))
-                    val realLoudnessJustArrived =
-                        hasRealLoudness && !lastNormalizedHadLoudness && positionMs < 8_000L
-                    val valueChanges = kotlin.math.abs(targetGain - lastAppliedGain) > 1e-3f ||
-                        kotlin.math.abs(targetMakeup - lastAppliedMakeup) > 1e-3f
-                    if (currentMediaId == lastNormalizedId && !(realLoudnessJustArrived && valueChanges)) {
+                    if (isPlayingLoudnessFrozen(currentMediaId, lastNormalizedId)) {
                         withContext(Dispatchers.Main) {
                             NormalizationGainAudioProcessor.gain = lastAppliedGain
                             TruePeakLimiterAudioProcessor.loudnessMakeup = lastAppliedMakeup
                             loudnessEnhancer?.enabled = false
-                            // Safe Volume (opt-in): re-assert the FULL levelling gain (attenuation x makeup).
                             playerEqProcessors[player]?.applySafeVolume(
                                 safeVol,
                                 if (safeVol) safeVolumeAppliedGain(lastAppliedGain * lastAppliedMakeup) else 1f,
@@ -4991,58 +5001,37 @@ class MusicService :
                         return@launch
                     }
 
+                    // No format row yet: the stream resolver primes from the SAME player-response as
+                    // the URL before open() returns. Applying DEFAULT here would freeze a provisional
+                    // gain that a later download upgrades — the swell on Me gusta.
+                    if (format == null) return@launch
+
+                    val targetGain = normalizationMultiplier(loudnessDb, enabled = true)
+                    val targetMakeup = dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true))
+
                     withContext(Dispatchers.Main) {
-                        // Two-stage loudness normalization to a reference (TIDAL-style): attenuate loud
-                        // masters (≤ 0 dB) and boost quiet ones (makeup, ≥ 0 dB). BOTH stages are applied as
-                        // a single front gain in the native float chain, ahead of the true-peak limiter that
-                        // catches the boosted peaks → loud + full, no clip. (The comment here used to say the
-                        // makeup happened "inside the true-peak limiter" — that processor is a dead stub, so
-                        // in practice the boost half never happened at all.)
+                        if (isPlayingLoudnessFrozen(currentMediaId, lastNormalizedId)) {
+                            NormalizationGainAudioProcessor.gain = lastAppliedGain
+                            TruePeakLimiterAudioProcessor.loudnessMakeup = lastAppliedMakeup
+                            loudnessEnhancer?.enabled = false
+                            playerEqProcessors[player]?.applySafeVolume(
+                                safeVol,
+                                if (safeVol) safeVolumeAppliedGain(lastAppliedGain * lastAppliedMakeup) else 1f,
+                            )
+                            return@withContext
+                        }
                         lastAppliedGain = targetGain
                         lastAppliedMakeup = targetMakeup
                         NormalizationGainAudioProcessor.gain = targetGain
                         TruePeakLimiterAudioProcessor.loudnessMakeup = targetMakeup
                         loudnessEnhancer?.enabled = false
-                        // Safe Volume (opt-in): apply the FULL two-stage levelling to the live EQ processor —
-                        // the only real DSP. `targetGain` alone is the ATTENUATE half; `targetMakeup` is the
-                        // BOOST half that brings a quiet track up to the reference. The makeup used to be
-                        // handed to TruePeakLimiterAudioProcessor, which is a dead stub, so it was silently
-                        // dropped and Safe Volume could only ever turn things DOWN — a quiet track stayed
-                        // quiet forever and the library never actually levelled. Multiplying is exact here:
-                        // normalizationMultiplier clamps -loudnessDb to [-12, 0] dB and loudnessMakeupDb
-                        // clamps the same value to [0, +3] dB, so their product is one gain of
-                        // clamp(-loudnessDb, -12, +3) dB — attenuation is unchanged, the boost side is
-                        // deliberately modest (see loudnessMakeupDb for why +12 would pump here). The native
-                        // stage ramps to it and the limiter catches the peaks. Off → unity, bit-perfect.
                         playerEqProcessors[player]?.applySafeVolume(
                             safeVol,
                             if (safeVol) safeVolumeAppliedGain(targetGain * targetMakeup) else 1f,
                         )
-                        // Do NOT push THIS track's Safe Volume onto secondaryPlayer. The secondary is
-                        // pre-leveled for the NEXT song (prepareSecondaryPlayer); stomping it with the
-                        // current track's gain made the incoming fade start at the wrong level and then
-                        // snap/correct at swap — heard as a sudden volume drop or jump mid-transition.
-                        // During an active fade secondaryPlayer is already null; fadingPlayer keeps its
-                        // own pin from performCrossfadeSwap.
                         lastNormalizedId = currentMediaId
-                        lastNormalizedHadLoudness = hasRealLoudness
-
-                        // Per-track LIVE measurement (only for TRULY unknown tracks). If we already have a
-                        // usable loudness (metadata or a cached measurement), DISARM measurement and apply
-                        // instantly. Otherwise ARM measurement on the current player's processor — it integrates
-                        // the next ~12 s and publishes measuredLoudnessDb; the periodic check applies it ONCE.
-                        val norm = playerNormProcessors[player]
-                        if (hasKnownLoudness) {
-                            norm?.measureThisTrack = false
-                            // Already known/applied → mark so the one-shot re-level never fires for this track.
-                            measuredAppliedForId = currentMediaId
-                        } else {
-                            // Provisional DEFAULT (≈7 dB) is already baked into loudnessDb above; arm a fresh
-                            // measurement (zeroes accumulators + commit flag, keyed on this track id).
-                            norm?.startMeasurement(currentMediaId)
-                            // Allow the one-shot re-level to fire for this (newly measured) track.
-                            if (measuredAppliedForId == currentMediaId) measuredAppliedForId = null
-                        }
+                        playerNormProcessors[player]?.measureThisTrack = false
+                        measuredAppliedForId = currentMediaId
                         Timber.tag(TAG).i("Normalization set (loudnessDb=$loudnessDb, real=$hasRealLoudness, known=$hasKnownLoudness, makeup=${TruePeakLimiterAudioProcessor.loudnessMakeup})")
                     }
                 } else {
@@ -5071,7 +5060,6 @@ class MusicService :
                     // Reset so RE-ENABLING normalization for the SAME track re-applies. The guard above keys on
                     // lastNormalizedId; without this reset, toggling normalization off→on mid-song was a no-op.
                     lastNormalizedId = null
-                    lastNormalizedHadLoudness = false
                 }
             } catch (e: Exception) {
                 reportException(e)
@@ -5082,20 +5070,16 @@ class MusicService :
 
     /**
      * CACHE-ONLY ReplayGain-style measurement for a track that started WITHOUT loudness metadata.
-     * The NormalizationGainAudioProcessor measures the first ~12 s passively; when it commits a measured
-     * loudness, we CACHE it to the DB (preserving any metadata loudness) so the NEXT play is leveled from the
-     * first second. We deliberately do NOT re-level the currently-playing track mid-song — the user dislikes
-     * any mid-song volume change. Fires at most ONCE per track (measuredAppliedForId guard). The next play
-     * reads the cached value via effectiveLoudnessDb and applies it at start, like a metadata track.
+     * When a measurement commits we persist it so the NEXT play is levelled from the first second.
+     * We never change the live gain — a mid-song volume change is exactly what the owner hears
+     * after liking a song (auto-download) and refuses.
      */
     private suspend fun maybeApplyMeasuredLoudness() {
-        // Gather player-thread state atomically.
         data class Snap(
             val mediaId: String?,
             val committed: Boolean,
             val measureId: String?,
             val measured: Double?,
-            val overridePinned: Boolean,
         )
         val snap = withContext(Dispatchers.Main) {
             val norm = playerNormProcessors[player]
@@ -5104,46 +5088,19 @@ class MusicService :
                 committed = norm?.measurementCommitted == true,
                 measureId = norm?.measureTrackId,
                 measured = norm?.measuredLoudnessDb,
-                // A crossfade pins a per-instance gain; don't write the shared statics under it.
-                overridePinned = isCrossfading || norm?.instanceGain != null,
             )
         }
         val mediaId = snap.mediaId ?: return
         if (!snap.committed) return
-        if (snap.measureId != mediaId) return            // committed value belongs to a different track
-        if (measuredAppliedForId == mediaId) return        // already re-leveled this track once
-        if (snap.overridePinned) return                    // defer; a crossfade owns the gain right now
+        if (snap.measureId != mediaId) return
+        if (measuredAppliedForId == mediaId) return
         val measured = snap.measured ?: return
 
+        measuredAppliedForId = mediaId
         withContext(Dispatchers.Main) {
-            val norm = playerNormProcessors[player]
-            if (player.currentMediaItem?.mediaId != mediaId) return@withContext
-            if (norm?.measurementCommitted != true || norm.measureTrackId != mediaId) return@withContext
-            if (measuredAppliedForId == mediaId) return@withContext
-            
-            val targetGain = normalizationMultiplier(measured, enabled = true)
-            val targetMakeup = dbToLinear(loudnessMakeupDb(measured, enabled = true))
-            
-            lastAppliedGain = targetGain
-            lastAppliedMakeup = targetMakeup
-            NormalizationGainAudioProcessor.gain = targetGain
-            TruePeakLimiterAudioProcessor.loudnessMakeup = targetMakeup
-            // Same full levelling gain as the main path, so a measured value can't apply only its
-            // attenuate half. (Currently unreachable — live measurement was deliberately removed after it
-            // caused saturation/pumping — but keeping it correct stops a latent bug if it is ever revived.)
-            // safeVolumeEnabledHint, NOT dataStore.get(): that extension is runBlocking { data.first() } and
-            // this runs on Main — the exact ANR pattern this file documents as a past regression.
-            if (safeVolumeEnabledHint) {
-                playerEqProcessors[player]?.applySafeVolume(true, safeVolumeAppliedGain(targetGain * targetMakeup))
-            }
-
-            norm.measureThisTrack = false
-            measuredAppliedForId = mediaId
-            Timber.tag(TAG).i("Measured loudness applied for $mediaId: ${measured}dB")
+            playerNormProcessors[player]?.measureThisTrack = false
         }
 
-        // Cache the measured value, PRESERVING any metadata loudness (mirror the format-store preserve
-        // pattern): only set measuredLoudnessDb, keep loudnessDb/perceptualLoudnessDb and the rest intact.
         runCatching {
             val existing = withContext(Dispatchers.IO) { database.format(mediaId).first() }
             if (existing != null) {
@@ -5151,7 +5108,6 @@ class MusicService :
                     upsert(existing.copy(measuredLoudnessDb = measured))
                 }
             } else {
-                // For local files or files without metadata, cache the measurement in a dummy format row.
                 database.query {
                     upsert(iad1tya.echo.music.db.entities.FormatEntity(
                         id = mediaId,
@@ -5369,6 +5325,12 @@ class MusicService :
         reason: Int,
     ) {
         currentPlayingMediaId = mediaItem?.mediaId
+        mediaItem?.mediaId?.let { id ->
+            if (id != lastNormalizedId) lastNormalizedId = null
+            if (normalizationEnabledHint || safeVolumeEnabledHint) {
+                loudnessHintCache[id]?.let { applyAndFreezeLoudness(id, it) }
+            }
+        }
         // A track boundary is the cheap moment to engage audio offload: the renderer re-init the
         // preference change causes is inaudible here. See publishOffloadDecision.
         flushPendingOffloadEnable()
@@ -6044,8 +6006,8 @@ class MusicService :
             while (true) {
                 kotlinx.coroutines.delay(5000)
                 tick++
-                // ONE-SHOT measurement-driven re-level: if the current track had no loudness and we've now
-                // integrated enough to commit a measured value, apply it ONCE (slow, inaudible ramp) + cache it.
+                // ONE-SHOT measurement cache: persist a measured loudness for the NEXT play. Never
+                // moves the live gain (like + auto-download used that path to swell the volume).
                 runCatching { maybeApplyMeasuredLoudness() }
                 val podcast = withContext(Dispatchers.Main) {
                     if (!player.isPlaying) return@withContext null
@@ -8448,6 +8410,10 @@ class MusicService :
                     Timber.tag(TAG).w("No loudness data available from YouTube for video: $mediaId")
                 }
 
+                // Prime Safe Volume from THIS same player-response (no extra network, no Room wait)
+                // BEFORE open() returns, so the first decoded sample is already at the locked level.
+                lockLoudnessIfCurrent(mediaId, loudnessDb, perceptualLoudnessDb, measuredLoudnessDb)
+
                 database.query {
                     upsert(
                         FormatEntity(
@@ -8848,6 +8814,7 @@ class MusicService :
             pre.addListener(this)
             player = pre
             _playerFlow.value = pre // UI (PlayerVideoSurface/MiniPlayer/PiP) re-attaches the surface here
+            currentEqProcessor = playerEqProcessors[pre]
             try {
                 (mediaSession as MediaSession).player = pre
             } catch (e: Exception) {
@@ -10653,22 +10620,19 @@ class MusicService :
                 if (!normalize && !safeVolumeEnabledHint) return@launch
                 val fmt = withContext(Dispatchers.IO) { database.format(incomingId).first() }
                 val loudnessDb = effectiveLoudnessDb(fmt?.loudnessDb, fmt?.perceptualLoudnessDb, fmt?.measuredLoudnessDb)
-                if (fmt?.loudnessDb != null || fmt?.perceptualLoudnessDb != null || fmt?.measuredLoudnessDb != null) {
-                    loudnessHintCache[incomingId] = loudnessDb // warm the cache for the next crossfade into this track
-                }
+                loudnessHintCache[incomingId] = loudnessDb
                 withContext(Dispatchers.Main) {
-                    // Apply to the incoming player whether it's still the secondary OR has already been swapped
-                    // to current (the fast/fallback crossfade path swaps synchronously before this async prime
-                    // resolves). `sec` is the same ExoPlayer object before and after the swap, so the map lookup
-                    // by `sec` still resolves. The `isCrossfading` guard prevents re-setting the override AFTER
-                    // cleanupCrossfade has cleared it (which would freeze the survivor's normalization).
                     if (secondaryPlayer === sec || (player === sec && isCrossfading)) {
                         val mult = normalizationMultiplier(loudnessDb, enabled = true)
                         val makeup = dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true))
                         playerNormProcessors[sec]?.instanceGain = mult
                         playerLimiterProcessors[sec]?.setInstanceMakeup(makeup, null)
-                        // Full gain, same as the sync prime above — never only the attenuate half.
                         if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult * makeup)
+                        if (player === sec) {
+                            lastAppliedGain = mult
+                            lastAppliedMakeup = makeup
+                            lastNormalizedId = incomingId
+                        }
                     }
                 }
             }
@@ -10725,6 +10689,15 @@ class MusicService :
         playerLimiterProcessors[currentPlayer]?.setInstanceMakeup(TruePeakLimiterAudioProcessor.loudnessMakeup, null)
         player = nextPlayer
         _playerFlow.value = player
+        currentEqProcessor = playerEqProcessors[nextPlayer]
+        val incomingIdNow = nextPlayer.currentMediaItem?.mediaId
+        if (incomingIdNow != null && (normalizationEnabledHint || safeVolumeEnabledHint)) {
+            loudnessHintCache[incomingIdNow]?.let { ld ->
+                lastAppliedGain = normalizationMultiplier(ld, enabled = true)
+                lastAppliedMakeup = dbToLinear(loudnessMakeupDb(ld, enabled = true))
+            }
+            lastNormalizedId = incomingIdNow
+        }
         secondaryPlayer = null
 
         fadingPlayer?.removeListener(this)
@@ -10866,8 +10839,8 @@ class MusicService :
         // (re)normalizes normally via setupLoudnessEnhancer.
         playerNormProcessors[player]?.instanceGain = null
         playerLimiterProcessors[player]?.setInstanceMakeup(null, null)
-        lastNormalizedId = null
-        lastNormalizedHadLoudness = false
+        // Incoming track is already the audible one. Do NOT clear lastNormalizedId: that disarmed
+        // the freeze for the rest of the song, so liking it (auto-download) re-levelled mid-play.
         // Refine the per-song tail memory with the EXACT end-of-stream measurement when the decoder
         // reached EOS (it runs ahead of the playback clock, so this is usually available even though the
         // silent tail itself never audibly played). Read BEFORE stop() — duration/item may reset after.

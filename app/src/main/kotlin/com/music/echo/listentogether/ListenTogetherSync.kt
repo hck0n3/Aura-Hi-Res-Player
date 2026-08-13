@@ -71,6 +71,27 @@ object ListenTogetherSync {
         return clampToDuration(base + elapsed, durationMs)
     }
 
+    /**
+     * Advance [basePositionMs] by the guest's measured one-way network delay (RTT/2 from PING/PONG
+     * on THIS device). Unlike [compensatedPosition], this does not mix two wall clocks: both the
+     * ping and the pong are timestamped locally. Without it, a PLAY that spent 200–800 ms on the
+     * wire lands the guest that far behind the host, and the 2–3 s seek gates treated that as "in
+     * sync". Capped so a stalled ping cannot jump the guest seconds ahead.
+     */
+    fun networkCompensatedPosition(
+        basePositionMs: Long,
+        oneWayLatencyMs: Long,
+        isPlaying: Boolean,
+        durationMs: Long = 0L,
+    ): Long {
+        val base = basePositionMs.coerceAtLeast(0L)
+        if (!isPlaying) return clampToDuration(base, durationMs)
+        val extra = oneWayLatencyMs.coerceIn(0L, MAX_ONE_WAY_COMPENSATION_MS)
+        return clampToDuration(base + extra, durationMs)
+    }
+
+    const val MAX_ONE_WAY_COMPENSATION_MS = 2_500L
+
     private fun clampToDuration(positionMs: Long, durationMs: Long): Long =
         if (durationMs > 0L) positionMs.coerceAtMost(durationMs) else positionMs
 

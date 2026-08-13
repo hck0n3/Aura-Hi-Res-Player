@@ -231,7 +231,8 @@ constructor(
             // the right value. Overwriting it changed the CURRENTLY-PLAYING track's normalization (currentFormat
             // is a Room Flow) → the volume audibly ROSE when the user liked a song (auto-download) and fell back
             // on unlike. Mirror the playback factory's loudness-preservation so a download never re-levels the
-            // playing track.
+            // playing track. MusicService also FREEZES the live gain for the rest of this play, so even a first
+            // fill (existing was null) is cached for the NEXT play only.
             val existingFmt = runBlocking(Dispatchers.IO) { database.format(mediaId).first() }
 
             database.query {

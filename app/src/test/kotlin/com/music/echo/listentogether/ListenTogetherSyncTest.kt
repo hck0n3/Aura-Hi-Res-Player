@@ -157,6 +157,37 @@ class ListenTogetherSyncTest {
         assertEquals(11_000L, applied)
     }
 
+    /** One-way delay is added only while the host is playing — a paused host must not jump forward. */
+    @Test
+    fun networkDelayIsAddedWhilePlaying() {
+        val applied = ListenTogetherSync.networkCompensatedPosition(
+            basePositionMs = 10_000L,
+            oneWayLatencyMs = 350L,
+            isPlaying = true,
+        )
+        assertEquals(10_350L, applied)
+    }
+
+    @Test
+    fun networkDelayIsIgnoredWhilePaused() {
+        val applied = ListenTogetherSync.networkCompensatedPosition(
+            basePositionMs = 10_000L,
+            oneWayLatencyMs = 350L,
+            isPlaying = false,
+        )
+        assertEquals(10_000L, applied)
+    }
+
+    @Test
+    fun aStalledPingCannotJumpTheGuestSecondsAhead() {
+        val applied = ListenTogetherSync.networkCompensatedPosition(
+            basePositionMs = 10_000L,
+            oneWayLatencyMs = 30_000L,
+            isPlaying = true,
+        )
+        assertEquals(10_000L + ListenTogetherSync.MAX_ONE_WAY_COMPENSATION_MS, applied)
+    }
+
     /** No capture timestamp means nothing can be reasoned about staleness — apply as-is. */
     @Test
     fun aMissingCaptureTimestampAppliesThePositionUnchanged() {

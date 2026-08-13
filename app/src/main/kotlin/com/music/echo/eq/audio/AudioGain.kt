@@ -93,6 +93,14 @@ fun effectiveLoudnessDb(
 ): Double =
     loudnessDb ?: perceptualLoudnessDb ?: measuredLoudnessDb ?: DEFAULT_UNKNOWN_LOUDNESS_DB
 
+/**
+ * Once a play has locked its gain, later loudness (auto-download on like, a measurement finishing)
+ * must not change the live volume. The new value is cached for the NEXT play, which starts already
+ * levelled. A different [playingId] is a new track and may take a new gain.
+ */
+fun isPlayingLoudnessFrozen(playingId: String?, lockedId: String?): Boolean =
+    playingId != null && playingId == lockedId
+
 /** Linear amplitude multiplier for a dB gain (e.g. -6 dB → 0.501, +6 dB → 1.995). */
 fun dbToLinear(db: Double): Float = 10.0.pow(db / 20.0).toFloat()
 

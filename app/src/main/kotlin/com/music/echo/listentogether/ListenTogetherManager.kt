@@ -66,11 +66,12 @@ class ListenTogetherManager @Inject constructor(
 
         private const val SYNC_DEBOUNCE_THRESHOLD_MS = 1000L
 
+        // Independent YouTube streams cannot be sample-accurate. 2–3 s was treated as "in sync",
+        // which is why two phones sounded like an echo. Correct when the gap is still audible
+        // but don't seek on every 50 ms of decoder jitter.
+        private const val POSITION_TOLERANCE_MS = 400L
 
-        private const val POSITION_TOLERANCE_MS = 2000L
-
-
-        private const val PLAYBACK_POSITION_TOLERANCE_MS = 3000L
+        private const val PLAYBACK_POSITION_TOLERANCE_MS = 600L
 
 
         private const val BUFFER_WAIT_TIMEOUT_MS = 8000L
@@ -1095,16 +1096,16 @@ class ListenTogetherManager @Inject constructor(
                 PlaybackActions.PLAY -> {
                     val basePos = action.position ?: 0L
                     val now = System.currentTimeMillis()
-                    // NOTE (host->guest network latency): serverTime is meant to be stamped by the room
-                    // server so this subtraction measures one clock against itself. Nothing populates it
-                    // today — the client never sends it and the protobuf codec turns 0 back into null —
-                    // so this branch is inert and one-way latency is NOT compensated. It must stay that
-                    // way until there is a real clock-offset handshake (RTT over PING/PONG): stamping it
-                    // with a raw host wall clock and subtracting the guest's would inject the two
-                    // devices' clock skew straight into the seek position.
+                    // Prefer a real server timestamp when the room server actually stamps one.
+                    // Until then, advance by this device's measured one-way delay (PING/PONG RTT/2)
+                    // — that does not mix two wall clocks. See ListenTogetherSync.networkCompensatedPosition.
                     val adjustedPos = action.serverTime?.let { serverTime ->
                         basePos + kotlin.math.max(0L, now - serverTime)
-                    } ?: basePos
+                    } ?: ListenTogetherSync.networkCompensatedPosition(
+                        basePositionMs = basePos,
+                        oneWayLatencyMs = client.oneWayLatencyMs(),
+                        isPlaying = true,
+                    )
 
                     Timber.tag(TAG).d("Guest: PLAY at position $adjustedPos, currently playing=${player.playWhenReady}")
                     trace(
@@ -2081,7 +2082,7 @@ class ListenTogetherManager @Inject constructor(
         if (heartbeatJob?.isActive == true) return
         heartbeatJob = scope.launch {
             while (heartbeatJob?.isActive == true && isInRoom && isHost) {
-                delay(10000L) 
+                delay(5000L) 
                 playerConnection?.player?.let { player ->
                     if (player.playWhenReady && player.playbackState == Player.STATE_READY) {
                         val pos = player.currentPosition
@@ -2091,7 +2092,7 @@ class ListenTogetherManager @Inject constructor(
                 }
             }
         }
-        Timber.tag(TAG).d("Host heartbeat started (10s interval)")
+        Timber.tag(TAG).d("Host heartbeat started (5s interval)")
     }
 
     private fun stopHeartbeat() {
