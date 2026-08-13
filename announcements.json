@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-13T17:42:00Z",
+  "updatedAt": "2026-08-13T20:27:00Z",
   "items": [
+    {
+      "id": "aviso-20260813-202700",
+      "date": "2026-08-13",
+      "publishedAt": "2026-08-13T20:27:00Z",
+      "title": "Aura Hi-Res 0.6.195: artista, Sugerencias y Lista IA",
+      "body": "Aura Hi-Res 0.6.195 ya está lista para descargar.\n\n• En un artista, populares, álbumes, vídeos y Tu biblioteca se deslizan de lado, como en Inicio.\n• Al tocar Inicio, Novedades o Biblioteca ya no se abre el reproductor flotante por error.\n• En Sugerencias, canción, vídeo, álbum y artista reproducen o abren lo que tocaste.\n• Crear playlist con IA ya no inventa temas: si no encuentra la canción, la omite.\n• Las barras de búsqueda se leen mejor y se quedan fijas al recorrer resultados.\n• La ventana del avatar cabe en pantalla sin tener que desplazarte.\n\nActualiza desde el menú de tu cuenta (avatar) ▸ Actualizaciones. Gracias por estar en Aura.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260813-174200",
       "date": "2026-08-13",
