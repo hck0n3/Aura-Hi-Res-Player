@@ -1,14 +1,14 @@
-# Aura Hi-Res Player 0.6.192
+# Aura Hi-Res Player 0.6.193
 
-Aleatorio con memoria en álbumes, EP y playlists que sigues, y el visto de ya oída aunque esa opción esté apagada.
+Tu biblioteca se sincroniza sola con tu cuenta cada 3 días, y también cuando tú quieras.
 
 ---
 
-## Aleatorio con memoria
+## Biblioteca y cuenta
 
-- El aleatorio que no repite ahora funciona en álbumes, EP, playlists tuyas y playlists que sigues, no solo en las que creas.
-- Si ya habías oído canciones de esa lista, al tocar Aleatorio te pregunta si continuar o empezar de cero.
-- Las canciones que ya sonaron se marcan con un visto aunque «Aleatorio mejorado» esté apagado.
+- Toda la biblioteca (me gusta, playlists, suscripciones y lo que crees aquí) se actualiza en segundo plano cada 3 días.
+- Desde el avatar: «Sincronizar biblioteca ahora» (sigue aunque cierres la app) o «Programar sincronización» (cada 3 días, cada día, cada semana, o apagada).
+- Si ya habías puesto la sincronización automática en Desactivada, se respeta.
 
 ## Cómo actualizar
 

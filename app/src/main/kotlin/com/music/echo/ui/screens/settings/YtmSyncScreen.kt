@@ -51,9 +51,10 @@ import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.AccountSettingsViewModel
 
 /**
- * Manual "sync from YouTube Music" hub. Reached from Settings ▸ Import (next to Spotify import) and
- * from first-run onboarding. The user triggers each kind of content on demand — nothing runs
- * automatically. Requires being signed in to YouTube Music; otherwise it offers a sign-in button.
+ * YouTube Music library sync hub. Reached from Settings ▸ Import, the account sheet, and
+ * first-run onboarding. Manual buttons enqueue a WorkManager job that survives closing the app.
+ * A periodic worker (default every 3 days) keeps the whole library mirrored in the background.
+ * Requires being signed in to YouTube Music; otherwise it offers a sign-in button.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -129,8 +130,9 @@ fun YtmSyncScreen(
             }
 
             Text(
-                "Elige qué traer de tu cuenta. La sincronización corre en segundo plano y continúa aunque " +
-                    "cierres la app, hasta completarse. Tú decides qué y cuándo.",
+                "Sincroniza toda tu biblioteca con la cuenta: me gusta, playlists, suscripciones y lo que " +
+                    "crees aquí. Puedes hacerlo ahora (sigue en segundo plano aunque cierres la app) o " +
+                    "dejar que se actualice sola cada 3 días.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 12.dp),
@@ -204,7 +206,10 @@ fun YtmSyncScreen(
                 modifier = Modifier.padding(start = 6.dp, bottom = 8.dp),
             )
 
-            val (autoFreq, setAutoFreq) = rememberPreference(YtmAutoSyncFreqDaysKey, 0)
+            val (autoFreq, setAutoFreq) = rememberPreference(
+                YtmAutoSyncFreqDaysKey,
+                iad1tya.echo.music.utils.YtmAutoSyncWorker.DEFAULT_FREQ_DAYS,
+            )
             val (lastSyncMs, _) = rememberPreference(YtmLastSyncKey, 0L)
             // Tick once a minute so the "hace X" elapsed time stays current while the screen is open.
             val nowTick by androidx.compose.runtime.produceState(initialValue = System.currentTimeMillis()) {
@@ -233,6 +238,17 @@ fun YtmSyncScreen(
                         title = { Text("Desactivada") },
                         description = { if (autoFreq <= 0) Text("Seleccionada") },
                         onClick = { applyFreq(0) },
+                    ),
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.sync),
+                        title = { Text("Cada 3 días") },
+                        description = {
+                            Text(
+                                if (autoFreq == 3) "Seleccionada — recomendada"
+                                else "Recomendada: toda la biblioteca, en segundo plano"
+                            )
+                        },
+                        onClick = { applyFreq(3) },
                     ),
                     Material3SettingsItem(
                         icon = painterResource(R.drawable.sync),

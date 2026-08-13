@@ -1,5 +1,6 @@
 package iad1tya.echo.music.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -174,6 +176,7 @@ private fun SettingDialogeBody(
     onNavigate: (String) -> Unit,
 ) {
     val hasUnread = unreadNotices > 0
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -295,6 +298,33 @@ private fun SettingDialogeBody(
                             )
                         },
                         onClick = { onYtmSyncChange(!ytmSync) },
+                    ),
+                    Material3SettingsItem(
+                        title = { Text("Sincronizar biblioteca ahora") },
+                        description = {
+                            Text("Toda la biblioteca con tu cuenta. Sigue en segundo plano aunque cierres la app.")
+                        },
+                        icon = painterResource(R.drawable.sync),
+                        onClick = {
+                            iad1tya.echo.music.utils.YtmSyncWorker.enqueue(
+                                context,
+                                iad1tya.echo.music.utils.YtmSyncWorker.TYPE_ALL,
+                            )
+                            Toast.makeText(
+                                context,
+                                "Sincronizando toda la biblioteca… (continúa en segundo plano)",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            onDismissRequest()
+                        },
+                    ),
+                    Material3SettingsItem(
+                        title = { Text("Programar sincronización") },
+                        description = {
+                            Text("Cada 3 días por defecto, o elige cuándo")
+                        },
+                        icon = painterResource(R.drawable.sync),
+                        onClick = { onNavigate("settings/ytm_sync") },
                     ),
                 ),
             )

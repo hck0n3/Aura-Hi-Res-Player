@@ -258,6 +258,8 @@ pantalla y resetea la barra superior (`MainActivity.kt:1358-1362`, `:1503-1507`)
 | Grupo **«Preferences»** *(hardcoded, en inglés)* | Hoja de cuenta | `ui/screens/SettingDialoge.kt:129` | informativo | — | solo con sesión |
 | **«Usar la cuenta para explorar»** *(hardcoded)* + interruptor | Hoja de cuenta | `ui/screens/SettingDialoge.kt:132-150` | conmutador | rara | solo con sesión |
 | **«Sincronización con YouTube Music»** *(hardcoded)* + interruptor | Hoja de cuenta | `ui/screens/SettingDialoge.kt:151-162` | conmutador | rara | solo con sesión |
+| **«Sincronizar biblioteca ahora»** *(hardcoded)* — desc. «Toda la biblioteca con tu cuenta. Sigue en segundo plano aunque cierres la app.» | Hoja de cuenta | `ui/screens/SettingDialoge.kt:302-320` | acción primaria | rara | solo con sesión; encola `YtmSyncWorker.TYPE_ALL` |
+| **«Programar sincronización»** *(hardcoded)* — desc. «Cada 3 días por defecto, o elige cuándo» → `settings/ytm_sync` | Hoja de cuenta | `ui/screens/SettingDialoge.kt:321-328` | navegación | rara | solo con sesión |
 | Grupo **«App»** *(hardcoded)* | Hoja de cuenta | `ui/screens/SettingDialoge.kt:168` | informativo | — | siempre |
 | **«Ajustes»** *(hardcoded)* → `settings` | Hoja de cuenta | `ui/screens/SettingDialoge.kt:171-175` | navegación | diaria | siempre |
 | **«Acerca de»** *(hardcoded)* + número de versión → `settings/about` | Hoja de cuenta | `ui/screens/SettingDialoge.kt:176-181` | navegación | rara | siempre |
@@ -2917,6 +2919,8 @@ Ruta `account` registrada en `NavigationBuilder.kt:138`. **No se llega desde Aju
 | Finalizar sesión / Cuenta | Cuenta | AccountSettingsScreen.kt:127 | destructiva / acción primaria | rara | según estado de sesión |
 | Más contenido (grupo «Reproductor y contenido») | Cuenta | AccountSettingsScreen.kt:158 | conmutador | rara | solo si hay sesión iniciada |
 | Sincronización automática con la cuenta | Cuenta | AccountSettingsScreen.kt:185 | conmutador | rara | solo si hay sesión iniciada |
+| Sincronizar biblioteca ahora (hardcoded) | Cuenta | AccountSettingsScreen.kt | acción primaria | rara | solo si hay sesión iniciada; encola `YtmSyncWorker.TYPE_ALL` |
+| Programar sincronización (hardcoded) → `settings/ytm_sync` | Cuenta | AccountSettingsScreen.kt | navegación | rara | solo si hay sesión iniciada |
 | Espejar favoritos desde mi cuenta (hardcoded) — desc. «Deja tus favoritos del app idénticos a los de tu cuenta de YouTube. Puede quitar los que ya no estén en tu cuenta.» (hardcoded) | Cuenta | AccountSettingsScreen.kt:205 | conmutador | rara | solo si hay sesión iniciada |
 | Cancelar / Borrar datos / Conservar datos (diálogo Cerrar sesión) | Diálogo: Cerrar sesión | AccountSettingsScreen.kt:228 / 238 / 254 | acción secundaria / destructiva / acción primaria | rara | solo con el diálogo abierto |
 | Cancelar / Finalizar sesión (segundo diálogo) | Diálogo: Cerrar sesión (2) | AccountSettingsScreen.kt:286 / 295 | acción secundaria / destructiva | rara | solo con el diálogo abierto |
@@ -2987,9 +2991,10 @@ Se llega desde Ajustes > Cuentas (fila YouTube), Ajustes > Copias de seguridad >
 | Playlists guardadas (hardcoded) | Sincronizar desde YouTube Music | YtmSyncScreen.kt:174 | acción primaria | rara | siempre |
 | Biblioteca (canciones) (hardcoded) — desc. «Incluye tus me gusta (favoritos)» (hardcoded) | Sincronizar desde YouTube Music | YtmSyncScreen.kt:179 | acción primaria | rara | siempre |
 | Subidas (canciones y álbumes) (hardcoded) | Sincronizar desde YouTube Music | YtmSyncScreen.kt:192 | acción primaria | rara | siempre |
-| Desactivada (frecuencia de auto-sincronización) (hardcoded) | Sincronizar desde YouTube Music | YtmSyncScreen.kt:232 | acción primaria (selección) | rara | siempre |
-| Cada día (hardcoded) | Sincronizar desde YouTube Music | YtmSyncScreen.kt:238 | acción primaria (selección) | rara | siempre |
-| Cada semana (hardcoded) | Sincronizar desde YouTube Music | YtmSyncScreen.kt:244 | acción primaria (selección) | rara | siempre |
+| Desactivada (frecuencia de auto-sincronización) (hardcoded) | Sincronizar desde YouTube Music | YtmSyncScreen.kt | acción primaria (selección) | rara | siempre |
+| Cada 3 días (hardcoded, recomendada; default si la clave no existe) | Sincronizar desde YouTube Music | YtmSyncScreen.kt | acción primaria (selección) | rara | siempre |
+| Cada día (hardcoded) | Sincronizar desde YouTube Music | YtmSyncScreen.kt | acción primaria (selección) | rara | siempre |
+| Cada semana (hardcoded) | Sincronizar desde YouTube Music | YtmSyncScreen.kt | acción primaria (selección) | rara | siempre |
 | Sincronizar mi biblioteca con mi cuenta — desc. «Tus playlists, artistas seguidos, me gusta y álbumes se guardan en tu cuenta de YouTube Music…» (sección «Copia de seguridad en YouTube Music») | Sincronizar desde YouTube Music | YtmSyncScreen.kt:318 | conmutador | rara | siempre |
 | Sincronizar toda mi biblioteca ahora — desc. «Sube todo lo que falte. Corre en segundo plano, por tandas, y continúa donde se quedó.» | Sincronizar desde YouTube Music | YtmSyncScreen.kt:335 | acción primaria | rara | siempre; muestra «Activa "Sincronizar mi biblioteca…"» si el conmutador está apagado y «Primero inicia sesión en YouTube Music» sin sesión |
 
@@ -3133,6 +3138,8 @@ Se abre desde el icono de la barra superior en `MainActivity.kt:1309` (no desde 
 | Iniciar sesión (hardcoded) — grupo «Cuenta» (hardcoded) | Diálogo: Ajustes rápidos | SettingDialoge.kt:119 | navegación (`login`) | rara | siempre |
 | Usar la cuenta para explorar (hardcoded) — grupo «Preferences» (hardcoded, sin traducir) | Diálogo: Ajustes rápidos | SettingDialoge.kt:133 | conmutador | rara | siempre |
 | Sincronización con YouTube Music (hardcoded) | Diálogo: Ajustes rápidos | SettingDialoge.kt:152 | conmutador | rara | siempre |
+| Sincronizar biblioteca ahora (hardcoded) | Diálogo: Ajustes rápidos | SettingDialoge.kt:302 | acción primaria | rara | solo con sesión; encola `YtmSyncWorker.TYPE_ALL` |
+| Programar sincronización (hardcoded) → `settings/ytm_sync` | Diálogo: Ajustes rápidos | SettingDialoge.kt:321 | navegación | rara | solo con sesión |
 | Ajustes (hardcoded) — grupo «App» (hardcoded) | Diálogo: Ajustes rápidos | SettingDialoge.kt:172 | navegación (`settings`) | ocasional | siempre |
 | Acerca de (hardcoded) — muestra `BuildConfig.VERSION_NAME` a la derecha | Diálogo: Ajustes rápidos | SettingDialoge.kt:177 | navegación (`settings/about`) | rara | siempre |
 
@@ -3963,7 +3970,7 @@ Los ficheros `ui/menu/*.kt` no formaban parte del encargo. Aquí solo se inventa
 | `CustomAccentColorKey` (`customAccentColorArgb`, PreferenceKeys.kt:235) | ThemeScreen.kt:207 | **ninguna** en todo `app/` | **Redundante, no placebo.** El color personalizado SÍ se aplica, pero por otra vía: `CustomAccentSection.onApply` llama también a `handleColorSelection(color, ThemePreset.NONE)`, que escribe `SelectedThemeColorKey`, leída por `MainActivity.kt:661`. Esta clave es solo un registro paralelo que nadie consulta. |
 | `DensityScaleKey` (`density_scale_factor`, PreferenceKeys.kt:248) | AppearanceSettings.kt:261 | **ninguna** como clave DataStore | **Vestigial, no placebo.** El control de «Densidad de pantalla» funciona porque escribe/lee SharedPreferences con el literal `"density_scale_factor"` (AppearanceSettings.kt:259 y 269), que sí consume `com/dpi/DensityScaler.kt:18`. La clave DataStore es un duplicado inerte. |
 | `CipherManualRefreshAtKey` | YoutubeDecryptionSettings.kt:89 | ninguna | Marca de tiempo local para el enfriamiento del botón. Correcto. |
-| `YtmAutoSyncFreqDaysKey` | YtmSyncScreen.kt:208 | ninguna | **NO es placebo** (verificado): `applyFreq` llama a `YtmAutoSyncWorker.schedule(context, days)` en YtmSyncScreen.kt:219, así que la frecuencia se materializa en WorkManager, no en la lectura de la clave. |
+| `YtmAutoSyncFreqDaysKey` | YtmSyncScreen.kt (`applyFreq`) | `YtmAutoSyncWorker.scheduleFromPrefs` (desde `App.scheduleNonCriticalWork` en cada arranque; default 3 días si la clave no existe) | **NO es placebo**: la frecuencia se materializa en WorkManager. `0` guardado = el usuario apagó; clave ausente = cada 3 días. |
 
 **Conclusión sobre placebos: no encontré ningún conmutador de Ajustes que mienta al usuario.** El único control que no hace nada («Reproductor de cristal») está explícitamente rotulado como no disponible y deshabilitado. Certeza: **alta** para las pantallas cubiertas; ver INCIERTO para lo que no pude cerrar.
 

@@ -288,6 +288,15 @@ class App : Application(), SingletonImageLoader.Factory, androidx.work.Configura
         // Schedule the weekly app-update check (notifies once per new version when one is found).
         runCatching { iad1tya.echo.music.echomusic.updater.UpdateCheckWorker.schedule(this) }
             .onFailure { onScheduleFailed(it, "Failed to schedule update-check worker") }
+
+        // Whole-library YouTube Music sync (likes, playlists, subscriptions, upload). Cadence lives
+        // in DataStore (default every 3 days). Re-asserted every start so a missed schedule after
+        // an OEM kill or a first-run default actually exists in WorkManager, not only on the screen.
+        // IO: scheduleFromPrefs reads DataStore via runBlocking — never on the main thread.
+        applicationScope.launch(Dispatchers.IO) {
+            runCatching { iad1tya.echo.music.utils.YtmAutoSyncWorker.scheduleFromPrefs(this@App) }
+                .onFailure { onScheduleFailed(it, "Failed to schedule YouTube Music library sync") }
+        }
     }
 
     /**

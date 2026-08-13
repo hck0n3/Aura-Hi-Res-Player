@@ -56,6 +56,8 @@ val GenreEnrichOnMobileKey = booleanPreferencesKey("genreEnrichOnMobile")
 val SpotifyAutoSyncFreqDaysKey = intPreferencesKey("spotifyAutoSyncFreqDays")
 val SpotifyAutoSyncSourceIdsKey = stringPreferencesKey("spotifyAutoSyncSourceIds")
 // Scheduled YouTube Music sync: how often to re-sync everything (days; 0 = off).
+// Default for a missing key is [iad1tya.echo.music.utils.YtmAutoSyncWorker.DEFAULT_FREQ_DAYS] (3):
+// the whole library mirrors the account in the background without a daily battery hit.
 val YtmAutoSyncFreqDaysKey = intPreferencesKey("ytmAutoSyncFreqDays")
 // Last time a YouTube Music full sync actually completed (epoch millis; 0 = never). Surfaced in the sync
 // screen so a scheduled sync that silently no-ops (e.g. an expired session) is visible, not a placebo.

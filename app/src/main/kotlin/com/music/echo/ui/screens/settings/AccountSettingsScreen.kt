@@ -205,6 +205,30 @@ fun AccountSettingsScreen(
                         ),
                         Material3SettingsItem(
                             icon = painterResource(R.drawable.sync),
+                            title = { Text("Sincronizar biblioteca ahora") },
+                            description = {
+                                Text("Toda la biblioteca con tu cuenta. Sigue en segundo plano aunque cierres la app.")
+                            },
+                            onClick = {
+                                iad1tya.echo.music.utils.YtmSyncWorker.enqueue(
+                                    context,
+                                    iad1tya.echo.music.utils.YtmSyncWorker.TYPE_ALL,
+                                )
+                                Toast.makeText(
+                                    context,
+                                    "Sincronizando toda la biblioteca… (continúa en segundo plano)",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                        ),
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.sync),
+                            title = { Text("Programar sincronización") },
+                            description = { Text("Cada 3 días por defecto, o elige cuándo") },
+                            onClick = { navController.navigate("settings/ytm_sync") },
+                        ),
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.sync),
                             title = { Text("Espejar favoritos desde mi cuenta") },
                             description = { Text("Deja tus favoritos del app idénticos a los de tu cuenta de YouTube. Puede quitar los que ya no estén en tu cuenta.") },
                             onClick = { showMirrorDialog = true }
