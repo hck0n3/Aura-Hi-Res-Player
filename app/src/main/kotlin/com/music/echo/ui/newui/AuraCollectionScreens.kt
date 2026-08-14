@@ -335,7 +335,7 @@ internal fun AuraSongCollectionScaffold(
                 // Unique by construction: every source list is a set of distinct songs keyed by the
                 // song's own primary key (most-played rows, a cache-key set, a DB relation).
                 key = { _, song -> song.id },
-            ) { _, song ->
+            ) { index, song ->
                 val selected = song.id in selection
                 val onCheckedChange: (Boolean) -> Unit = { checked ->
                     if (checked) selection.add(song.id) else selection.remove(song.id)
@@ -393,6 +393,11 @@ internal fun AuraSongCollectionScaffold(
                             .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
                     )
                 } else {
+                    AuraAppleListRowFrame(
+                        showDivider = index < filteredSongs.lastIndex,
+                        dividerInset = AuraAppleCoverDividerInset,
+                        modifier = Modifier.animateItem(),
+                    ) {
                     AuraSongRow(
                         title = song.song.title,
                         subtitle = song.artists.joinToString { it.name },
@@ -402,12 +407,14 @@ internal fun AuraSongCollectionScaffold(
                         isPlaying = isPlaying,
                         liked = song.song.liked,
                         explicit = song.song.explicit,
-                        inLibrary = song.song.inLibrary != null,
+                        inLibrary = false,
                         downloadId = song.id.takeIf { showDownloadTick },
                         format = song.format,
                         playedInShuffle = dimmed,
                         selected = selected.takeIf { inSelectMode },
                         onSelectedChange = if (inSelectMode) onCheckedChange else null,
+                        durationLabel = auraAppleDurationLabel(song.song.duration.takeIf { it > 0 }),
+                        showQualityBadge = false,
                         onClick = {
                             when {
                                 inSelectMode -> onCheckedChange(!selected)
@@ -432,11 +439,13 @@ internal fun AuraSongCollectionScaffold(
                         onMenuClick = if (inSelectMode) null else {
                             { onSongMenu(song) }
                         },
-                        modifier = Modifier
-                            .animateItem()
-                            .padding(horizontal = AuraSpacing.Gutter)
-                            .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
+                        modifier = Modifier.tvFocusable(
+                            isTvOrCar,
+                            AuraShapes.Highlight,
+                            scaleFocused = 1f,
+                        ),
                     )
+                    }
                 }
             }
 

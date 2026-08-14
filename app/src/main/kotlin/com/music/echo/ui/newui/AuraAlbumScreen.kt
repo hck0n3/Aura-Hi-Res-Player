@@ -113,7 +113,6 @@ import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
 import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.ShareLinks
-import iad1tya.echo.music.utils.likedFirst
 import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberPerfGatedBoolean
 import iad1tya.echo.music.utils.rememberPreference
@@ -215,7 +214,9 @@ fun AuraAlbumScreen(
         var songs = albumWithSongs?.songs ?: emptyList()
         if (hideExplicit) songs = songs.filter { !it.song.explicit }
         if (hideVideoSongs) songs = songs.filter { !it.song.isVideo }
-        songs.likedFirst().distinctBy { it.id }
+        // Album / EP / single lists stay in disc order (Apple). liked-first is a playlist habit
+        // and would reprint the same cover-list with shuffled numbers.
+        songs.distinctBy { it.id }
     }
     val albumShuffleContextId = albumWithSongs?.let { ShuffleContexts.album(it.album.id) }
     val albumPlayedSet = rememberPlayedShuffleSet(albumShuffleContextId)
@@ -345,62 +346,74 @@ fun AuraAlbumScreen(
                             if (checked) selection.add(song.id) else selection.remove(song.id)
                         }
 
-                        AuraSongRow(
-                            title = song.song.title,
-                            subtitle = song.artists.joinToString { it.name }.takeIf { it.isNotBlank() },
-                            thumbnailUrl = song.song.thumbnailUrl,
-                            seed = song.id,
-                            isActive = song.id == mediaMetadata?.id,
-                            isPlaying = isPlaying,
-                            liked = song.song.liked,
-                            explicit = song.song.explicit,
-                            inLibrary = song.song.inLibrary != null,
-                            downloadId = song.id,
-                            format = song.format,
-                            playedInShuffle = song.song.totalPlayTime > 0L || song.id in albumPlayedSet,
-                            selected = selected.takeIf { inSelectMode },
-                            onSelectedChange = if (inSelectMode) onCheckedChange else null,
-                            onClick = {
-                                when {
-                                    inSelectMode -> onCheckedChange(!selected)
-                                    song.id == mediaMetadata?.id -> playerConnection.togglePlayPause()
-                                    else -> {
-                                        playerConnection.service.getAutomix(playlistId)
-                                        // The DISPLAYED list, so the tapped index maps to the right
-                                        // song — the classic row does exactly this.
-                                        playerConnection.playQueue(
-                                            LocalAlbumRadio(
-                                                album.copy(songs = filteredSongs),
-                                                startIndex = index,
-                                                contextId = albumShuffleContextId,
-                                            ),
-                                        )
+                        AuraAppleListRowFrame(
+                            showDivider = index < filteredSongs.lastIndex,
+                            dividerInset = AuraAppleAlbumDividerInset,
+                            modifier = Modifier.animateItem(),
+                        ) {
+                            AuraAlbumTrackRow(
+                                trackNumber = auraAppleTrackNumber(
+                                    albumOrderIds = album.songs.map { it.id },
+                                    songId = song.id,
+                                    fallbackIndex = index,
+                                ),
+                                title = song.song.title,
+                                subtitle = auraAppleAlbumSubtitle(
+                                    songArtists = song.artists.joinToString { it.name },
+                                    albumArtists = album.artists.joinToString { it.name },
+                                ),
+                                isActive = song.id == mediaMetadata?.id,
+                                isPlaying = isPlaying,
+                                liked = song.song.liked,
+                                explicit = song.song.explicit,
+                                downloadId = song.id,
+                                playedInShuffle = song.song.totalPlayTime > 0L || song.id in albumPlayedSet,
+                                durationSeconds = song.song.duration.takeIf { it > 0 },
+                                selected = selected.takeIf { inSelectMode },
+                                onSelectedChange = if (inSelectMode) onCheckedChange else null,
+                                onClick = {
+                                    when {
+                                        inSelectMode -> onCheckedChange(!selected)
+                                        song.id == mediaMetadata?.id -> playerConnection.togglePlayPause()
+                                        else -> {
+                                            playerConnection.service.getAutomix(playlistId)
+                                            playerConnection.playQueue(
+                                                LocalAlbumRadio(
+                                                    album,
+                                                    startIndex = album.songs
+                                                        .indexOfFirst { it.id == song.id }
+                                                        .coerceAtLeast(0),
+                                                    contextId = albumShuffleContextId,
+                                                ),
+                                            )
+                                        }
                                     }
-                                }
-                            },
-                            onLongClick = {
-                                if (!inSelectMode) {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    inSelectMode = true
-                                    onCheckedChange(true)
-                                }
-                            },
-                            onMenuClick = if (inSelectMode) null else {
-                                {
-                                    menuState.show {
-                                        SongMenu(
-                                            originalSong = song,
-                                            navController = navController,
-                                            onDismiss = menuState::dismiss,
-                                        )
+                                },
+                                onLongClick = {
+                                    if (!inSelectMode) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        inSelectMode = true
+                                        onCheckedChange(true)
                                     }
-                                }
-                            },
-                            modifier = Modifier
-                                .animateItem()
-                                .padding(horizontal = AuraSpacing.Gutter)
-                                .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
-                        )
+                                },
+                                onMenuClick = if (inSelectMode) null else {
+                                    {
+                                        menuState.show {
+                                            SongMenu(
+                                                originalSong = song,
+                                                navController = navController,
+                                                onDismiss = menuState::dismiss,
+                                            )
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.tvFocusable(
+                                    isTvOrCar,
+                                    AuraShapes.Highlight,
+                                    scaleFocused = 1f,
+                                ),
+                            )
+                        }
                     }
                 }
 
@@ -906,9 +919,8 @@ private fun AuraAlbumHeader(
                         playerConnection.player.play()
                     } else {
                         playerConnection.service.getAutomix(playlistId)
-                        // The RAW album in TRACK ORDER: an album is an ordered work, and the display
-                        // list is liked-first. MusicService.playQueue re-applies the hide-explicit /
-                        // hide-video filters to every queue it builds, so nothing is lost by it.
+                        // RAW album in disc order. MusicService.playQueue re-applies hide-explicit /
+                        // hide-video, so the Play button matches the numbered list.
                         playerConnection.playQueue(
                             LocalAlbumRadio(album, contextId = albumShuffleContextId),
                         )

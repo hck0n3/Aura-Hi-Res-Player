@@ -643,7 +643,7 @@ fun AuraLocalPlaylistScreen(
                 // `map.id` is the PlaylistSongMap primary key — unique by construction, one row per
                 // entry even when the same song appears twice in the playlist.
                 key = { _, song -> song.map.id },
-            ) { _, song ->
+            ) { index, song ->
                 ReorderableItem(state = reorderableState, key = song.map.id) {
                     val currentItem by rememberUpdatedState(song)
 
@@ -716,7 +716,6 @@ fun AuraLocalPlaylistScreen(
                         }
                     } else null
 
-                    val videoThumb = song.song.song.isVideo
                     val row: @Composable () -> Unit = {
                         AuraSongRow(
                             title = song.song.song.title,
@@ -730,13 +729,15 @@ fun AuraLocalPlaylistScreen(
                             downloadId = song.song.id,
                             format = song.song.format,
                             playedInShuffle = dimmed,
-                            artworkSize = if (videoThumb) 88.dp else 50.dp,
-                            artworkRatio = if (videoThumb) 16f / 9f else 1f,
-                            artworkShape = if (videoThumb) AuraShapes.Card else AuraShapes.Artwork,
-                            typeChip = if (videoThumb) auraTypeLabel(AuraContentKind.Video) else null,
+                            artworkSize = 50.dp,
+                            artworkRatio = 1f,
+                            artworkShape = AuraShapes.Artwork,
+                            typeChip = null,
                             leading = dragHandle,
                             selected = selected.takeIf { inSelectMode },
                             onSelectedChange = if (inSelectMode) onCheckedChange else null,
+                            durationLabel = auraAppleDurationLabel(song.song.song.duration),
+                            showQualityBadge = false,
                             onClick = {
                                 if (inSelectMode) {
                                     onCheckedChange(!selected)
@@ -778,20 +779,27 @@ fun AuraLocalPlaylistScreen(
                                     }
                                 }
                             },
-                            modifier = Modifier
-                                .padding(horizontal = AuraSpacing.Gutter)
-                                .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
+                            modifier = Modifier.tvFocusable(
+                                isTvOrCar,
+                                AuraShapes.Highlight,
+                                scaleFocused = 1f,
+                            ),
                         )
                     }
 
-                    if (!canSwipeRemove) {
-                        Box(modifier = Modifier.animateItem()) { row() }
-                    } else {
-                        SwipeToDismissBox(
-                            state = dismissBoxState,
-                            backgroundContent = {},
-                            modifier = Modifier.animateItem(),
-                        ) { row() }
+                    AuraAppleListRowFrame(
+                        showDivider = index < rows.lastIndex,
+                        dividerInset = AuraAppleCoverDividerInset,
+                        modifier = Modifier.animateItem(),
+                    ) {
+                        if (!canSwipeRemove) {
+                            Box { row() }
+                        } else {
+                            SwipeToDismissBox(
+                                state = dismissBoxState,
+                                backgroundContent = {},
+                            ) { row() }
+                        }
                     }
                 }
             }

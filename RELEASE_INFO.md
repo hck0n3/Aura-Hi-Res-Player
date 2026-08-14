@@ -1,8 +1,16 @@
 # Aura Hi-Res Player 0.6.199
 
-Cambiar entre canción y vídeo ya no se queda pegado. El título largo se recorre solo hasta verse entero.
+Álbumes, EP, singles y playlists muestran las canciones como Apple Music: un renglón por pista, con línea entre cada una.
 
 ---
+
+## Listas tipo Apple
+
+- En un álbum, EP o single: número de pista (o las barras si está sonando), título y duración. La portada queda arriba; no se copia en cada canción.
+- Una línea fina separa cada renglón, igual que en Apple Music.
+- El orden es el del disco, no “me gusta primero”.
+- En una playlist (también Me gusta, Descargados y En caché): portada pequeña, título, artista, duración y la misma línea entre canciones.
+- En un artista, populares y Tu biblioteca siguen de 4 en 4.
 
 ## Reproductor
 

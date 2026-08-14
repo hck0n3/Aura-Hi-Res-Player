@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -79,6 +80,7 @@ import iad1tya.echo.music.db.entities.FormatEntity
 import iad1tya.echo.music.ui.component.PlayingIndicator
 import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.ui.utils.tvFocusRestorer
+import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberPreference
 import java.util.Locale
 import kotlin.math.abs
@@ -826,6 +828,10 @@ fun AuraSongRow(
     leading: (@Composable () -> Unit)? = null,
     selected: Boolean? = null,
     onSelectedChange: ((Boolean) -> Unit)? = null,
+    /** Apple Music list: duration at the trailing edge (`3:24`). Null hides it. */
+    durationLabel: String? = null,
+    /** Library rows keep the hi-res badge; Apple album/playlist lists stay clean without it. */
+    showQualityBadge: Boolean = true,
     onClick: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     onMenuClick: (() -> Unit)? = null,
@@ -920,7 +926,16 @@ fun AuraSongRow(
                     if (downloadId != null) {
                         AuraDownloadTick(songId = downloadId)
                     }
-                    AuraQualityBadge(format = format)
+                    if (showQualityBadge) {
+                        AuraQualityBadge(format = format)
+                    }
+                    if (!durationLabel.isNullOrBlank()) {
+                        AuraTechnicalText(
+                            text = durationLabel,
+                            color = AuraPalette.OnGroundFaint,
+                            style = AuraType.RowSubtitle,
+                        )
+                    }
                     if (selected != null) {
                         Checkbox(
                             checked = selected,
@@ -1021,6 +1036,183 @@ fun AuraSongPages(
             }
         }
     }
+}
+
+/**
+ * Vertical Apple Music track list: every song on its own renglón, hairline between rows, full
+ * content stacked downward (no side pager). Used by álbum / EP / single / playlist.
+ */
+internal val AuraAppleCoverDividerInset = 50.dp + AuraSpacing.RowInner
+internal val AuraAppleTrackNumberWidth = 32.dp
+internal val AuraAppleAlbumDividerInset = AuraAppleTrackNumberWidth + AuraSpacing.RowInner
+
+internal fun auraAppleDurationLabel(durationSeconds: Int?): String? {
+    val sec = durationSeconds ?: return null
+    if (sec <= 0) return null
+    return makeTimeString(sec * 1000L)
+}
+
+/** Apple albums omit the artist under the title when it matches the album artist. */
+internal fun auraAppleAlbumSubtitle(songArtists: String, albumArtists: String): String? {
+    val song = songArtists.trim()
+    if (song.isEmpty()) return null
+    if (song.equals(albumArtists.trim(), ignoreCase = true)) return null
+    return song
+}
+
+/** Disc order, even if explicit/video filters hide a neighbour. */
+internal fun auraAppleTrackNumber(
+    albumOrderIds: List<String>,
+    songId: String,
+    fallbackIndex: Int,
+): Int {
+    val original = albumOrderIds.indexOf(songId)
+    return if (original >= 0) original + 1 else fallbackIndex + 1
+}
+
+@Composable
+fun AuraAppleListRowFrame(
+    showDivider: Boolean,
+    dividerInset: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Column(modifier.fillMaxWidth()) {
+        Box(
+            contentAlignment = Alignment.CenterStart,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = AuraSongRowSlot)
+                .padding(horizontal = AuraSpacing.Gutter),
+        ) {
+            content()
+        }
+        if (showDivider) {
+            AuraDivider(
+                Modifier.padding(
+                    start = AuraSpacing.Gutter + dividerInset,
+                    end = AuraSpacing.Gutter,
+                ),
+                color = AuraPalette.ArtworkEdge,
+            )
+        }
+    }
+}
+
+/**
+ * Apple Music album / EP / single row: track number (or playing bars), title, duration.
+ * The album cover is already in the hero — repeating it on every track is the old list, not Apple.
+ */
+@Composable
+fun AuraAlbumTrackRow(
+    trackNumber: Int,
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    isActive: Boolean = false,
+    isPlaying: Boolean = false,
+    liked: Boolean = false,
+    explicit: Boolean = false,
+    downloadId: String? = null,
+    playedInShuffle: Boolean = false,
+    durationSeconds: Int? = null,
+    selected: Boolean? = null,
+    onSelectedChange: ((Boolean) -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    onMenuClick: (() -> Unit)? = null,
+    menuContentDescription: String = title,
+    contentDescription: String? = title,
+) {
+    val playedCheck = playedInShuffle && !isActive
+    val durationLabel = auraAppleDurationLabel(durationSeconds)
+    AuraRow(
+        title = title,
+        subtitle = subtitle,
+        highlighted = isActive,
+        dimmed = playedCheck,
+        contentDescription = contentDescription,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        leading = {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.width(AuraAppleTrackNumberWidth),
+            ) {
+                if (isActive) {
+                    AuraPlayingBars(isPlaying = isPlaying)
+                } else {
+                    Text(
+                        text = trackNumber.toString(),
+                        style = AuraType.RowSubtitle,
+                        color = AuraPalette.OnGroundMuted,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        },
+        trailing = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                if (playedCheck) {
+                    AuraIconGlyph(
+                        icon = AuraIcons.Check,
+                        contentDescription = "Ya reproducida",
+                        size = 16.dp,
+                        tint = AuraPalette.Teal,
+                    )
+                }
+                if (explicit) {
+                    AuraTechnicalText(
+                        text = "E",
+                        color = AuraPalette.OnGroundDisabled,
+                        style = AuraType.QualityBadge,
+                    )
+                }
+                if (liked) {
+                    AuraIconGlyph(
+                        icon = AuraIcons.HeartFilled,
+                        contentDescription = null,
+                        size = 15.dp,
+                        tint = AuraPalette.Teal,
+                    )
+                }
+                if (downloadId != null) {
+                    AuraDownloadTick(songId = downloadId)
+                }
+                if (!durationLabel.isNullOrBlank()) {
+                    AuraTechnicalText(
+                        text = durationLabel,
+                        color = AuraPalette.OnGroundFaint,
+                        style = AuraType.RowSubtitle,
+                    )
+                }
+                if (selected != null) {
+                    Checkbox(
+                        checked = selected,
+                        onCheckedChange = onSelectedChange,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = AuraPalette.Teal,
+                            uncheckedColor = AuraPalette.OnGroundDisabled,
+                            checkmarkColor = AuraPalette.OnAccent,
+                        ),
+                    )
+                } else if (onMenuClick != null) {
+                    AuraIconButton(
+                        icon = AuraIcons.More,
+                        contentDescription = menuContentDescription,
+                        onClick = onMenuClick,
+                        size = 18.dp,
+                        tint = AuraPalette.OnGroundDisabled,
+                    )
+                }
+            }
+        },
+        modifier = modifier,
+    )
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────────────────────────

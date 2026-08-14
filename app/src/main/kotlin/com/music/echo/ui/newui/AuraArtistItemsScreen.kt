@@ -205,40 +205,50 @@ fun AuraArtistItemsScreen(
                     itemsIndexed(
                         items = pageItems,
                         key = { _, it -> it.id },
-                    ) { _, item ->
+                    ) { index, item ->
                         val song = item as? SongItem ?: return@itemsIndexed
-                        AuraSongRow(
-                            title = song.title,
-                            subtitle = song.artists.joinToString { it.name },
-                            thumbnailUrl = song.thumbnail,
-                            seed = song.id,
-                            isActive = mediaMetadata?.id == song.id,
-                            isPlaying = isPlaying,
-                            explicit = song.explicit,
-                            onClick = { playSongFromPage(song) },
-                            onLongClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                menuState.show {
-                                    YouTubeSongMenu(
-                                        song = song,
-                                        navController = navController,
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-                            },
-                            onMenuClick = {
-                                menuState.show {
-                                    YouTubeSongMenu(
-                                        song = song,
-                                        navController = navController,
-                                        onDismiss = menuState::dismiss,
-                                    )
-                                }
-                            },
-                            modifier = Modifier
-                                .animateItem()
-                                .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
-                        )
+                        AuraAppleListRowFrame(
+                            showDivider = index < pageItems.lastIndex,
+                            dividerInset = AuraAppleCoverDividerInset,
+                            modifier = Modifier.animateItem(),
+                        ) {
+                            AuraSongRow(
+                                title = song.title,
+                                subtitle = song.artists.joinToString { it.name },
+                                thumbnailUrl = song.thumbnail,
+                                seed = song.id,
+                                isActive = mediaMetadata?.id == song.id,
+                                isPlaying = isPlaying,
+                                explicit = song.explicit,
+                                durationLabel = auraAppleDurationLabel(song.duration),
+                                showQualityBadge = false,
+                                onClick = { playSongFromPage(song) },
+                                onLongClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    menuState.show {
+                                        YouTubeSongMenu(
+                                            song = song,
+                                            navController = navController,
+                                            onDismiss = menuState::dismiss,
+                                        )
+                                    }
+                                },
+                                onMenuClick = {
+                                    menuState.show {
+                                        YouTubeSongMenu(
+                                            song = song,
+                                            navController = navController,
+                                            onDismiss = menuState::dismiss,
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.tvFocusable(
+                                    isTvOrCar,
+                                    AuraShapes.Highlight,
+                                    scaleFocused = 1f,
+                                ),
+                            )
+                        }
                     }
                     if (itemsPage?.continuation != null) {
                         item(key = "loading") {

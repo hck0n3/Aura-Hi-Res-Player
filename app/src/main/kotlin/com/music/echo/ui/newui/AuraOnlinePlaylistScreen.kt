@@ -343,7 +343,7 @@ fun AuraOnlinePlaylistScreen(
                     // The song's POSITION in the full list. Unique by construction; a video id is not
                     // (a playlist may legitimately hold the same track twice).
                     key = { _, entry -> "aura_op_song_${entry.first}" },
-                ) { _, entry ->
+                ) { filteredIndex, entry ->
                     val index = entry.first
                     val songItem = entry.second
                     if (videoPlaylist) {
@@ -422,7 +422,11 @@ fun AuraOnlinePlaylistScreen(
                             (dbSong?.song?.totalPlayTime ?: 0L) > 0L
                         ) && !isActive
 
-                    val videoThumb = songItem.isVideoSong
+                    AuraAppleListRowFrame(
+                        showDivider = filteredIndex < filteredSongs.lastIndex,
+                        dividerInset = AuraAppleCoverDividerInset,
+                        modifier = Modifier.animateItem(),
+                    ) {
                     AuraSongRow(
                         title = songItem.title,
                         subtitle = songItem.artists.joinToString { it.name },
@@ -432,17 +436,19 @@ fun AuraOnlinePlaylistScreen(
                         isPlaying = isPlaying,
                         liked = dbSong?.song?.liked == true,
                         explicit = songItem.explicit,
-                        inLibrary = dbSong?.song?.inLibrary != null,
+                        inLibrary = false,
                         downloadId = songItem.id,
                         format = dbSong?.format,
                         playedInShuffle = alreadyPlayed,
                         dimContent = blocked,
-                        artworkSize = if (videoThumb) 88.dp else 50.dp,
-                        artworkRatio = if (videoThumb) 16f / 9f else 1f,
-                        artworkShape = if (videoThumb) AuraShapes.Card else AuraShapes.Artwork,
-                        typeChip = if (videoThumb) auraTypeLabel(AuraContentKind.Video) else null,
+                        artworkSize = 50.dp,
+                        artworkRatio = 1f,
+                        artworkShape = AuraShapes.Artwork,
+                        typeChip = null,
                         selected = selected.takeIf { inSelectMode },
                         onSelectedChange = if (inSelectMode) onCheckedChange else null,
+                        durationLabel = auraAppleDurationLabel(songItem.duration),
+                        showQualityBadge = false,
                         onClick = if (blocked) null else {
                             {
                                 when {
@@ -481,11 +487,13 @@ fun AuraOnlinePlaylistScreen(
                                 }
                             }
                         },
-                        modifier = Modifier
-                            .animateItem()
-                            .padding(horizontal = AuraSpacing.Gutter)
-                            .tvFocusable(isTvOrCar, AuraShapes.Highlight, scaleFocused = 1f),
+                        modifier = Modifier.tvFocusable(
+                            isTvOrCar,
+                            AuraShapes.Highlight,
+                            scaleFocused = 1f,
+                        ),
                     )
+                    }
                     }
                 }
 

@@ -535,14 +535,17 @@ fun AuraChip(
 // that changed nothing while the new UI was on; the new player passes AuraPalette colours to the
 // shared slider instead. Do not re-add one.
 
-/** A hairline separator: `rgba(255,255,255,.09)`. */
+/** A hairline separator. Default is the faint chrome line; Apple track lists pass [AuraPalette.ArtworkEdge]. */
 @Composable
-fun AuraDivider(modifier: Modifier = Modifier) {
+fun AuraDivider(
+    modifier: Modifier = Modifier,
+    color: Color = AuraPalette.Divider,
+) {
     Spacer(
         modifier
             .fillMaxWidth()
             .height(1.dp)
-            .background(AuraPalette.Divider)
+            .background(color)
     )
 }
 
