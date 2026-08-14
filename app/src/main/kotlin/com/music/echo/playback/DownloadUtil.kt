@@ -119,9 +119,13 @@ constructor(
      */
     val liveProgress = MutableStateFlow<Map<String, Float>>(emptyMap())
 
+    /** True while offline downloads are paused for live video playback. */
+    val downloadsPaused = MutableStateFlow(false)
+
     private var progressPollJob: Job? = null
 
     private fun hasActiveTransfers(): Boolean {
+        if (downloadsPaused.value) return false
         if (downloads.value.values.any {
                 it.state == Download.STATE_DOWNLOADING || it.state == Download.STATE_QUEUED
             }
@@ -324,6 +328,14 @@ constructor(
             }
             addListener(
                 object : DownloadManager.Listener {
+                    override fun onDownloadsPausedChanged(
+                        downloadManager: DownloadManager,
+                        downloadsPaused: Boolean,
+                    ) {
+                        this@DownloadUtil.downloadsPaused.value = downloadsPaused
+                        syncProgressPolling()
+                    }
+
                     override fun onDownloadChanged(
                         downloadManager: DownloadManager,
                         download: Download,
@@ -391,6 +403,7 @@ constructor(
             }
         }
         downloads.value = result
+        downloadsPaused.value = downloadManager.downloadsPaused
         syncProgressPolling()
     }
 

@@ -590,7 +590,12 @@ private fun NewMiniPlayerSongInfo(
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp),
+                modifier = Modifier.basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    initialDelayMillis = 1200,
+                    repeatDelayMillis = 1800,
+                    velocity = 30.dp,
+                ),
             )
             Row(
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -604,7 +609,12 @@ private fun NewMiniPlayerSongInfo(
                         fontSize = 12.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp),
+                        modifier = Modifier.basicMarquee(
+                    iterations = Int.MAX_VALUE,
+                    initialDelayMillis = 1200,
+                    repeatDelayMillis = 1800,
+                    velocity = 30.dp,
+                ),
                     )
                 }
             }

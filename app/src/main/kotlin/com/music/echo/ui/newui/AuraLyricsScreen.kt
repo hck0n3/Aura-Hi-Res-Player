@@ -330,7 +330,12 @@ fun AuraLyricsScreen(
                         overflow = AuraDefaultOverflow,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
+                            .basicMarquee(
+                                iterations = Int.MAX_VALUE,
+                                initialDelayMillis = 1200,
+                                repeatDelayMillis = 1800,
+                                velocity = 30.dp,
+                            )
                             .tvFocusable(isTvOrCar, RoundedCornerShape(6.dp))
                             .combinedClickable(
                                 indication = null,
@@ -361,7 +366,12 @@ fun AuraLyricsScreen(
                             overflow = AuraDefaultOverflow,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
+                                .basicMarquee(
+                                iterations = Int.MAX_VALUE,
+                                initialDelayMillis = 1200,
+                                repeatDelayMillis = 1800,
+                                velocity = 30.dp,
+                            )
                                 .tvFocusable(isTvOrCar, RoundedCornerShape(6.dp))
                                 .combinedClickable(
                                     indication = null,

@@ -6,6 +6,8 @@ import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import iad1tya.echo.music.R
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Full song downloads deferred while live video mode is active. Previously only the companion
@@ -16,13 +18,22 @@ internal object PendingDeferredDownloads {
     data class Entry(val title: String, val isVideoSong: Boolean)
 
     private val pending = ConcurrentHashMap<String, Entry>()
+    private val _pendingIds = MutableStateFlow<Set<String>>(emptySet())
+    val pendingIds: StateFlow<Set<String>> = _pendingIds
 
     fun mark(songId: String, title: String, isVideoSong: Boolean) {
         if (songId.isBlank()) return
         pending[songId] = Entry(title = title.ifBlank { songId }, isVideoSong = isVideoSong)
+        _pendingIds.value = pending.keys.toSet()
     }
 
-    fun take(songId: String): Entry? = pending.remove(songId)
+    fun take(songId: String): Entry? {
+        val entry = pending.remove(songId)
+        if (entry != null) _pendingIds.value = pending.keys.toSet()
+        return entry
+    }
+
+    fun contains(songId: String): Boolean = pending.containsKey(songId)
 }
 
 /**

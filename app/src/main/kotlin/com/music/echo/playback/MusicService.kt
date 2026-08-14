@@ -1336,8 +1336,11 @@ class MusicService :
     /** One re-prepare per [mediaId] when video stalls in BUFFERING/IDLE (debounced). */
     private val videoStuckRecoveryAttemptedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private var videoStuckRecoveryJob: kotlinx.coroutines.Job? = null
-    /** Holds play until dual-stream buffer has a real cushion after audio→video swap. */
-    private var videoStartGateJob: kotlinx.coroutines.Job? = null
+    /**
+     * Bumped on every enter/exit so an in-flight video URL resolve from a previous toggle cannot
+     * swap the source after the user has already left (or re-entered) video mode.
+     */
+    private val videoSwapGeneration = java.util.concurrent.atomic.AtomicInteger(0)
 
     // PLAYER-EXPANDED SIGNAL — mirrored from the UI (PlayerConnection.setPlayerSheetExpanded), same
     // pattern as userHasUsedVideo. Used ONLY to gate speculative, user-visible-moment work (the video
@@ -7583,11 +7586,14 @@ class MusicService :
         userExplicitlyExitedVideo = false
         userHasUsedVideo = true
         videoSwapMeasureStart()
+        val gen = videoSwapGeneration.incrementAndGet()
         if (!tryInstantVideoSwap()) {
             teardownInstantVideoSwap("video mode on via normal path")
             _videoMode.value = true
-            pauseOfflineDownloadsForVideoPlayback()
-            applyVideoToCurrent()
+            // Do NOT pause downloads until swapToVideo actually commits. Pausing here and then
+            // early-outing (no video / resolve fail) left Exo downloads frozen and the player
+            // download icon stuck with no tap response.
+            applyVideoToCurrent(swapGeneration = gen)
         } else {
             pauseOfflineDownloadsForVideoPlayback()
         }
@@ -7678,7 +7684,10 @@ class MusicService :
     }
 
     /** Resolve the current track's muxed video URL and swap its source in-place (audio is never stopped). */
-    private fun applyVideoToCurrent(armModeWhenReady: Boolean = false) {
+    private fun applyVideoToCurrent(
+        armModeWhenReady: Boolean = false,
+        swapGeneration: Int = videoSwapGeneration.get(),
+    ) {
         val item = player.currentMediaItem ?: return
         val id = item.mediaId
         // Restore any OTHER tracked video items (the previous track, or a stale pre-built one) to audio;
@@ -7691,7 +7700,6 @@ class MusicService :
         if (!podcastVideo.isNullOrEmpty()) {
             if (armModeWhenReady) {
                 _videoMode.value = true
-                pauseOfflineDownloadsForVideoPlayback()
             }
             swapToVideo(id, podcastVideo, isMuxed = true)
             return
@@ -7702,7 +7710,6 @@ class MusicService :
         if (!exportedVideo.isNullOrEmpty()) {
             if (armModeWhenReady) {
                 _videoMode.value = true
-                pauseOfflineDownloadsForVideoPlayback()
             } else if (!_videoMode.value) {
                 return
             }
@@ -7714,16 +7721,14 @@ class MusicService :
         // toast, and crucially no stuck spinner: leaving _videoMode=true here would show an endless spinner
         // over the cover with no video and no on-screen toggle to exit). Mirrors the no-video YouTube path.
         if (id.startsWith("http", ignoreCase = true) || id.isLocalMediaId()) {
-            _videoMode.value = false
-            _videoUrl.value = null
+            disarmVideoModeKeepAudio()
             return
         }
         // A YouTube track that is NOT a video song can't show video → disarm video mode SILENTLY (no
         // resolution attempt, no "Video falló" toast) and keep playing audio. This is the sticky-video case
         // where the next track has no video: we drop to audio cleanly instead of erroring.
         if (player.currentMetadata?.isVideoSong != true) {
-            _videoMode.value = false
-            _videoUrl.value = null
+            disarmVideoModeKeepAudio()
             return
         }
 
@@ -7738,13 +7743,11 @@ class MusicService :
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
-                _videoMode.value = false
-                _videoUrl.value = null
+                disarmVideoModeKeepAudio()
                 return
             }
             if (armModeWhenReady) {
                 _videoMode.value = true
-                pauseOfflineDownloadsForVideoPlayback()
             } else if (!_videoMode.value) return
             swapToVideo(id, offlineVideoCacheUri(id))
             return
@@ -7756,7 +7759,6 @@ class MusicService :
             videoSwapMark("applyVideoToCurrent: URL cache HIT")
             if (armModeWhenReady) {
                 _videoMode.value = true
-                pauseOfflineDownloadsForVideoPlayback()
             } else if (!_videoMode.value) return
             swapToVideo(id, cached)
             return
@@ -7778,11 +7780,11 @@ class MusicService :
             }
             val url = result.getOrNull()
             withContext(Dispatchers.Main) {
+                if (videoSwapGeneration.get() != swapGeneration) return@withContext
                 if (player.currentMediaItem?.mediaId != id) return@withContext
                 if (url.isNullOrEmpty()) {
                     if (!armModeWhenReady) {
-                        _videoMode.value = false
-                        _videoUrl.value = null
+                        disarmVideoModeKeepAudio()
                         val ex = result.exceptionOrNull()
                         val reason = ex?.let { "${it.javaClass.simpleName}: ${it.message}" } ?: "sin formato de video"
                         Toast.makeText(this@MusicService, "Video falló — $reason", Toast.LENGTH_LONG).show()
@@ -7792,13 +7794,19 @@ class MusicService :
                 videoUrlCache[id] = url to (System.currentTimeMillis() + 5 * 60 * 1000L)
                 if (armModeWhenReady) {
                     _videoMode.value = true
-                    pauseOfflineDownloadsForVideoPlayback()
                 } else if (!_videoMode.value) {
                     return@withContext
                 }
                 swapToVideo(id, url)
             }
         }
+    }
+
+    /** Drop video chrome and keep audio. Safe to call when downloads were never paused. */
+    private fun disarmVideoModeKeepAudio() {
+        _videoMode.value = false
+        _videoUrl.value = null
+        resumeOfflineDownloadsAfterVideoPlayback()
     }
 
     /** Swap the current item's source URI to [url] (the muxed stream) so the factory builds a video source
@@ -7811,8 +7819,12 @@ class MusicService :
         // Prefer a previously-captured original audio URI (pre-built entry or preload map) so we never store
         // the video URL itself as the "audio" URI for an item that is already showing video.
         val origUri = videoModeItems[id]?.originalAudioUri
+            ?.takeUnless { it.contains("googlevideo.com", ignoreCase = true) }
             ?: preloadedVideoOriginalUris.remove(id)
+                ?.takeUnless { it.contains("googlevideo.com", ignoreCase = true) }
             ?: item.localConfiguration?.uri?.toString()
+                ?.takeUnless { it.contains("googlevideo.com", ignoreCase = true) }
+            ?: id
         videoModeOriginalUri = origUri
         videoModeMediaId = id
         // Podcast video is a single muxed stream (has audio) → don't merge a 2nd audio; YouTube is video-only.
@@ -7836,6 +7848,7 @@ class MusicService :
                 player.prepare()
                 player.playWhenReady = true
             }
+            pauseOfflineDownloadsForVideoPlayback()
             scheduleVideoStuckRecoveryCheck()
             return
         }
@@ -7860,29 +7873,13 @@ class MusicService :
             player.prepare()
         }
         _videoUrl.value = url
+        pauseOfflineDownloadsForVideoPlayback()
         scheduleVideoStuckRecoveryCheck()
-        // Streaming (non-muxed) A/V merge: don't resume until there is ~2.5s buffered ahead, or the
-        // first seconds hitch (audio starts, video catch-up → STATE_BUFFERING). Muxed local/export
-        // is a single file and can resume immediately.
-        videoStartGateJob?.cancel()
-        if (playing && !isMuxed) {
-            player.playWhenReady = false
-            videoStartGateJob = scope.launch {
-                val deadline = android.os.SystemClock.elapsedRealtime() + 10_000L
-                while (android.os.SystemClock.elapsedRealtime() < deadline) {
-                    if (player.currentMediaItem?.mediaId != id) return@launch
-                    val ahead = player.bufferedPosition - player.currentPosition
-                    if (player.playbackState == Player.STATE_READY && ahead >= 2_500L) {
-                        player.playWhenReady = true
-                        return@launch
-                    }
-                    kotlinx.coroutines.delay(50)
-                }
-                if (player.currentMediaItem?.mediaId == id) {
-                    player.playWhenReady = true
-                }
-            }
-        } else if (playing) {
+        // Keep playWhenReady as the user left it. A previous "wait for 2.5s buffered" gate set
+        // playWhenReady=false, which (a) stopped playback for several seconds on every enter and
+        // (b) was then captured by exitVideoMode as "user paused" so the next enter never resumed
+        // and the cover overlay never received onRenderedFirstFrame.
+        if (playing) {
             player.playWhenReady = true
         }
     }
@@ -7897,7 +7894,13 @@ class MusicService :
         val toRestore = videoModeItems.keys.filter { it != keepId }
         for (vid in toRestore) {
             val state = videoModeItems.remove(vid) ?: continue
-            val origUri = state.originalAudioUri ?: continue
+            // YouTube audio items use the mediaId as URI. If we lost originalAudioUri (rapid
+            // toggles storing the video URL as "original"), fall back to the id so restore still
+            // leaves a resolvable audio source instead of a googlevideo URI with videoMode off.
+            val origUri = state.originalAudioUri
+                ?.takeUnless { it.contains("googlevideo.com", ignoreCase = true) }
+                ?: vid.takeUnless { it.startsWith("http", ignoreCase = true) || it.isLocalMediaId() }
+                ?: continue
             for (i in 0 until player.mediaItemCount) {
                 val it = runCatching { player.getMediaItemAt(i) }.getOrNull() ?: continue
                 if (it.mediaId == vid) {
@@ -8080,6 +8083,7 @@ class MusicService :
     fun exitVideoMode() {
         if (!_videoMode.value && videoModeMediaId == null && videoModeItems.isEmpty()) return
         userExplicitlyExitedVideo = true
+        videoSwapGeneration.incrementAndGet()
         videoStuckRecoveryJob?.cancel()
         teardownInstantVideoSwap("exit video mode")
         val leavingId = player.currentMediaItem?.mediaId

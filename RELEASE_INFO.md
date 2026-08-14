@@ -1,25 +1,15 @@
-# Aura Hi-Res Player 0.6.198
+# Aura Hi-Res Player 0.6.199
 
-Álbumes y playlists muestran todas las canciones en renglones hacia abajo. El desliz de 4 en 4 queda solo en populares y Tu biblioteca del artista. Los avisos ya no saltan como ventana: un punto rojo en el avatar.
+Cambiar entre canción y vídeo ya no se queda pegado. El título largo se recorre solo hasta verse entero.
 
 ---
 
-## Artista
-
-- Canciones populares y Tu biblioteca: 4 renglones por página, con un recorte de la siguiente, como en Apple Music.
-- Álbumes, EP, singles y playlists: todo el contenido en renglones hacia abajo, sin deslizar de lado.
-
-## Avisos
-
-- Sin ventanas emergentes. Si hay avisos nuevos, un punto rojo en el avatar. Al abrir Avisos, se quita.
-
 ## Reproductor
 
-- El mini ya no se queda con la portada de la canción anterior al cambiar de tema.
-
-## Sonido
-
-- Audio espacial: solo Surround amplio y Crossfeed (estudio).
+- Puedes pasar de vídeo a canción y volver al vídeo las veces que quieras: la imagen vuelve y el audio no se para al cambiar.
+- Al empezar un vídeo ya no se corta unos segundos al principio.
+- Si das Me gusta mientras ves el vídeo, el icono de descarga sigue respondiendo (no se queda congelado).
+- Si el nombre de la canción o del vídeo es muy largo, se desplaza solo hasta que se lee completo.
 
 ## Cómo actualizar
 

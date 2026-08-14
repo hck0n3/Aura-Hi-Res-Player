@@ -1794,7 +1794,12 @@ fun BottomSheetPlayer(
                         color = TextBackgroundColor,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
+                            .basicMarquee(
+                                iterations = Int.MAX_VALUE,
+                                initialDelayMillis = 1200,
+                                repeatDelayMillis = 1800,
+                                velocity = 30.dp,
+                            )
                             // TV/car: own visible D-pad focus stop for the TITLE (opens the album), separate
                             // from the cover. Ring modifier sits ABOVE the clickable so it observes its focus.
                             .tvFocusable(isTvOrCar, RoundedCornerShape(6.dp))
@@ -1826,7 +1831,12 @@ fun BottomSheetPlayer(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
+                            .basicMarquee(
+                                iterations = Int.MAX_VALUE,
+                                initialDelayMillis = 1200,
+                                repeatDelayMillis = 1800,
+                                velocity = 30.dp,
+                            )
                             // TV/car: the ARTIST is its OWN focusable target (navigates to the artist), distinct
                             // from the cover and the title — so the D-pad can land on it and show the ring.
                             .tvFocusable(isTvOrCar, RoundedCornerShape(6.dp))
@@ -3060,7 +3070,12 @@ fun BottomSheetPlayer(
                                     color = Color.White,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = if (inPip) Modifier else Modifier.basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp),
+                                    modifier = if (inPip) Modifier else Modifier.basicMarquee(
+                                        iterations = Int.MAX_VALUE,
+                                        initialDelayMillis = 1200,
+                                        repeatDelayMillis = 1800,
+                                        velocity = 30.dp,
+                                    ),
                                 )
                                 if (mm.artists.any { it.name.isNotBlank() }) {
                                     Text(

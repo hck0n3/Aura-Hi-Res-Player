@@ -148,6 +148,7 @@ import iad1tya.echo.music.extensions.toggleRepeatMode
 import iad1tya.echo.music.listentogether.RoomRole
 import iad1tya.echo.music.models.rememberResolvedAlbum
 import iad1tya.echo.music.playback.AudioExportService
+import iad1tya.echo.music.playback.PendingDeferredDownloads
 import iad1tya.echo.music.playback.enqueueSongDownloads
 import iad1tya.echo.music.playback.removeSongDownloads
 import iad1tya.echo.music.playback.videoDownloadMediaId
@@ -383,6 +384,8 @@ private fun AuraPlayerShape(
         .getDownload(mediaMetadata?.id?.let { videoDownloadMediaId(it) } ?: "")
         .collectAsState(initial = null)
     val liveDownloadProgress by downloadUtil.liveProgress.collectAsState()
+    val downloadsPaused by downloadUtil.downloadsPaused.collectAsState()
+    val pendingDownloadIds by PendingDeferredDownloads.pendingIds.collectAsState()
     val liveExportProgress by AudioExportService.liveProgress.collectAsState()
     val (exportingSongIds) = rememberPreference(ExportingSongIdsKey, "")
     val (exportedSongIds) = rememberPreference(ExportedSongIdsKey, "")
@@ -1017,14 +1020,21 @@ private fun AuraPlayerShape(
                         // swap does not flash black while the muxed stream is still preparing.
                         var hasFirstVideoFrame by remember(videoUrl) { mutableStateOf(false) }
                         DisposableEffect(playerConnection.player, videoUrl) {
-                            hasFirstVideoFrame = false
+                            val p = playerConnection.player
+                            // Re-entering video with a warm decoder often already painted a frame
+                            // BEFORE this listener attaches — waiting for onRenderedFirstFrame then
+                            // leaves the cover overlay forever ("toggle back to video does nothing").
+                            hasFirstVideoFrame = p.videoSize.width > 0
                             val listener = object : Player.Listener {
                                 override fun onRenderedFirstFrame() {
                                     hasFirstVideoFrame = true
                                 }
+                                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                    if (videoSize.width > 0) hasFirstVideoFrame = true
+                                }
                             }
-                            playerConnection.player.addListener(listener)
-                            onDispose { playerConnection.player.removeListener(listener) }
+                            p.addListener(listener)
+                            onDispose { p.removeListener(listener) }
                         }
                         Box(
                             modifier = Modifier.fillMaxSize(),
@@ -1117,7 +1127,12 @@ private fun AuraPlayerShape(
                         overflow = AuraDefaultOverflow,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
+                            .basicMarquee(
+                                iterations = Int.MAX_VALUE,
+                                initialDelayMillis = 1200,
+                                repeatDelayMillis = 1800,
+                                velocity = 30.dp,
+                            )
                             // D-pad: «ver álbum» is a real destination and on a remote the title IS the
                             // button. The ring sits ABOVE the clickable so it observes that focus stop.
                             .tvFocusable(isTvOrCar, RoundedCornerShape(8.dp))
@@ -1170,7 +1185,12 @@ private fun AuraPlayerShape(
                             overflow = AuraDefaultOverflow,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp)
+                                .basicMarquee(
+                                    iterations = Int.MAX_VALUE,
+                                    initialDelayMillis = 1200,
+                                    repeatDelayMillis = 1800,
+                                    velocity = 30.dp,
+                                )
                                 .tvFocusable(isTvOrCar, RoundedCornerShape(8.dp))
                                 .combinedClickable(
                                     indication = null,
@@ -1453,26 +1473,41 @@ private fun AuraPlayerShape(
                     ) {
                         val isVideo = meta.isVideoSong
                         val songId = meta.id
+                        val audioDl = download
+                        val videoDl = videoCompanionDownload
                         val isExporting = exportingSongIds.split(',').any { it.trim() == songId }
                         val isExported = exportedSongIds.split(',').any { it.trim() == songId } ||
                             exportedVideoIds.split(',').any { it.trim() == songId }
-                        val downloadBusy = !isLocalTrack && (
-                            download?.state == Download.STATE_QUEUED ||
-                                download?.state == Download.STATE_DOWNLOADING ||
+                        val downloadDeferred = songId in pendingDownloadIds
+                        val downloadActive = !isLocalTrack && !downloadsPaused && (
+                            audioDl?.state == Download.STATE_QUEUED ||
+                                audioDl?.state == Download.STATE_DOWNLOADING ||
                                 (isVideo && (
-                                    videoCompanionDownload?.state == Download.STATE_QUEUED ||
-                                        videoCompanionDownload?.state == Download.STATE_DOWNLOADING
+                                    videoDl?.state == Download.STATE_QUEUED ||
+                                        videoDl?.state == Download.STATE_DOWNLOADING
                                     ))
                             )
+                        val downloadHeld = !isLocalTrack && (
+                            downloadDeferred ||
+                                (downloadsPaused && (
+                                    (audioDl != null &&
+                                        audioDl.state != Download.STATE_COMPLETED &&
+                                        audioDl.state != Download.STATE_FAILED) ||
+                                        (isVideo && videoDl != null &&
+                                            videoDl.state != Download.STATE_COMPLETED &&
+                                            videoDl.state != Download.STATE_FAILED)
+                                    ))
+                            )
+                        val downloadBusy = downloadActive || downloadDeferred
                         val downloadDone = isLocalTrack ||
-                            download?.state == Download.STATE_COMPLETED
+                            audioDl?.state == Download.STATE_COMPLETED
                         val downloadProgressFraction = run {
                             val audioPct = liveDownloadProgress[songId]
-                                ?: download?.percentDownloaded
+                                ?: audioDl?.percentDownloaded
                                 ?: -1f
                             val videoPct = if (isVideo) {
                                 liveDownloadProgress[videoDownloadMediaId(songId)]
-                                    ?: videoCompanionDownload?.percentDownloaded
+                                    ?: videoDl?.percentDownloaded
                                     ?: -1f
                             } else {
                                 -1f
@@ -1503,7 +1538,7 @@ private fun AuraPlayerShape(
                             onClick = {
                                 when {
                                     isLocalTrack -> Unit
-                                    downloadBusy || downloadDone ->
+                                    downloadBusy || downloadDone || downloadHeld ->
                                         removeSongDownloads(context, songId, isVideo)
                                     isExporting -> Unit
                                     else -> showDownloadOrExportDialog = true
