@@ -746,7 +746,7 @@ class MusicService :
     // collector's first emission where a crossfade or instant-video swap would skip priming entirely.
     @Volatile private var safeVolumeEnabledHint: Boolean = true
     @Volatile private var spatialEnabledHint: Boolean = false
-    @Volatile private var spatialProfileNameHint: String = SpatialAudioProfile.APPLE_FRONT.name
+    @Volatile private var spatialProfileNameHint: String = SpatialAudioProfile.WIDE_SURROUND.name
     // The offload request CURRENTLY PUBLISHED to the players (not merely the gate's latest verdict — an
     // approved enable can be waiting for a track boundary; see publishOffloadDecision). Read by
     // onPlaybackParametersChanged, which only re-publishes the speed requirement while offload is live.
@@ -2417,7 +2417,7 @@ class MusicService :
         scope.launch {
             combine(
                 dataStore.data.map { it[SpatialAudioEnabledKey] ?: false }.distinctUntilChanged(),
-                dataStore.data.map { it[SpatialAudioProfileKey] ?: SpatialAudioProfile.APPLE_FRONT.name }
+                dataStore.data.map { it[SpatialAudioProfileKey] ?: SpatialAudioProfile.WIDE_SURROUND.name }
                     .distinctUntilChanged(),
             ) { enabled, profileName -> enabled to profileName }
                 .collect { (enabled, profileName) ->

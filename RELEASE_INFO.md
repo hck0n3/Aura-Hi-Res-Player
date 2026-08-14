@@ -1,19 +1,25 @@
-# Aura Hi-Res Player 0.6.197
+# Aura Hi-Res Player 0.6.198
 
-En un artista, las canciones populares ya no se quedan en cinco: salen todas, de 4 en 4, y se ve un poco de la página siguiente. Las mismas filas están en listas, álbumes y EP, y la que suena se marca sin recuadro.
+Álbumes y playlists muestran todas las canciones en renglones hacia abajo. El desliz de 4 en 4 queda solo en populares y Tu biblioteca del artista. Los avisos ya no saltan como ventana: un punto rojo en el avatar.
 
 ---
 
 ## Artista
 
-- Canciones populares: todas las del listado, no solo las 5 primeras. Se deslizan de 4 en 4 y a la derecha se recorta la página siguiente, como en Apple Music.
-- Tu biblioteca: todas las canciones de ese artista, el mismo gesto, sin recortar.
-- Tocar una canción pone en cola toda esa lista.
+- Canciones populares y Tu biblioteca: 4 renglones por página, con un recorte de la siguiente, como en Apple Music.
+- Álbumes, EP, singles y playlists: todo el contenido en renglones hacia abajo, sin deslizar de lado.
 
-## Listas, álbumes y EP
+## Avisos
 
-- Las canciones usan el mismo renglón premium (portada, título, artista).
-- La que suena: título en color de acento y barras en la portada; si está en pausa, el icono de play. La fila no se hincha ni se recuadra.
+- Sin ventanas emergentes. Si hay avisos nuevos, un punto rojo en el avatar. Al abrir Avisos, se quita.
+
+## Reproductor
+
+- El mini ya no se queda con la portada de la canción anterior al cambiar de tema.
+
+## Sonido
+
+- Audio espacial: solo Surround amplio y Crossfeed (estudio).
 
 ## Cómo actualizar
 

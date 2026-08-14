@@ -86,10 +86,16 @@ class SpatialAudioProfileTest {
     }
 
     @Test
-    fun `fromName falls back to apple front`() {
-        assertEquals(SpatialAudioProfile.SONY_SPHERE, SpatialAudioProfile.fromName("SONY_SPHERE"))
-        assertEquals(SpatialAudioProfile.APPLE_FRONT, SpatialAudioProfile.fromName(null))
-        assertEquals(SpatialAudioProfile.APPLE_FRONT, SpatialAudioProfile.fromName("not-a-profile"))
+    fun `fromName only exposes wide surround and crossfeed`() {
+        assertEquals(SpatialAudioProfile.CROSSFEED, SpatialAudioProfile.fromName("CROSSFEED"))
+        assertEquals(SpatialAudioProfile.WIDE_SURROUND, SpatialAudioProfile.fromName("WIDE_SURROUND"))
+        assertEquals(SpatialAudioProfile.WIDE_SURROUND, SpatialAudioProfile.fromName("SONY_SPHERE"))
+        assertEquals(SpatialAudioProfile.WIDE_SURROUND, SpatialAudioProfile.fromName(null))
+        assertEquals(SpatialAudioProfile.WIDE_SURROUND, SpatialAudioProfile.fromName("not-a-profile"))
+        assertEquals(
+            listOf(SpatialAudioProfile.WIDE_SURROUND, SpatialAudioProfile.CROSSFEED),
+            SpatialAudioProfile.uiProfiles,
+        )
     }
 
     @Test

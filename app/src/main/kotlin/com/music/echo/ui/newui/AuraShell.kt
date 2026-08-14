@@ -52,6 +52,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -771,6 +772,7 @@ fun AuraMiniPlayer(
         ) {
             val videoMode by playerConnection.videoMode.collectAsState()
             val videoUrl by playerConnection.videoUrl.collectAsState()
+            key(mediaMetadata?.id) {
             AuraArtwork(
                 size = 40.dp,
                 placeholderSeed = mediaMetadata?.id,
@@ -786,9 +788,11 @@ fun AuraMiniPlayer(
                         url = mediaMetadata?.thumbnailUrl,
                         contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
                         decodeTo = 128,
+                        seed = mediaMetadata?.id,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+            }
             }
 
             Column(

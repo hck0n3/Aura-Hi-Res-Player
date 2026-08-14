@@ -1323,7 +1323,12 @@ private fun ColumnScope.SpatialAudioSection(skin: AuraPanelSkin) {
     val engineLive = engineStatus == SuperpoweredEngineStatus.HEALTHY ||
         engineStatus == SuperpoweredEngineStatus.UNKNOWN
     val (enabled, onEnabledChange) = rememberPreference(SpatialAudioEnabledKey, false)
-    val (profile, onProfileChange) = rememberEnumPreference(SpatialAudioProfileKey, SpatialAudioProfile.APPLE_FRONT)
+    val (profile, onProfileChange) = rememberEnumPreference(SpatialAudioProfileKey, SpatialAudioProfile.WIDE_SURROUND)
+    LaunchedEffect(profile) {
+        if (profile !in SpatialAudioProfile.uiProfiles) {
+            onProfileChange(SpatialAudioProfile.WIDE_SURROUND)
+        }
+    }
     val accent = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.primary
     val fill = if (skin.enabled) skin.fill else MaterialTheme.colorScheme.surfaceContainerLow
     val line = if (skin.enabled) skin.line else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
@@ -1369,7 +1374,7 @@ private fun ColumnScope.SpatialAudioSection(skin: AuraPanelSkin) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
         maxItemsInEachRow = 2,
     ) {
-        SpatialAudioProfile.entries.forEach { item ->
+        SpatialAudioProfile.uiProfiles.forEach { item ->
             val selected = profile == item
             val shape = RoundedCornerShape(14.dp)
             Box(

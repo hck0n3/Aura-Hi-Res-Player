@@ -51,10 +51,10 @@ fun unreadOwnerNoticeCount(items: List<OwnerAnnouncement>, readIdsCsv: String): 
  *  - Refresh on every app open and about once per hour while the Activity is resumed.
  *  - A notice stays in Avisos until 24h after its **launch** ([OwnerAnnouncement.publishedAt]);
  *    then it disappears automatically. Marking read does NOT remove it from the list.
- *  - Read state only drives the unread badge, card styling, and [popupNotice].
- *  - Dismissing / acknowledging the popup marks it read (no more popup) but leaves it in Avisos.
+ *  - Read state only drives the unread badge on the avatar (no popup).
+ *  - Opening Avisos marks the inbox read so the red dot goes away.
  *  - First contact with the feed (fresh install): older items in the remote JSON are marked read
- *    once so only the newest pops up; they still appear in Avisos until their publish TTL ends.
+ *    once so only the newest is unread; they still appear in Avisos until their publish TTL ends.
  *  - Fresh install with no notice published in the last 24h → empty inbox.
  */
 object OwnerAnnouncements {
@@ -92,8 +92,8 @@ object OwnerAnnouncements {
 
     /**
      * Hydrate the inbox from the on-disk remote snapshot, TTL-pruned and bootstrap-aware.
-     * Read-ids are applied only for [popupNotice] / badges — never to hide rows from Avisos.
-     * Never drives [popupNotice] from cache alone (registry #135 flash class).
+     * Read-ids are applied only for badges — never to hide rows from Avisos.
+     * Never drives a popup (owner: avisos are avatar-dot only).
      */
     suspend fun loadCache(context: Context) {
         runCatching {
@@ -281,28 +281,12 @@ object OwnerAnnouncements {
     }
 
     private fun applyPopup(
-        active: List<OwnerAnnouncement>,
-        read: Set<String>,
-        forced: Boolean,
+        @Suppress("UNUSED_PARAMETER") active: List<OwnerAnnouncement>,
+        @Suppress("UNUSED_PARAMETER") read: Set<String>,
+        @Suppress("UNUSED_PARAMETER") forced: Boolean,
     ) {
-        val head = active.firstOrNull { it.id !in read }
-        if (head == null) {
-            _popupNotice.value = null
-            return
-        }
-        if (forced) {
-            // Re-arm after snooze only when there is still an unread notice.
-            popupSnoozed = false
-            _popupNotice.value = head
-            return
-        }
-        if (popupSnoozed) {
-            _popupNotice.value = null
-            return
-        }
-        // Do not replace an already-visible popup with the same id (avoids recomposition flicker).
-        if (_popupNotice.value?.id == head.id) return
-        _popupNotice.value = head
+        // Owner: never interrupt with a popup. Unread = red dot on the avatar only.
+        _popupNotice.value = null
     }
 
     private fun mergeBase(

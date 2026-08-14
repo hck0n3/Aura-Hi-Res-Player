@@ -12,7 +12,9 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -25,6 +27,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
@@ -74,6 +78,7 @@ import iad1tya.echo.music.constants.SwipeToSongKey
 import iad1tya.echo.music.db.entities.FormatEntity
 import iad1tya.echo.music.ui.component.PlayingIndicator
 import iad1tya.echo.music.ui.utils.resize
+import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.utils.rememberPreference
 import java.util.Locale
 import kotlin.math.abs
@@ -276,6 +281,7 @@ fun AuraCover(
             url = effectiveUrl,
             contentScale = contentScale,
             decodeTo = decodeTo,
+            seed = effectiveSeed,
             modifier = Modifier.fillMaxSize(),
         )
         overlay?.invoke(this)
@@ -295,10 +301,13 @@ fun AuraStableCoverImage(
     contentScale: ContentScale,
     modifier: Modifier = Modifier,
     decodeTo: Int? = 256,
+    /** When this changes (track id), drop the previous bitmap so the mini never keeps the last song. */
+    seed: String? = null,
 ) {
     val context = LocalContext.current
-    var paintedUrl by remember { mutableStateOf(url?.let(::upgradeAuraYoutubeCover)) }
-    var loadUrl by remember { mutableStateOf(url?.let(::upgradeAuraYoutubeCover)) }
+    val identity = seed?.takeIf { it.isNotBlank() } ?: url
+    var paintedUrl by remember(identity) { mutableStateOf(url?.let(::upgradeAuraYoutubeCover)) }
+    var loadUrl by remember(identity) { mutableStateOf(url?.let(::upgradeAuraYoutubeCover)) }
     LaunchedEffect(url) {
         loadUrl = url?.let(::upgradeAuraYoutubeCover)
         if (url == null) paintedUrl = null
@@ -660,6 +669,7 @@ fun AuraPosterCard(
             url = thumbnailUrl,
             contentScale = ContentScale.Crop,
             decodeTo = if (ratio != 1f) null else 512,
+            seed = seed,
             modifier = Modifier.fillMaxSize(),
         )
         Box(
@@ -939,6 +949,77 @@ fun AuraSongRow(
         AuraSwipeSongBox(mediaItem = swipeMediaItem, modifier = modifier) { row() }
     } else {
         Box(modifier.fillMaxWidth()) { row() }
+    }
+}
+
+/** Apple Music song pages: 4 full rows, swipe L–R, next page peeks so the user knows to scroll. */
+internal const val AuraSongPageSize = 4
+private val AuraSongPagePeek = 64.dp
+private val AuraSongPageGap = 12.dp
+private val AuraSongRowSlot = 66.dp
+private val AuraSongPageHeight = AuraSongRowSlot * AuraSongPageSize
+private val AuraSongDividerInset = 50.dp + AuraSpacing.RowInner
+
+@Composable
+fun AuraSongPages(
+    itemCount: Int,
+    modifier: Modifier = Modifier,
+    itemContent: @Composable (index: Int) -> Unit,
+) {
+    if (itemCount <= 0) return
+    val pageCount = (itemCount + AuraSongPageSize - 1) / AuraSongPageSize
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val peek = if (pageCount > 1) AuraSongPagePeek else AuraSpacing.Gutter
+        val pageWidth = maxWidth - AuraSpacing.Gutter - peek
+        val (listState, fling) = rememberAuraShelfFlingBehavior()
+        LazyRow(
+            state = listState,
+            flingBehavior = fling,
+            userScrollEnabled = pageCount > 1,
+            contentPadding = PaddingValues(
+                start = AuraSpacing.Gutter,
+                end = AuraSpacing.Gutter,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(AuraSongPageGap),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(AuraSongPageHeight + AuraSpacing.SectionGap)
+                .padding(top = AuraSpacing.SectionGap)
+                .tvFocusRestorer(),
+        ) {
+            items(
+                count = pageCount,
+                key = { page -> "aura_song_page_$page" },
+            ) { page ->
+                val start = page * AuraSongPageSize
+                val end = minOf(start + AuraSongPageSize, itemCount)
+                Column(
+                    modifier = Modifier
+                        .width(pageWidth)
+                        .height(AuraSongPageHeight),
+                ) {
+                    for (i in start until end) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(AuraSongRowSlot),
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.CenterStart,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                            ) {
+                                itemContent(i)
+                            }
+                            if (i < end - 1) {
+                                AuraDivider(Modifier.padding(start = AuraSongDividerInset))
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

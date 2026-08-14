@@ -142,8 +142,14 @@ enum class SpatialAudioProfile(
 
         const val NATIVE_PARAM_COUNT = 19
 
-        fun fromName(raw: String?): SpatialAudioProfile =
-            entries.firstOrNull { it.name == raw } ?: APPLE_FRONT
+        fun fromName(raw: String?): SpatialAudioProfile = when (raw) {
+            CROSSFEED.name -> CROSSFEED
+            WIDE_SURROUND.name -> WIDE_SURROUND
+            else -> WIDE_SURROUND
+        }
+
+        /** Only these two are offered in the EQ UI (owner). Other enum values stay for native params. */
+        val uiProfiles: List<SpatialAudioProfile> = listOf(WIDE_SURROUND, CROSSFEED)
 
         fun nativeAlgorithm(profile: SpatialAudioProfile, kind: SpatialOutputKind): Int = when (kind) {
             SpatialOutputKind.BYPASS -> ALGO_SPATIALIZER

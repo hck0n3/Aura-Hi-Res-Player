@@ -73,8 +73,8 @@ fun AuraNoticesScreen(navController: NavController) {
 
     LaunchedEffect(Unit) {
         OwnerAnnouncements.loadCache(context)
-        readIds = OwnerAnnouncements.readIds(context)
         OwnerAnnouncements.refresh(context, force = true)
+        OwnerAnnouncements.markAllRead(context)
         readIds = OwnerAnnouncements.readIds(context)
         ready = true
     }

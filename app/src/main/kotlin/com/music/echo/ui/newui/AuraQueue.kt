@@ -1530,6 +1530,7 @@ private fun AuraCover(url: String?, seed: String?, size: Dp) {
             url = url,
             contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
             decodeTo = 128,
+            seed = seed,
             modifier = Modifier.fillMaxSize(),
         )
     }

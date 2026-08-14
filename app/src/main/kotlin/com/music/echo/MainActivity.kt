@@ -2208,7 +2208,7 @@ class MainActivity : ComponentActivity() {
 
                     // Owner notices popup: after welcome so first-run tour stays first.
                     if (!showWelcomeDialog) {
-                        iad1tya.echo.music.ui.newui.OwnerNoticePopupHost()
+                        iad1tya.echo.music.ui.newui.OwnerNoticesWarmup()
                     }
 
                     if (showBatteryReliabilityDialog) {

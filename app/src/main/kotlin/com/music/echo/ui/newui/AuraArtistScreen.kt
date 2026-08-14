@@ -28,10 +28,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,7 +40,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -106,7 +103,6 @@ import iad1tya.echo.music.ui.menu.YouTubeSongMenu
 import iad1tya.echo.music.ui.screens.artist.ArtistSectionBuffer
 import iad1tya.echo.music.ui.utils.rememberIsAppInForeground
 import iad1tya.echo.music.ui.utils.rememberIsTvOrCar
-import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.rememberDeviceThrottle
 import iad1tya.echo.music.utils.rememberPerfGatedBoolean
@@ -575,7 +571,7 @@ fun AuraArtistScreen(
                             )
                         }
                         item(key = "aura_artist_local_songs_pages") {
-                            AuraArtistSongPages(
+                            AuraSongPages(
                                 itemCount = filteredLibrarySongs.size,
                                 modifier = Modifier.animateItem(),
                             ) { index ->
@@ -708,39 +704,67 @@ fun AuraArtistScreen(
                             )
                         }
 
-                        // Tracks → Apple Music 4-row pages that swipe L–R with full song rows.
+                        // Populares / top songs → Apple Music 4-row pages (swipe L–R).
+                        // Other audio tracks on this page stay a vertical list (no horizontal pager).
                         // Videos / albums / EPs / playlists stay typed cover shelves.
                         // Queue is still the WHOLE section, not the visible page.
-                        // Populares: YouTube's shelf is 5 songs; prefer the expanded moreEndpoint list.
                         if (
                             sectionItems.all { it is SongItem } &&
                             sectionItems.none { (it as SongItem).isVideoSong }
                         ) {
-                            item(key = "aura_artist_section_${sectionIndex}_pages") {
-                                val sectionSongs =
-                                    if (isArtistPopularSectionTitle(section.title) &&
-                                        expandedPopularSongs.isNotEmpty()
-                                    ) {
-                                        expandedPopularSongs
-                                    } else {
-                                        sectionItems.filterIsInstance<SongItem>()
+                            val sectionSongs =
+                                if (isArtistPopularSectionTitle(section.title) &&
+                                    expandedPopularSongs.isNotEmpty()
+                                ) {
+                                    expandedPopularSongs
+                                } else {
+                                    sectionItems.filterIsInstance<SongItem>()
+                                }
+                            if (isArtistPopularSectionTitle(section.title)) {
+                                item(key = "aura_artist_section_${sectionIndex}_pages") {
+                                    AuraSongPages(
+                                        itemCount = sectionSongs.size,
+                                        modifier = Modifier.animateItem(),
+                                    ) { index ->
+                                        val song = sectionSongs[index]
+                                        AuraArtistYtSongRow(
+                                            song = song,
+                                            sectionSongs = sectionSongs,
+                                            sectionTitle = section.title,
+                                            mediaMetadataId = mediaMetadata?.id,
+                                            isPlaying = isPlaying,
+                                            isTvOrCar = isTvOrCar,
+                                            playerConnection = playerConnection,
+                                            onMenu = { openYtMenu(song) },
+                                            haptic = haptic,
+                                        )
                                     }
-                                AuraArtistSongPages(
-                                    itemCount = sectionSongs.size,
-                                    modifier = Modifier.animateItem(),
+                                }
+                            } else {
+                                items(
+                                    count = sectionSongs.size,
+                                    key = { position ->
+                                        "aura_artist_section_${sectionIndex}_song_$position"
+                                    },
                                 ) { index ->
                                     val song = sectionSongs[index]
-                                    AuraArtistYtSongRow(
-                                        song = song,
-                                        sectionSongs = sectionSongs,
-                                        sectionTitle = section.title,
-                                        mediaMetadataId = mediaMetadata?.id,
-                                        isPlaying = isPlaying,
-                                        isTvOrCar = isTvOrCar,
-                                        playerConnection = playerConnection,
-                                        onMenu = { openYtMenu(song) },
-                                        haptic = haptic,
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .animateItem()
+                                            .padding(horizontal = AuraSpacing.Gutter),
+                                    ) {
+                                        AuraArtistYtSongRow(
+                                            song = song,
+                                            sectionSongs = sectionSongs,
+                                            sectionTitle = section.title,
+                                            mediaMetadataId = mediaMetadata?.id,
+                                            isPlaying = isPlaying,
+                                            isTvOrCar = isTvOrCar,
+                                            playerConnection = playerConnection,
+                                            onMenu = { openYtMenu(song) },
+                                            haptic = haptic,
+                                        )
+                                    }
                                 }
                             }
                         } else {
@@ -1014,7 +1038,7 @@ private fun LazyListScope.auraArtistLibraryPreviewItems(
         )
     }
     item(key = "aura_artist_library_preview_pages") {
-        AuraArtistSongPages(
+        AuraSongPages(
             itemCount = songs.size,
             modifier = Modifier.animateItem(),
         ) { index ->
@@ -1030,89 +1054,6 @@ private fun LazyListScope.auraArtistLibraryPreviewItems(
                 menuState = menuState,
                 haptic = haptic,
             )
-        }
-    }
-}
-
-/** Apple Music artist "Top Songs": 4 full rows per page, swipe L–R, next page composed so rows stay complete. */
-private const val ArtistSongPageSize = 4
-/**
- * How much of the NEXT page stays on screen. Apple Music Top Songs cuts the following
- * column so the artwork of song 5 is visible — the user knows to swipe. ~cover size.
- */
-private val ArtistSongPagePeek = 64.dp
-private val ArtistSongPageGap = 12.dp
-/**
- * One Aura song row (50 dp cover + 4 dp vertical padding) plus the hairline. Fixed slots keep
- * every page the same height. The now-playing state no longer grows a card, so this is just
- * the row — not 11 dp of highlight inset on each side.
- */
-private val AuraArtistSongRowSlot = 66.dp
-private val AuraArtistSongPageHeight = AuraArtistSongRowSlot * ArtistSongPageSize
-/** Inset to the title column (50 dp cover + row gap), same as Apple Music list hairlines. */
-private val AuraArtistSongDividerInset = 50.dp + AuraSpacing.RowInner
-
-@Composable
-private fun AuraArtistSongPages(
-    itemCount: Int,
-    modifier: Modifier = Modifier,
-    itemContent: @Composable (index: Int) -> Unit,
-) {
-    if (itemCount <= 0) return
-    val pageCount = (itemCount + ArtistSongPageSize - 1) / ArtistSongPageSize
-    key(itemCount) {
-        BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-            val peek = if (pageCount > 1) ArtistSongPagePeek else AuraSpacing.Gutter
-            val pageWidth = maxWidth - AuraSpacing.Gutter - peek
-            val (listState, fling) = rememberAuraShelfFlingBehavior()
-            LazyRow(
-                state = listState,
-                flingBehavior = fling,
-                userScrollEnabled = pageCount > 1,
-                contentPadding = PaddingValues(
-                    start = AuraSpacing.Gutter,
-                    end = AuraSpacing.Gutter,
-                ),
-                horizontalArrangement = Arrangement.spacedBy(ArtistSongPageGap),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(AuraArtistSongPageHeight + AuraSpacing.SectionGap)
-                    .padding(top = AuraSpacing.SectionGap)
-                    .tvFocusRestorer(),
-            ) {
-                items(
-                    count = pageCount,
-                    key = { page -> "aura_artist_song_page_$page" },
-                ) { page ->
-                    val start = page * ArtistSongPageSize
-                    val end = minOf(start + ArtistSongPageSize, itemCount)
-                    Column(
-                        modifier = Modifier
-                            .width(pageWidth)
-                            .height(AuraArtistSongPageHeight),
-                    ) {
-                        for (i in start until end) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(AuraArtistSongRowSlot),
-                            ) {
-                                Box(
-                                    contentAlignment = Alignment.CenterStart,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f),
-                                ) {
-                                    itemContent(i)
-                                }
-                                if (i < end - 1) {
-                                    AuraDivider(Modifier.padding(start = AuraArtistSongDividerInset))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }
