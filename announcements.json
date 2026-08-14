@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-14T02:20:00Z",
+  "updatedAt": "2026-08-14T07:30:00Z",
   "items": [
+    {
+      "id": "aviso-20260814-073000",
+      "date": "2026-08-14",
+      "publishedAt": "2026-08-14T07:30:00Z",
+      "title": "Aura Hi-Res 0.6.200: vídeo estable, portadas sin parpadeo e Inicio con tu cuenta",
+      "body": "Aura Hi-Res 0.6.200 ya está lista para descargar.\n\n• El reproductor de vídeo carga con mayor estabilidad y sin cortes al inicio.\n• Descargas de vídeo fluidas sin reducciones de velocidad.\n• Al dar Me gusta en un vídeo, el estado de descarga responde con precisión.\n• El mini reproductor ya no parpadea en blanco al cambiar de canción.\n• Portadas en estantes y mini reproductor aprovechan todo su espacio sin barras laterales.\n• Chips de Inicio y recomendaciones cargan con tu cuenta iniciada.\n• Desplazamiento vertical fluido sobre estanterías horizontales.\n• Listas creadas con IA se guardan en tu dispositivo sin subirse a YouTube Music.\n• Dejar de seguir a un artista es definitivo.\n\nActualiza desde el menú de tu cuenta (avatar) ▸ Actualizaciones. Gracias por estar en Aura.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260814-022000",
       "date": "2026-08-14",
