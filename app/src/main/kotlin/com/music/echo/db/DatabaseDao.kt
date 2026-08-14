@@ -1642,41 +1642,19 @@ interface DatabaseDao {
     suspend fun markArtistsSyncedToYtm(ids: List<String>, now: java.time.LocalDateTime)
 
     /**
-     * Clear the subscription state after a confirmed unsubscribe. The INTENT marker goes with it: it
-     * has been honoured, and leaving it set would make a later re-follow ambiguous (and would keep the
-     * row queued for an unsubscribe forever).
+     * Clear the subscription state after a confirmed unsubscribe.
      */
-    @Query("UPDATE artist SET ytmSyncedAt = NULL, unfollowedByUserAt = NULL WHERE id IN (:ids)")
+    @Query("UPDATE artist SET ytmSyncedAt = NULL WHERE id IN (:ids)")
     suspend fun clearArtistsSyncedToYtm(ids: List<String>)
 
     /**
-     * Retire ONE queued unfollow that the LIVE call in [ArtistEntity.toggleLike] has just carried out
-     * successfully. Mirror of `ArtistSyncPolicy.liveCallHonouredTheUnfollow` +
-     * `ArtistSyncPolicy.afterUnsubscribed`; change one, change both.
-     *
-     * Without it, `toggleLike` was fire-and-forget and an unfollow it had already delivered stayed on
-     * the row as a standing order with `ytmSyncedAt` null — a shape [artistsPendingUnsubscribe] cannot
-     * see (it requires `ytmSyncedAt IS NOT NULL`), so the STALE_INTENT retirement never reached it
-     * either. If the user re-subscribed to that artist on YouTube itself within the TTL, the read-back
-     * stamped `ytmSyncedAt`, the row became a genuine-looking pending unsubscribe, and Aura reversed
-     * the subscription the user had just made.
-     *
-     * ### Why the three extra conditions, instead of updating by id alone
-     * The live call is asynchronous, so the user can act again before it returns:
-     *  - `followedByUserAt IS NULL` — they re-followed in the meantime. `localToggleLike` already
-     *    cleared the marker and set the follow; blanking `ytmSyncedAt`/the marker here is harmless but
-     *    writing at all is not, so stay out of the way and let the newest action win.
-     *  - `unfollowedByUserAt IS NOT NULL AND unfollowedByUserAt <= :unfollowedAt` — they unfollowed
-     *    AGAIN (re-follow, unfollow) while this call was in flight. That newer instruction has not
-     *    been delivered, and clearing it would be exactly the silent loss this column exists to stop.
-     *
-     * A targeted UPDATE rather than an entity write: the caller holds a snapshot taken before the
-     * network call, and persisting it would also stomp any `name`/`thumbnailUrl`/`channelId` a
-     * down-sync refreshed in between.
+     * Clear upstream subscription state once the LIVE call in [ArtistEntity.toggleLike] has carried out
+     * the unsubscribe on YouTube. Keeps `unfollowedByUserAt` intact so `followArtistsWithContent()` does
+     * not immediately re-bookmark the artist locally when songs exist.
      */
     @Query(
         """
-        UPDATE artist SET ytmSyncedAt = NULL, unfollowedByUserAt = NULL
+        UPDATE artist SET ytmSyncedAt = NULL
         WHERE id = :artistId
           AND followedByUserAt IS NULL
           AND unfollowedByUserAt IS NOT NULL

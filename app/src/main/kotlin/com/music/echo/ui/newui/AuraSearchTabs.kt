@@ -482,7 +482,8 @@ private fun AuraTrackShelf(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = AuraSpacing.SectionGap),
+                .padding(top = AuraSpacing.SectionGap)
+                .passVerticalToParent(listState),
         ) {
             items(tracks, key = { "${it.rank}_${it.title}_${it.artist}" }) { track ->
                 AuraCoverCard(
@@ -526,7 +527,8 @@ private fun AuraAlbumShelf(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = AuraSpacing.SectionGap),
+                .padding(top = AuraSpacing.SectionGap)
+                .passVerticalToParent(listState),
         ) {
             items(albums, key = { "${it.rank}_${it.title}" }) { album ->
                 AuraCoverCard(
@@ -568,7 +570,8 @@ private fun AuraArtistShelf(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = AuraSpacing.SectionGap),
+                .padding(top = AuraSpacing.SectionGap)
+                .passVerticalToParent(listState),
         ) {
             items(artists, key = { "${it.rank}_${it.name}" }) { artist ->
                 AuraCoverCard(

@@ -198,7 +198,8 @@ constructor(
                 songUrlCache[mediaId]?.takeIf { it.second > System.currentTimeMillis() }?.let {
                     return@Factory dataSpec.withUri(it.first.toUri())
                 }
-                val videoUrl = runBlocking(Dispatchers.IO) {
+                val fromPlayer = MusicService.videoUrlCache[songId]?.takeIf { it.second > System.currentTimeMillis() }?.first
+                val videoUrl = fromPlayer ?: runBlocking(Dispatchers.IO) {
                     var url = YTPlayerUtils.videoStreamUrlDiag(songId, connectivityManager, null).getOrNull()
                     if (url.isNullOrEmpty()) {
                         url = runCatching {
@@ -207,7 +208,7 @@ constructor(
                     }
                     url
                 } ?: error("No video stream for $songId")
-                songUrlCache[mediaId] = videoUrl to (5 * 60 * 1000L)
+                songUrlCache[mediaId] = videoUrl to (System.currentTimeMillis() + 5 * 60 * 1000L)
                 return@Factory dataSpec.withUri(videoUrl.toUri())
             }
 

@@ -1,23 +1,32 @@
-# Aura Hi-Res Player 0.6.199
+# Aura Hi-Res Player 0.6.200
 
-Álbumes, EP, singles y playlists muestran las canciones como Apple Music: un renglón por pista, con línea entre cada una.
+Mejoras en reproducción de vídeo, portadas sin parpadeo, recomendaciones y chips de inicio con tu cuenta, y sincronización mejorada.
 
 ---
 
-## Listas tipo Apple
+## Reproducción y Vídeos
 
-- En un álbum, EP o single: número de pista (o las barras si está sonando), título y duración. La portada queda arriba; no se copia en cada canción.
-- Una línea fina separa cada renglón, igual que en Apple Music.
-- El orden es el del disco, no “me gusta primero”.
-- En una playlist (también Me gusta, Descargados y En caché): portada pequeña, título, artista, duración y la misma línea entre canciones.
-- En un artista, populares y Tu biblioteca siguen de 4 en 4.
+- El reproductor de vídeo ahora carga con mayor estabilidad y sin cortes o pausas en los primeros segundos.
+- La descarga de streamings de vídeo de larga duración se mantiene rápida y fluida sin reducciones de velocidad.
+- Al dar «Me gusta» mientras ves un vídeo, el estado de descarga responde con precisión sin bloquear el indicador de progreso.
+- Si una fuente de vídeo no está disponible, el reproductor vuelve automáticamente y sin interrupción a la pista de audio.
 
-## Reproductor
+## Portadas y Diseño
 
-- Puedes pasar de vídeo a canción y volver al vídeo las veces que quieras: la imagen vuelve y el audio no se para al cambiar.
-- Al empezar un vídeo ya no se corta unos segundos al principio.
-- Si das Me gusta mientras ves el vídeo, el icono de descarga sigue respondiendo (no se queda congelado).
-- Si el nombre de la canción o del vídeo es muy largo, se desplaza solo hasta que se lee completo.
+- El mini reproductor ya no parpadea en blanco al cambiar de canción, manteniendo una transición de carátula limpia.
+- Las portadas en estanterías, explorador y mini reproductor ahora aprovechan todo su espacio sin barras grises en los laterales.
+- Añadida resolución automática de carátulas para pistas y vídeos que no traían imagen previa asignada.
+
+## Inicio, Búsqueda y Navegación
+
+- La pantalla de inicio y los filtros (chips de estado de ánimo y actividad) cargan con tu sesión de cuenta iniciada para mostrar recomendaciones acordes a tus gustos.
+- Al desplazarte verticalmente por la pantalla sobre estanterías horizontales, el movimiento es fluido sin atrancos.
+
+## Biblioteca y Sincronización
+
+- Las listas de reproducción creadas con IA se guardan exclusivamente en tu dispositivo, sin subirse a tu biblioteca de YouTube Music.
+- Dejar de seguir a un artista respeta tu decisión de forma definitiva y no vuelve a marcarlo como favorito automáticamente.
+- La sincronización de canciones favoritas concilia los cambios locales y remotos respetando tus acciones.
 
 ## Cómo actualizar
 

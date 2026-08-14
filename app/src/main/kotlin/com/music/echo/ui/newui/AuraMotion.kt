@@ -2,16 +2,27 @@ package iad1tya.echo.music.ui.newui
 
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.MutatePriority
 import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 /**
  * The motion grammar of the redesigned interface.
@@ -74,4 +85,31 @@ fun rememberAuraShelfFlingBehavior(
         snapPosition = SnapPosition.Start,
     )
     return state to fling
+}
+
+/**
+ * Intercepts vertical drag gestures when a horizontal scrollable child is actively flinging,
+ * cancelling the horizontal fling so the parent vertical container (LazyColumn) can immediately
+ * receive the vertical scroll without feeling stuck or unresponsive.
+ */
+@Composable
+fun Modifier.passVerticalToParent(scrollableState: ScrollableState): Modifier {
+    val coroutineScope = rememberCoroutineScope()
+    return this.nestedScroll(
+        remember(scrollableState, coroutineScope) {
+            object : NestedScrollConnection {
+                override fun onPreScroll(
+                    available: Offset,
+                    source: NestedScrollSource,
+                ): Offset {
+                    if (abs(available.y) > abs(available.x) && scrollableState.isScrollInProgress) {
+                        coroutineScope.launch {
+                            scrollableState.scroll(MutatePriority.UserInput) { /* cancel horizontal fling */ }
+                        }
+                    }
+                    return Offset.Zero
+                }
+            }
+        },
+    )
 }

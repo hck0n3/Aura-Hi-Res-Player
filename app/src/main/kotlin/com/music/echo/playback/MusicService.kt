@@ -54,6 +54,8 @@ import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERR
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.LoadControl
+import androidx.media3.exoplayer.source.MediaSource.MediaPeriodId
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -1291,11 +1293,6 @@ class MusicService :
     private var videoModeIsMuxedPodcast: Boolean
         get() = playbackState.videoModeIsMuxedPodcast
         set(value) { playbackState.videoModeIsMuxedPodcast = value }
-
-    // ConcurrentHashMap: read/written from both Main (applyVideoToCurrent, onPlayerError) and Dispatchers.IO
-    // (prebuildNextVideoItem resolves + writes before its withContext(Main)). Those windows overlap on a real
-    // cross-thread data race, so mirror the songUrlCache/loudnessHintCache/videoModeItems convention in this file.
-    private val videoUrlCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
 
     // Best VIDEO-ONLY height to request for video mode. On Android TV (big screen, detected server-side via
     // UiModeManager in DeviceForm.isTelevision) we derive the target height from a LIVE bandwidth estimate so
@@ -2832,30 +2829,32 @@ class MusicService :
             .setTrackSelector(videoTrackSelector)
             .setRenderersFactory(createRenderersFactory(silenceProcessor, eqProcessor, normProcessor, limiterProcessor))
             .setLoadControl(
-                DefaultLoadControl.Builder()
-                    .setBufferDurationsMs(
-                        DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
-                        // 120s max buffer: enough lead to ride out short connectivity drops without
-                        // the runaway RAM of the old 600s (10-min) value. The previous 600s combined with
-                        // a hard 32MB byte cap + prioritizeTimeOverSizeThresholds(false) starved the TIME
-                        // buffer for hi-res/FLAC (32MB << 50s of FLAC), so ExoPlayer reported "buffer full"
-                        // with an empty time buffer -> repeated STATE_BUFFERING micro-stalls (the audible
-                        // "trabones"/cuts on playback and at the crossfade swap, which the secondary player
-                        // inherited). Reconciled below. (High-Performance Mode uses 60s.)
-                        maxBufferMs,
-                        // Songs must start as soon as the first packets arrive. 2.5–4s was a video-merge
-                        // cushion that made every skip feel late. Keep a short start gate; rebuffer still
-                        // waits longer so a stall does not ping-pong STATE_BUFFERING.
-                        if (useSmallBuffer) 400 else 700,
-                        if (useSmallBuffer) 1_500 else 2_000,
-                    )
-                    // 64MB byte ceiling guards against OOM with multiple pre-loaded/crossfade players,
-                    // but prioritizeTimeOverSizeThresholds(true) lets the TIME buffer win so the min/max
-                    // duration is actually honored for hi-res streams instead of being clipped to the byte cap.
-                    // (High-Performance Mode uses 32MB.)
-                    .setTargetBufferBytes(targetBufferBytes)
-                    .setPrioritizeTimeOverSizeThresholds(true)
-                    .build(),
+                VideoAwareLoadControl(
+                    DefaultLoadControl.Builder()
+                        .setBufferDurationsMs(
+                            DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+                            // 120s max buffer: enough lead to ride out short connectivity drops without
+                            // the runaway RAM of the old 600s (10-min) value. The previous 600s combined with
+                            // a hard 32MB byte cap + prioritizeTimeOverSizeThresholds(false) starved the TIME
+                            // buffer for hi-res/FLAC (32MB << 50s of FLAC), so ExoPlayer reported "buffer full"
+                            // with an empty time buffer -> repeated STATE_BUFFERING micro-stalls (the audible
+                            // "trabones"/cuts on playback and at the crossfade swap, which the secondary player
+                            // inherited). Reconciled below. (High-Performance Mode uses 60s.)
+                            maxBufferMs,
+                            // Songs must start as soon as the first packets arrive. 2.5–4s was a video-merge
+                            // cushion that made every skip feel late. Keep a short start gate; rebuffer still
+                            // waits longer so a stall does not ping-pong STATE_BUFFERING.
+                            if (useSmallBuffer) 400 else 700,
+                            if (useSmallBuffer) 1_500 else 2_000,
+                        )
+                        // 64MB byte ceiling guards against OOM with multiple pre-loaded/crossfade players,
+                        // but prioritizeTimeOverSizeThresholds(true) lets the TIME buffer win so the min/max
+                        // duration is actually honored for hi-res streams instead of being clipped to the byte cap.
+                        // (High-Performance Mode uses 32MB.)
+                        .setTargetBufferBytes(targetBufferBytes)
+                        .setPrioritizeTimeOverSizeThresholds(true)
+                        .build(),
+                ) { _videoMode.value },
             )
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -5390,6 +5389,7 @@ class MusicService :
         }
         // NOTE: SponsorBlock is fetched from applyAutoAdvanceSideEffects() below (shared with the crossfade
         // swap path) — calling it here too issued TWO fetches per track against a free community API.
+        runCatching { flushAllPendingSongDownloads(this) }
         // Sticky video mode. On a track change while video mode is on:
         //  - FAST PATH: if the incoming track was PRE-BUILT as a video (Merging) source ahead of time
         //    (prebuildNextVideoItem), ADOPT it with NO replaceMediaItem/prepare on the now-running track —
@@ -6121,6 +6121,9 @@ class MusicService :
                 // BUFFERING is a healthy rebuffer — do not arm stuck recovery (see maybeRecoverStuckVideo).
                 Player.STATE_IDLE -> scheduleVideoStuckRecoveryCheck()
                 Player.STATE_READY, Player.STATE_BUFFERING -> videoStuckRecoveryJob?.cancel()
+            }
+            if (playbackState == Player.STATE_READY && player.bufferedPosition >= 8_000L) {
+                runCatching { flushAllPendingSongDownloads(this) }
             }
         }
 
@@ -7015,12 +7018,16 @@ class MusicService :
         Timber.tag(TAG).w(error, "Player error occurred for $mediaId: errorCode=${error.errorCode}, message=${error.message}")
         reportException(error)
 
-        // VIDEO MODE: if the failing item is the video track (e.g. its muxed URL expired / 403'd), the
-        // audio-oriented recovery below would retry the same dead URL and eventually kill the track. Instead
+        // VIDEO MODE: if the failing item is the video track (e.g. its muxed URL expired / 403'd or decoder error),
         // drop the stale cached URL and fall back to AUDIO (exitVideoMode restores the normal source), so the
-        // song keeps playing. The user can re-enable video to re-resolve a fresh stream.
-        if (videoModeMediaId != null && mediaId == videoModeMediaId) {
-            videoUrlCache.remove(mediaId)
+        // song keeps playing. Do not let video failures hit retry-limit/stopOnError.
+        val isVideoFailure = _videoMode.value || (videoModeMediaId != null && mediaId == videoModeMediaId) ||
+            (mediaId != null && videoModeItems.containsKey(mediaId))
+        if (isVideoFailure) {
+            if (mediaId != null) {
+                videoUrlCache.remove(mediaId)
+                resetRetryCount(mediaId)
+            }
             exitVideoMode()
             Toast.makeText(this, "Video no disponible — volviendo a audio", Toast.LENGTH_SHORT).show()
             return
@@ -7585,6 +7592,7 @@ class MusicService :
     private fun enterVideoModeInternal() {
         userExplicitlyExitedVideo = false
         userHasUsedVideo = true
+        player.currentMediaItem?.mediaId?.let { resetRetryCount(it) }
         videoSwapMeasureStart()
         val gen = videoSwapGeneration.incrementAndGet()
         if (!tryInstantVideoSwap()) {
@@ -8087,14 +8095,15 @@ class MusicService :
         videoStuckRecoveryJob?.cancel()
         teardownInstantVideoSwap("exit video mode")
         val leavingId = player.currentMediaItem?.mediaId
+        leavingId?.let { resetRetryCount(it) }
         _videoMode.value = false
         _videoUrl.value = null
         prebuildingIds.clear()
         restoreVideoTracksExcept(null)   // restore ALL tracked video items (current + any pre-built) to audio
         // Resume offline pipeline + flush any download deferred while watching.
         resumeOfflineDownloadsAfterVideoPlayback()
-        runCatching { flushPendingSongDownload(this, leavingId) }
-            .onFailure { Timber.tag(TAG).w(it, "flush pending song download failed") }
+        runCatching { flushAllPendingSongDownloads(this) }
+            .onFailure { Timber.tag(TAG).w(it, "flush all pending song downloads failed") }
         // Re-arm the instant-swap pre-prepare (fully re-gated inside) so toggling video back on soon after
         // is instant again; delayed so it never competes with the audio restore's own re-prepare.
         if (playerSheetExpanded) scheduleInstantVideoPrepare(INSTANT_VIDEO_PREPARE_DELAY_MS)
@@ -8515,7 +8524,9 @@ class MusicService :
                 this,
                 createCacheDataSource().apply {
                     setUpstreamDataSourceFactory(
-                        androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(videoOkHttpClient),
+                        ChunkingDataSourceFactory(
+                            androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(videoOkHttpClient),
+                        ),
                     )
                 },
             ),
@@ -10889,6 +10900,10 @@ class MusicService :
     }
 
     companion object {
+        // ConcurrentHashMap: read/written from both Main (applyVideoToCurrent, onPlayerError), Dispatchers.IO
+        // (prebuildNextVideoItem) and DownloadUtil.
+        internal val videoUrlCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+
         /**
          * How many artists a single autoplay continuation may look a genre up for. Small on purpose: it is
          * WiFi-only, off the playback path, and misses are cached, so coverage fills in over a few songs
@@ -11274,4 +11289,37 @@ object EnhancedShuffleCycle {
      */
     fun shouldResetForNewCycle(isUserActivation: Boolean, cycleComplete: Boolean): Boolean =
         isUserActivation && cycleComplete
+}
+
+/**
+ * LoadControl wrapper that dynamically requires a larger initial/rebuffer buffer (~2.0–2.5s)
+ * when in video mode to prevent initial frame stalls, while keeping the snappy 400-700ms start
+ * gate for normal audio tracks.
+ */
+internal class VideoAwareLoadControl(
+    private val delegate: LoadControl,
+    private val isVideoMode: () -> Boolean,
+) : LoadControl by delegate {
+    override fun shouldStartPlayback(
+        timeline: Timeline,
+        mediaPeriodId: MediaPeriodId,
+        bufferedDurationUs: Long,
+        playbackSpeed: Float,
+        rebuffering: Boolean,
+        targetLiveOffsetUs: Long,
+    ): Boolean {
+        if (isVideoMode()) {
+            val minVideoBufferUs = if (rebuffering) 2_500_000L else 2_000_000L
+            val dtUs = (minVideoBufferUs * playbackSpeed).toLong()
+            if (bufferedDurationUs < dtUs) return false
+        }
+        return delegate.shouldStartPlayback(
+            timeline,
+            mediaPeriodId,
+            bufferedDurationUs,
+            playbackSpeed,
+            rebuffering,
+            targetLiveOffsetUs,
+        )
+    }
 }

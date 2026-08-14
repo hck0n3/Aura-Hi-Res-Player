@@ -1467,7 +1467,10 @@ internal fun AuraShelf(
         // TV/car: the classic Home carries this on all 20 of its scrollers (e.g. `HomeScreen.kt:1214`),
         // so the D-pad returns to the card it left instead of dropping focus when a shelf scrolls
         // sideways. One call here covers every shelf of this screen. No-op on touch.
-        modifier = modifier.padding(top = AuraSpacing.SectionGap).tvFocusRestorer(),
+        modifier = modifier
+            .padding(top = AuraSpacing.SectionGap)
+            .passVerticalToParent(listState)
+            .tvFocusRestorer(),
         content = content,
     )
 }

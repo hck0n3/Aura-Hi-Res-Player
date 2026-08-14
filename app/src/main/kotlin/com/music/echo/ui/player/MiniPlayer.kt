@@ -554,14 +554,12 @@ private fun NewMiniPlayerThumbnail(
                         modifier = Modifier.fillMaxSize().clip(CircleShape)
                     )
                 } else {
-                    key(metadata.id) {
-                        AsyncImage(
-                            model = metadata.thumbnailUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize().clip(CircleShape)
-                        )
-                    }
+                    AsyncImage(
+                        model = metadata.thumbnailUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape)
+                    )
                 }
             }
         }
@@ -889,7 +887,6 @@ private fun LegacyMiniMediaInfo(
     shouldBindVideoSurface: Boolean = true,
 ) {
     val error by LocalPlayerConnection.current?.error?.collectAsState() ?: remember { mutableStateOf(null) }
-    val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
     
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -921,7 +918,7 @@ private fun LegacyMiniMediaInfo(
                 AsyncImage(
                     model = mediaMetadata.thumbnailUrl,
                     contentDescription = null,
-                    contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(RoundedCornerShape(ThumbnailCornerRadius)),

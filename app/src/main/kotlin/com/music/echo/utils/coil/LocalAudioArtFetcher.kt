@@ -195,7 +195,7 @@ class LocalAudioArtFetcher(
          * cached blanks or failed loads for older model strings.
          */
         fun uriFor(mediaContentUri: String): String =
-            SCHEME_PREFIX + "//a/" + Uri.encode(mediaContentUri) + "#apic2"
+            SCHEME_PREFIX + "//a/" + java.net.URLEncoder.encode(mediaContentUri, "UTF-8") + "#apic2"
 
         /**
          * Strip the private scheme (+ optional fragment) and return the inner media URI string,
@@ -206,7 +206,8 @@ class LocalAudioArtFetcher(
             val body = raw.removePrefix(SCHEME_PREFIX).substringBefore('#')
             when {
                 body.startsWith("//a/") -> {
-                    val decoded = Uri.decode(body.removePrefix("//a/"))
+                    val rawEncoded = body.removePrefix("//a/")
+                    val decoded = runCatching { java.net.URLDecoder.decode(rawEncoded, "UTF-8") }.getOrNull() ?: return null
                     if (decoded.startsWith("content:") || decoded.startsWith("file:")) return decoded
                     return null
                 }

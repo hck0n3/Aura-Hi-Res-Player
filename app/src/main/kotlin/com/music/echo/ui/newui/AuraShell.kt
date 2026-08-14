@@ -623,8 +623,6 @@ fun AuraMiniPlayer(
         (600 / (1f + exp(-(-11.44748 * swipeSensitivity + 9.04945)))).roundToInt()
     }
 
-    val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
-
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -772,7 +770,6 @@ fun AuraMiniPlayer(
         ) {
             val videoMode by playerConnection.videoMode.collectAsState()
             val videoUrl by playerConnection.videoUrl.collectAsState()
-            key(mediaMetadata?.id) {
             AuraArtwork(
                 size = 40.dp,
                 placeholderSeed = mediaMetadata?.id,
@@ -786,13 +783,12 @@ fun AuraMiniPlayer(
                 } else {
                     AuraStableCoverImage(
                         url = mediaMetadata?.thumbnailUrl,
-                        contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                        contentScale = ContentScale.Crop,
                         decodeTo = 128,
                         seed = mediaMetadata?.id,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
-            }
             }
 
             Column(

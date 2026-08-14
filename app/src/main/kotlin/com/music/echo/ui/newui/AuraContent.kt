@@ -243,6 +243,23 @@ fun AuraSectionHeader(
  *   to `thumbnailRatio = 1f`, and playlists/albums/artists are square everywhere — but the parameter
  *   is what lets a non-square caller be non-square instead of silently losing 44 % of its frame.
  */
+/**
+ * Fallback to standard YouTube thumbnail URL when thumbnailUrl is missing but a video/song ID exists.
+ */
+fun youtubeCoverOrFallback(videoId: String?, thumbnailUrl: String?): String? {
+    if (!thumbnailUrl.isNullOrBlank()) return thumbnailUrl
+    val vid = videoId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    if (vid.startsWith("http://", ignoreCase = true) ||
+        vid.startsWith("https://", ignoreCase = true) ||
+        vid.startsWith("local_", ignoreCase = true) ||
+        vid.startsWith("file://", ignoreCase = true) ||
+        vid.startsWith("content://", ignoreCase = true)
+    ) {
+        return null
+    }
+    return "https://i.ytimg.com/vi/$vid/hqdefault.jpg"
+}
+
 @Composable
 fun AuraCover(
     thumbnailUrl: String?,
@@ -256,10 +273,10 @@ fun AuraCover(
      * When true, the image always fills the clipped frame (YTM/Apple exploration cards).
      * When false, honour "Recortar las portadas" — Fit leaves gradient bars (horrible on video posters).
      */
-    fillBleed: Boolean = false,
+    fillBleed: Boolean = true,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
 ) {
-    val effectiveUrl = thumbnailUrl?.takeIf { it.isNotBlank() }
+    val effectiveUrl = youtubeCoverOrFallback(seed, thumbnailUrl)
     val effectiveSeed = seed?.takeIf { it.isNotBlank() } ?: effectiveUrl ?: "aura-cover"
     val brush = remember(effectiveSeed) { AuraPalette.coverPlaceholder(effectiveSeed) }
     // Exploration cards ([fillBleed], videos, non-square frames) must Crop — Fit + sddefault 4:3
@@ -1000,6 +1017,7 @@ fun AuraSongPages(
                 .fillMaxWidth()
                 .height(AuraSongPageHeight + AuraSpacing.SectionGap)
                 .padding(top = AuraSpacing.SectionGap)
+                .passVerticalToParent(listState)
                 .tvFocusRestorer(),
         ) {
             items(

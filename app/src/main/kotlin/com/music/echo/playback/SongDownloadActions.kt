@@ -93,6 +93,16 @@ fun flushPendingSongDownload(context: Context, songId: String?) {
     )
 }
 
+/**
+ * Flush all pending deferred downloads (e.g. on media item transition or when video mux reaches steady state).
+ */
+fun flushAllPendingSongDownloads(context: Context) {
+    val ids = PendingDeferredDownloads.pendingIds.value
+    for (id in ids) {
+        flushPendingSongDownload(context, id)
+    }
+}
+
 /** @deprecated Use [flushPendingSongDownload]. Kept name as thin alias for call-site grep. */
 fun flushPendingVideoCompanionDownload(context: Context, songId: String?) =
     flushPendingSongDownload(context, songId)

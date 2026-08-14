@@ -125,6 +125,7 @@ object AiPlaylistGenerator {
             name = name,
             bookmarkedAt = LocalDateTime.now(),
             isEditable = true,
+            isLocal = true,
         )
         // Single transaction: create the playlist, persist songs, map them in order (atomic).
         database.transaction {

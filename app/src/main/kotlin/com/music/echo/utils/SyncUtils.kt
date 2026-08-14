@@ -4,6 +4,7 @@ package iad1tya.echo.music.utils
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import com.music.innertube.YouTube
 import com.music.innertube.models.AlbumItem
 import com.music.innertube.models.ArtistItem
@@ -131,6 +132,7 @@ class SyncUtils @Inject constructor(
         private const val SQL_IN_CHUNK = 900
         // Max artist cover photos to fetch per sync run (bounded so it never hammers the network/API).
         private const val MAX_ARTIST_IMAGE_FETCH = 250
+        private val LastLikedSyncTimeKey = longPreferencesKey("last_liked_sync_time")
     }
 
     init {
@@ -576,16 +578,26 @@ class SyncUtils @Inject constructor(
                     val remoteSongs = page.songs
                     val remoteIds = remoteSongs.map { it.id }.toSet()
                     val localSongs = database.likedSongsByNameAsc().first()
+                    val nowEpochMs = System.currentTimeMillis()
+                    val lastLikedSyncMs = context.dataStore.data.first()[LastLikedSyncTimeKey] ?: 0L
 
                     localSongs.filterNot { it.id in remoteIds || it.song.isLocal }.forEach { song ->
                         try {
-                            // Push local likes up to the account; NEVER un-like locally here. Removing a
-                            // local like that hadn't synced yet is what made the heart "sometimes not work"
-                            // (the like would silently revert on the next sync).
-                            withRetry {
-                                YouTube.likeVideo(song.id, true)
-                            }.onFailure { e ->
-                                Timber.e(e, "Failed to like song on YouTube: ${song.id}")
+                            val likedEpochMs = AccountLibraryReconcile.toEpochMilli(song.song.likedDate)
+                            val shouldPush = AccountLibraryReconcile.shouldPushLocalMissing(
+                                likedAtEpochMs = likedEpochMs,
+                                lastSuccessfulSyncEpochMs = lastLikedSyncMs,
+                                nowEpochMs = nowEpochMs,
+                            )
+                            if (shouldPush) {
+                                withRetry {
+                                    YouTube.likeVideo(song.id, true)
+                                }.onFailure { e ->
+                                    Timber.e(e, "Failed to like song on YouTube: ${song.id}")
+                                }
+                            } else if (AccountLibraryReconcile.remoteListSafeToDropMissing(remoteSongs.size, localSongs.size)) {
+                                // Reconcile: User deliberately unliked this song on YouTube; update local state
+                                database.update(song.song.copy(liked = false))
                             }
                         } catch (e: Exception) {
                             // Never swallow coroutine cancellation: doing so let the sync loop keep
@@ -644,6 +656,7 @@ class SyncUtils @Inject constructor(
 
                     // Imported song artists also become followed, so "your artists" fills up like Spotify.
                     runCatching { database.followArtistsWithContent(LocalDateTime.now()) }
+                    context.dataStore.edit { it[LastLikedSyncTimeKey] = nowEpochMs }
                     updateState { copy(likedSongs = SyncStatus.Completed) }
                     Timber.d("Synced ${remoteSongs.size} liked songs")
                 } catch (e: Exception) {

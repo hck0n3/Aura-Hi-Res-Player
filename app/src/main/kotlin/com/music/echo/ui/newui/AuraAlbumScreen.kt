@@ -1176,6 +1176,7 @@ internal fun AuraDoubleRowShelf(
         modifier = modifier
             .padding(top = AuraSpacing.SectionGap)
             .height(rowHeight * rows + if (rows > 1) gap else 0.dp)
+            .passVerticalToParent(gridState)
             .tvFocusRestorer(),
         content = content,
     )

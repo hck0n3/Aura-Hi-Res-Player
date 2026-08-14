@@ -1523,13 +1523,14 @@ private fun AuraPlayerShape(
                         val exportProgressFraction = liveExportProgress[songId]
                             ?.takeIf { it >= 0f }
                             ?.let { (it / 100f).coerceIn(0f, 1f) }
-                        val busy = downloadBusy || isExporting
+                        val isActivelyTransferring = downloadActive || isExporting
+                        val isDeferredOnly = downloadDeferred && !downloadActive
                         val progressFraction = when {
                             isExporting -> exportProgressFraction
-                            downloadBusy -> downloadProgressFraction
+                            downloadActive -> downloadProgressFraction
                             else -> null
                         }
-                        val doneChrome = downloadDone || (isExported && !busy)
+                        val doneChrome = downloadDone || (isExported && !isActivelyTransferring && !isDeferredOnly)
                         AuraIconButton(
                             icon = AuraIcons.Download,
                             contentDescription = stringResource(
@@ -1546,10 +1547,11 @@ private fun AuraPlayerShape(
                             },
                             size = quickAccessGlyph,
                             tint = if (doneChrome) transportAccent
+                            else if (isDeferredOnly) AuraPalette.Teal.copy(alpha = 0.85f)
                             else AuraPalette.OnGround.copy(alpha = 0.7f),
                             modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
                         )
-                        if (busy) {
+                        if (isActivelyTransferring) {
                             // Ring hugs the glyph (~28 dp). MinTouchTarget (48 dp) is the hit box
                             // on the parent, not the spinner — a 48 dp halo dwarfed the row.
                             val downloadRing = quickAccessGlyph + 8.dp
