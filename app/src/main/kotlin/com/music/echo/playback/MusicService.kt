@@ -5407,9 +5407,16 @@ class MusicService :
         } else if (
             // Owner: tapping a VIDEO starts playback IN video mode (manual SEEK / new queue only —
             // AUTO advances stay audio unless sticky video was already on above).
+            // GUARD: exitVideoMode() calls seekTo() internally which re-fires this callback with
+            // MEDIA_ITEM_TRANSITION_REASON_SEEK. Without the flag check that internal seek would
+            // immediately re-enter video mode, making the toggle button appear broken.
+            // PLAYLIST_CHANGED = entirely new queue (user tapped a video from search / library) →
+            // always honour: it is a fresh, deliberate user action so clear the flag first.
+            // SEEK within the same queue = might be the internal seekTo from exitVideoMode → respect
+            // userExplicitlyExitedVideo so the toggle is not overridden.
             mediaItem != null &&
-            (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK ||
-                reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) &&
+            (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED ||
+                (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK && !userExplicitlyExitedVideo)) &&
             (player.currentMetadata?.isVideoSong == true || exportedMuxedVideoUri(mediaItem.mediaId) != null) &&
             !(iad1tya.echo.music.utils.PerformanceMode.isOn(this) &&
                 !iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this))
