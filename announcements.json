@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-13T22:24:00Z",
+  "updatedAt": "2026-08-14T01:29:28Z",
   "items": [
+    {
+      "id": "aviso-20260814-012928",
+      "date": "2026-08-14",
+      "publishedAt": "2026-08-14T01:29:28Z",
+      "title": "Aura Hi-Res 0.6.198: listas completas y avisos en el avatar",
+      "body": "Aura Hi-Res 0.6.198 ya está lista para descargar.\n\n• Álbumes, EP, singles y playlists muestran todas las canciones en renglones hacia abajo, sin deslizar de lado.\n• En un artista, populares y Tu biblioteca siguen de 4 en 4, con un recorte de la página siguiente.\n• Los avisos ya no saltan como ventana: si hay uno nuevo, un punto rojo en el avatar. Al abrir Avisos, se quita.\n• El mini reproductor cambia la portada al cambiar de canción.\n• Audio espacial: solo Surround amplio y Crossfeed (estudio).\n\nActualiza desde el menú de tu cuenta (avatar) ▸ Actualizaciones. Gracias por estar en Aura.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260813-222400",
       "date": "2026-08-13",
