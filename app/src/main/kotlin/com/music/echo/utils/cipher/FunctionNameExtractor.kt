@@ -60,6 +60,16 @@ object FunctionNameExtractor {
      * - N-transform: GU(6, 6010, n) with 87-element self-referential array
      */
     private val KNOWN_PLAYER_CONFIGS = mapOf(
+        "b0d2d49a" to HardcodedPlayerConfig(
+            sigFuncName = "_expr_sig",
+            sigConstantArg = null,
+            sigJsExpression = "EP(4,4216,sy(61,4843,INPUT))",
+            nFuncName = "_expr_n",
+            nArrayIndex = null,
+            nConstantArgs = null,
+            nJsExpression = "(function(n){try{var u=new g.eg('https://x.googlevideo.com/videoplayback?n='+n,true);var t=u.get('n');return(t&&t!==n)?t:n;}catch(e){return n;}})(INPUT)",
+            signatureTimestamp = 20676
+        ),
         "74edf1a3" to HardcodedPlayerConfig(
             sigFuncName = "JI",
             sigConstantArg = 48, // Legacy

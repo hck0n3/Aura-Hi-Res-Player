@@ -1242,34 +1242,16 @@ private fun ThumbnailImage(
             } else raw
         }
 
-        var paintedUrl by remember { mutableStateOf(artworkUri?.let(::upgradeYoutube)) }
-        var loadUrl by remember { mutableStateOf(artworkUri?.let(::upgradeYoutube)) }
-        LaunchedEffect(artworkUri) {
-            loadUrl = artworkUri?.let(::upgradeYoutube)
-            if (artworkUri == null) paintedUrl = null
+        var currentUrl by remember(artworkUri) {
+            mutableStateOf(artworkUri?.let(::upgradeYoutube))
         }
 
-        paintedUrl?.let { url ->
+        if (currentUrl != null) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(url)
+                    .data(currentUrl)
                     .size(coil3.size.Size.ORIGINAL)
-                    .crossfade(false)
-                    .memoryCachePolicy(CachePolicy.ENABLED)
-                    .diskCachePolicy(CachePolicy.ENABLED)
-                    .networkCachePolicy(CachePolicy.ENABLED)
-                    .build(),
-                contentDescription = null,
-                contentScale = if (cropArtwork) ContentScale.Crop else ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        if (loadUrl != null && loadUrl != paintedUrl) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(loadUrl)
-                    .size(coil3.size.Size.ORIGINAL)
-                    .crossfade(false)
+                    .crossfade(true)
                     .memoryCachePolicy(CachePolicy.ENABLED)
                     .diskCachePolicy(CachePolicy.ENABLED)
                     .networkCachePolicy(CachePolicy.ENABLED)
@@ -1278,17 +1260,23 @@ private fun ThumbnailImage(
                 contentScale = if (cropArtwork) ContentScale.Crop else ContentScale.Fit,
                 error = painterResource(R.drawable.ic_launcher_nobg),
                 fallback = painterResource(R.drawable.ic_launcher_nobg),
-                onSuccess = { paintedUrl = loadUrl },
                 onError = {
-                    val url = loadUrl
+                    val url = currentUrl
                     if (url != null) {
-                        loadUrl = when {
+                        currentUrl = when {
                             url.contains("maxresdefault") -> url.replace("maxresdefault", "sddefault")
                             url.contains("sddefault") -> url.replace("sddefault", "hqdefault")
-                            else -> url
+                            else -> null
                         }
                     }
                 },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            androidx.compose.foundation.Image(
+                painter = painterResource(R.drawable.ic_launcher_nobg),
+                contentDescription = null,
+                contentScale = if (cropArtwork) ContentScale.Crop else ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(),
             )
         }

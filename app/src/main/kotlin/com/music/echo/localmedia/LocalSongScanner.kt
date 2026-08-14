@@ -25,6 +25,11 @@ import iad1tya.echo.music.db.entities.Song
 import iad1tya.echo.music.db.entities.SongAlbumMap
 import iad1tya.echo.music.db.entities.SongArtistMap
 import iad1tya.echo.music.db.entities.SongEntity
+import androidx.datastore.preferences.core.edit
+import iad1tya.echo.music.constants.ExportedFileUrisKey
+import iad1tya.echo.music.constants.ExportedVideoIdsKey
+import iad1tya.echo.music.utils.dataStore
+import iad1tya.echo.music.utils.parseExportedFileUriMap
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.LocalDateTime
@@ -176,6 +181,7 @@ constructor(
                         inLibrary = null,
                         dateDownload = existingSong?.dateDownload,
                         isLocal = true,
+                        isVideo = track.isVideo,
                     ),
                 )
                 upsert(
@@ -227,6 +233,25 @@ constructor(
                 removedSongs = removedIds.size,
             )
         }
+
+        val videoTracks = snapshot.tracks.filter { it.isVideo }
+        if (videoTracks.isNotEmpty()) {
+            context.dataStore.edit { prefs ->
+                val currentVideoIds = prefs[ExportedVideoIdsKey].orEmpty()
+                    .split(',')
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .toMutableSet()
+                val currentUrisMap = parseExportedFileUriMap(prefs[ExportedFileUrisKey].orEmpty()).toMutableMap()
+                videoTracks.forEach { vt ->
+                    currentVideoIds.add(vt.id)
+                    currentUrisMap[vt.id] = vt.id
+                }
+                prefs[ExportedVideoIdsKey] = currentVideoIds.take(1000).joinToString(",")
+                prefs[ExportedFileUrisKey] = currentUrisMap.entries.take(1000).joinToString("\u001E") { "${it.key}\u001F${it.value}" }
+            }
+        }
+
         return@withContext summary
     }
 
@@ -394,6 +419,98 @@ constructor(
                     sizeBytes = cursor.getLong(sizeIndex).coerceAtLeast(0L),
                     mimeType = mimeType,
                     thumbnailUrl = iad1tya.echo.music.utils.coil.LocalAudioArtFetcher.uriFor(contentUri.toString()),
+                )
+            }
+        }
+
+        val videoProjection = buildList {
+            add(MediaStore.Video.Media._ID)
+            add(MediaStore.Video.Media.TITLE)
+            add(MediaStore.Video.Media.DISPLAY_NAME)
+            add(MediaStore.Video.Media.ARTIST)
+            add(MediaStore.Video.Media.ALBUM)
+            add(MediaStore.Video.Media.DURATION)
+            add(MediaStore.Video.Media.DATE_MODIFIED)
+            add(MediaStore.Video.Media.SIZE)
+            add(MediaStore.Video.Media.MIME_TYPE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(MediaStore.MediaColumns.RELATIVE_PATH)
+            } else {
+                add(MediaStore.MediaColumns.DATA)
+            }
+        }.toTypedArray()
+
+        context.contentResolver.query(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            videoProjection,
+            selection,
+            null,
+            "${MediaStore.Video.Media.TITLE} COLLATE NOCASE ASC, ${MediaStore.Video.Media._ID} ASC",
+        )?.use { cursor ->
+            val idIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+            val titleIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.TITLE)
+            val displayNameIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+            val artistIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.ARTIST)
+            val albumIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.ALBUM)
+            val durationIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+            val dateModifiedIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
+            val sizeIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
+            val mimeTypeIndex = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
+            val relativePathIndex = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+            val dataPathIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+
+            while (cursor.moveToNext()) {
+                val mediaId = cursor.getLong(idIndex)
+                val contentUri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, mediaId)
+                val normalizedFolderPath = resolveNormalizedFolderPath(
+                    relativePath = cursor.getStringOrNull(relativePathIndex),
+                    absolutePath = cursor.getStringOrNull(dataPathIndex),
+                )
+                if (!shouldIncludeFolder(normalizedFolderPath, sanitizedIncludedFolders)) continue
+                if (shouldExcludeFolder(normalizedFolderPath, sanitizedExcludedFolders)) continue
+
+                val displayName = cursor.getString(displayNameIndex)
+                val mimeType = cursor.getString(mimeTypeIndex)?.takeIf(String::isNotBlank) ?: "video/*"
+                val rawTitle = cursor.getString(titleIndex)
+                val rawArtist = cursor.getString(artistIndex)
+                val rawAlbum = cursor.getString(albumIndex)
+                val rawDuration = cursor.getLong(durationIndex).coerceAtLeast(0L)
+
+                val artistValue = normalizeArtistName(rawArtist, unknownArtist)
+                val splitArtists = splitArtistNames(artistValue).ifEmpty { listOf(unknownArtist) }
+                val artists = splitArtists.mapIndexed { index, name ->
+                    LocalArtistRecord(
+                        id = buildArtistId(null, name, index, splitArtists.size),
+                        name = name,
+                    )
+                }
+                val albumName = normalizeAlbumName(rawAlbum)
+                val title = normalizeTitle(
+                    title = rawTitle,
+                    displayName = displayName,
+                    fallback = unknownTitle,
+                )
+                tracks += LocalTrackRecord(
+                    id = contentUri.toString(),
+                    title = title,
+                    artists = artists,
+                    albumId = albumName?.let {
+                        buildAlbumId(
+                            mediaStoreAlbumId = null,
+                            albumName = it,
+                            primaryArtistId = artists.firstOrNull()?.id,
+                        )
+                    },
+                    albumName = albumName,
+                    durationSeconds = (rawDuration / 1000L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                    year = null,
+                    dateModified = cursor.getLong(dateModifiedIndex)
+                        .takeIf { it > 0L }
+                        ?.let { LocalDateTime.ofInstant(Instant.ofEpochSecond(it), ZoneId.systemDefault()) },
+                    sizeBytes = cursor.getLong(sizeIndex).coerceAtLeast(0L),
+                    mimeType = mimeType,
+                    thumbnailUrl = null,
+                    isVideo = true,
                 )
             }
         }
@@ -612,6 +729,7 @@ constructor(
         val sizeBytes: Long,
         val mimeType: String,
         val thumbnailUrl: String?,
+        val isVideo: Boolean = false,
     )
 
     private data class LocalArtistRecord(

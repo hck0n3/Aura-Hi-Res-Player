@@ -316,7 +316,8 @@ fun AuraArtistScreen(
                 .windowInsetsPadding(insets.only(WindowInsetsSides.Horizontal)),
             contentPadding = PaddingValues(bottom = bottomClearance + 56.dp),
         ) {
-            if (artistPage == null && !showLocal && hasFailed) {
+            val isKnownArtist = libraryArtist != null || artistPage != null
+            if (!isKnownArtist && !showLocal && hasFailed) {
                 item(key = "aura_artist_error") {
                     Column {
                         Spacer(Modifier.height(auraStatusBarPadding() + 72.dp))
@@ -326,7 +327,7 @@ fun AuraArtistScreen(
                         )
                     }
                 }
-            } else if (artistPage == null && !showLocal) {
+            } else if (!isKnownArtist && !showLocal) {
                 item(key = "aura_artist_skeleton") {
                     Column {
                         Spacer(Modifier.height(auraStatusBarPadding() + 56.dp))
@@ -659,6 +660,32 @@ fun AuraArtistScreen(
                         artistLibraryInsertIndex(onlineArtistSections.map { it.title })
                     } else {
                         -1
+                    }
+
+                    if (onlineArtistSections.isEmpty() && showLibrarySection) {
+                        auraArtistLibraryPreviewItems(
+                            songs = filteredLibrarySongsYt,
+                            allSongs = filteredLibrarySongsYt,
+                            artistName = libraryArtist?.artist?.name
+                                ?: context.getString(R.string.unknown_artist),
+                            headerTitle = yourLibraryTitle,
+                            artistId = viewModel.artistId,
+                            mediaMetadataId = mediaMetadata?.id,
+                            isPlaying = isPlaying,
+                            isTvOrCar = isTvOrCar,
+                            navController = navController,
+                            playerConnection = playerConnection,
+                            menuState = menuState,
+                            haptic = haptic,
+                        )
+                    }
+
+                    if (artistPage == null && !showLocal) {
+                        item(key = "aura_artist_online_loading") {
+                            Column(Modifier.padding(top = 16.dp)) {
+                                ShimmerHost { repeat(3) { AuraDetailSkeletonRow() } }
+                            }
+                        }
                     }
 
                     onlineArtistSections.forEachIndexed { sectionIndex, section ->

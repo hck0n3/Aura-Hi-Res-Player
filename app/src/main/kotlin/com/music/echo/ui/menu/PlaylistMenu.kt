@@ -69,6 +69,9 @@ import iad1tya.echo.music.constants.EnableExportAsMp3Key
 import iad1tya.echo.music.constants.ExportDirectoryUriKey
 import iad1tya.echo.music.constants.ExportingSongIdsKey
 import iad1tya.echo.music.constants.InnerTubeCookieKey
+import iad1tya.echo.music.constants.SuppressedPlaylistIdsKey
+import androidx.datastore.preferences.core.edit
+import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.db.entities.Playlist
 import iad1tya.echo.music.db.entities.SpeedDialItem
 import iad1tya.echo.music.db.entities.PlaylistSong
@@ -525,6 +528,15 @@ fun PlaylistMenu(
         val deletePlaylistLocally: (alsoDeletedRemotely: Boolean) -> Unit = { alsoDeletedRemotely ->
             showDeletePlaylistDialog = false
             onDismiss()
+            if (ytBrowseId != null && !alsoDeletedRemotely) {
+                coroutineScope.launch(Dispatchers.IO) {
+                    context.dataStore.edit { prefs ->
+                        val current = prefs[SuppressedPlaylistIdsKey].orEmpty().split(',').filter { it.isNotBlank() }.toMutableSet()
+                        current.add(ytBrowseId)
+                        prefs[SuppressedPlaylistIdsKey] = current.take(500).joinToString(",")
+                    }
+                }
+            }
             database.transaction {
                 if (ytBrowseId != null && !alsoDeletedRemotely) {
                     // Tombstone only — do NOT clear the songs: the row is already invisible to every

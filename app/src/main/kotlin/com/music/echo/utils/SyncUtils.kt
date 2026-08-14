@@ -15,6 +15,7 @@ import com.music.innertube.utils.parseCookieString
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.LastFMUseSendLikes
 import iad1tya.echo.music.constants.LastFullSyncKey
+import iad1tya.echo.music.constants.SuppressedPlaylistIdsKey
 import iad1tya.echo.music.constants.YtmLastSyncKey
 import iad1tya.echo.music.constants.SYNC_COOLDOWN
 import iad1tya.echo.music.db.MusicDatabase
@@ -1292,8 +1293,17 @@ class SyncUtils @Inject constructor(
                     // removed. Keeping the unused query cost a COUNT subquery + thumbnail relation over
                     // EVERY playlist on every sync.)
 
+                    val suppressedIds = runCatching {
+                        context.dataStore.get(SuppressedPlaylistIdsKey, "").split(',').filter { it.isNotBlank() }.toSet()
+                    }.getOrDefault(emptySet())
+
                     for (playlist in remotePlaylists) {
                         try {
+                            if (suppressedIds.contains(playlist.id)) {
+                                Timber.d("syncSavedPlaylists: skipping ${playlist.title} (${playlist.id}) — suppressed by user")
+                                continue
+                            }
+
                             // Look at EVERY local row for this browseId, not just the bookmarked ones.
                             // localPlaylists comes from a Library query (WHERE bookmarkedAt IS NOT NULL),
                             // so a playlist the user REMOVED from the app read as "not present here" and

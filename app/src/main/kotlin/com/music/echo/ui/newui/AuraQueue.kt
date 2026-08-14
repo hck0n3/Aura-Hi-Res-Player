@@ -137,12 +137,17 @@ import iad1tya.echo.music.ui.utils.ShowMediaInfo
 import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.ui.utils.tvFocusableItem
-import iad1tya.echo.music.utils.makeTimeString
+import iad1tya.echo.music.constants.ExportedSongIdsKey
 import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import iad1tya.echo.music.constants.HighPerformanceModeKey
 import iad1tya.echo.music.utils.ShareLinks
 import iad1tya.echo.music.utils.isLocalMediaId
+import iad1tya.echo.music.utils.lookupExportedFileUri
+import iad1tya.echo.music.utils.makeTimeString
 import iad1tya.echo.music.utils.rememberPreference
+import iad1tya.echo.music.utils.shareContentUri
+import iad1tya.echo.music.utils.shareLocalAudio
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -280,16 +285,21 @@ fun AuraQueue(
     // move — no second implementation, this is a relocation, not a rebuild.
     val videoMode by playerConnection.videoMode.collectAsState()
     val highPerfMode by rememberPreference(HighPerformanceModeKey, false)
+    val (exportedSongIds) = rememberPreference(ExportedSongIdsKey, "")
     val (exportedVideoIds) = rememberPreference(ExportedVideoIdsKey, "")
+    val isLocalTrack = mediaMetadata?.let { it.id.isLocalMediaId() } ?: false
+    val isExportedSong = mediaMetadata?.let { meta -> exportedSongIds.split(',').any { it.trim() == meta.id } } ?: false
+    val isExportedVideo = mediaMetadata?.let { meta -> exportedVideoIds.split(',').any { it.trim() == meta.id } } ?: false
+    val isExported = isExportedSong || isExportedVideo
     val isTvOrCarBar = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
     val hasVideo = mediaMetadata?.let { meta ->
-        val exportedVideo = exportedVideoIds.split(',').any { it.trim() == meta.id }
+        val exportedVideo = isExportedVideo
         videoMode || (
             (!highPerfMode || isTvOrCarBar) &&
                 (meta.isVideoSong || exportedVideo || !meta.podcastVideoUrl.isNullOrEmpty())
             )
     } ?: false
-    val shareableLink = mediaMetadata?.let { !it.id.isLocalMediaId() } ?: false
+    val shareableLink = mediaMetadata != null
 
     val castHandler = remember(playerConnection) {
         try {
@@ -326,6 +336,7 @@ fun AuraQueue(
         if (state.isCollapsed) selectedTab = AURA_QUEUE_TAB_NEXT
     }
 
+    val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var dismissJob: Job? by remember { mutableStateOf(null) }
 
@@ -380,13 +391,31 @@ fun AuraQueue(
                 onComments = { showCommentSheet = true },
                 shareEnabled = shareableLink,
                 onShare = {
-                    mediaMetadata?.let { meta ->
-                        val intent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, ShareLinks.song(meta.id))
+                    coroutineScope.launch {
+                        mediaMetadata?.let { meta ->
+                            if (isLocalTrack) {
+                                shareLocalAudio(context, meta.id)
+                                return@launch
+                            }
+                            if (isExported) {
+                                val uri = lookupExportedFileUri(context, meta.id)
+                                if (uri != null &&
+                                    shareContentUri(
+                                        context,
+                                        uri,
+                                        if (isExportedVideo) "video/mp4" else "audio/mpeg",
+                                    )
+                                ) {
+                                    return@launch
+                                }
+                            }
+                            val intent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, ShareLinks.song(meta.id))
+                            }
+                            context.startActivity(Intent.createChooser(intent, null))
                         }
-                        context.startActivity(Intent.createChooser(intent, null))
                     }
                 },
                 onEqualizer = {

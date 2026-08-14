@@ -77,6 +77,9 @@ import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
 import iad1tya.echo.music.constants.HideExplicitKey
+import iad1tya.echo.music.constants.SuppressedPlaylistIdsKey
+import androidx.datastore.preferences.core.edit
+import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.db.entities.Playlist
 import iad1tya.echo.music.db.entities.PlaylistEntity
 import iad1tya.echo.music.db.entities.PlaylistSongMap
@@ -868,6 +871,10 @@ private fun AuraOnlinePlaylistHeader(
                 contentDescription = stringResource(if (saved) R.string.saved else R.string.save),
                 onClick = {
                     coroutineScope.launch(Dispatchers.IO) {
+                        context.dataStore.edit { prefs ->
+                            val current = prefs[SuppressedPlaylistIdsKey].orEmpty().split(',').filter { it.isNotBlank() && it != playlist.id }
+                            prefs[SuppressedPlaylistIdsKey] = current.joinToString(",")
+                        }
                         if (dbPlaylist != null) {
                             database.withTransaction {
                                 // Save/un-save ONLY. Deliberately does NOT refresh metadata here: this

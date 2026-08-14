@@ -219,17 +219,19 @@ constructor(
         viewModelScope.launch(Dispatchers.IO) { syncUtils.syncArtistsSubscriptions() }
     }
 
+    private val refreshedArtistsThisSession = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     init {
         viewModelScope.launch(Dispatchers.IO) {
             allArtists.collect { artists ->
                 artists
                     .map { it.artist }
                     .filter {
-                        it.thumbnailUrl == null || Duration.between(
+                        (it.thumbnailUrl == null || Duration.between(
                             it.lastUpdateTime,
                             LocalDateTime.now()
-                        ) > Duration.ofDays(10)
-                    }.forEach { artist ->
+                        ) > Duration.ofDays(10)) && refreshedArtistsThisSession.add(it.id)
+                    }.take(10).forEach { artist ->
                         YouTube.artist(artist.id).onSuccess { artistPage ->
                             database.query {
                                 update(artist, artistPage)

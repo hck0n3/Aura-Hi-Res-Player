@@ -718,56 +718,60 @@ fun AuraLibrarySongsTab(
             }
 
             itemsIndexed(filteredSongs, key = { _, item -> item.song.id }) { index, song ->
-                AuraSongRow(
-                    title = song.song.title,
-                    subtitle = song.artists.joinToString { it.name },
-                    thumbnailUrl = song.song.thumbnailUrl,
-                    seed = song.id,
-                    isActive = song.id == mediaMetadata?.id,
-                    isPlaying = isPlaying,
-                    liked = song.song.liked,
-                    explicit = song.song.explicit,
-                    inLibrary = song.song.inLibrary != null,
-                    // The DOWNLOADED tab is all downloads: the tick there would be noise, as today.
-                    downloadId = if (filter != SongFilter.DOWNLOADED) song.id else null,
-                    format = song.format,
-                    playedInShuffle = song.id in shufflePlayedSet || song.song.totalPlayTime > 0L,
-                    swipeMediaItem = song.toMediaItem(),
-                    onClick = {
-                        if (song.id == mediaMetadata?.id) {
-                            playerConnection.togglePlayPause()
-                        } else {
-                            playerConnection.playQueue(
-                                ListQueue(
-                                    title = context.getString(R.string.queue_all_songs),
-                                    items = filteredSongs.map { it.toMediaItem() },
-                                    startIndex = index,
-                                    contextId = libraryContextId,
-                                ),
-                            )
-                        }
-                    },
-                    onLongClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        menuState.show {
-                            SongMenu(
-                                originalSong = song,
-                                navController = navController,
-                                onDismiss = menuState::dismiss,
-                            )
-                        }
-                    },
-                    onMenuClick = {
-                        menuState.show { SongMenu(
-                                originalSong = song,
-                                navController = navController,
-                                onDismiss = menuState::dismiss,
-                            ) }
-                    },
-                    modifier = Modifier
-                        .animateItem()
-                        .padding(horizontal = AuraSpacing.Gutter),
-                )
+                AuraAppleListRowFrame(
+                    showDivider = index < filteredSongs.lastIndex,
+                    dividerInset = AuraAppleCoverDividerInset,
+                ) {
+                    AuraSongRow(
+                        title = song.song.title,
+                        subtitle = song.artists.joinToString { it.name },
+                        thumbnailUrl = song.song.thumbnailUrl,
+                        seed = song.id,
+                        isActive = song.id == mediaMetadata?.id,
+                        isPlaying = isPlaying,
+                        liked = song.song.liked,
+                        explicit = song.song.explicit,
+                        inLibrary = song.song.inLibrary != null,
+                        // The DOWNLOADED tab is all downloads: the tick there would be noise, as today.
+                        downloadId = if (filter != SongFilter.DOWNLOADED) song.id else null,
+                        format = song.format,
+                        playedInShuffle = song.id in shufflePlayedSet || song.song.totalPlayTime > 0L,
+                        swipeMediaItem = song.toMediaItem(),
+                        onClick = {
+                            if (song.id == mediaMetadata?.id) {
+                                playerConnection.togglePlayPause()
+                            } else {
+                                playerConnection.playQueue(
+                                    ListQueue(
+                                        title = context.getString(R.string.queue_all_songs),
+                                        items = filteredSongs.map { it.toMediaItem() },
+                                        startIndex = index,
+                                        contextId = libraryContextId,
+                                    ),
+                                )
+                            }
+                        },
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            menuState.show {
+                                SongMenu(
+                                    originalSong = song,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        },
+                        onMenuClick = {
+                            menuState.show {
+                                SongMenu(
+                                    originalSong = song,
+                                    navController = navController,
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        },
+                    )
+                }
             }
         }
         }

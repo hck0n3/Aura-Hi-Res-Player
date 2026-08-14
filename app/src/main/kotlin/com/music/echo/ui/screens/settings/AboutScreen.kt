@@ -40,6 +40,8 @@ import iad1tya.echo.music.ui.newui.AuraSpacing
 import iad1tya.echo.music.ui.newui.AuraType
 import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
 import iad1tya.echo.music.ui.theme.BrandAccent
+import android.content.Intent
+import androidx.compose.ui.platform.LocalContext
 import java.util.Calendar
 
 private data class Feature(val icon: Int, val title: String, val subtitle: String)
@@ -500,6 +502,37 @@ private fun AboutAppCard(skin: AuraPanelSkin) {
                         )
                     }
                 }
+            }
+
+            val context = LocalContext.current
+            FilledTonalButton(
+                onClick = {
+                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                        putExtra(Intent.EXTRA_TEXT, "Aura Hi-Res Player: https://github.com/hck0n3/Aura-Hi-Res-Player/releases/latest")
+                        type = "text/plain"
+                    }
+                    val shareIntent = Intent.createChooser(sendIntent, "Compartir Aura Hi-Res")
+                    context.startActivity(shareIntent)
+                },
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = if (skin.enabled) skin.accent.copy(alpha = 0.15f) else MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = if (skin.enabled) skin.accent else MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier.padding(top = 4.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.share),
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Compartir Aura Hi-Res",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
         }
     }

@@ -5408,10 +5408,9 @@ class MusicService :
             // Owner: tapping a VIDEO starts playback IN video mode (manual SEEK / new queue only —
             // AUTO advances stay audio unless sticky video was already on above).
             mediaItem != null &&
-            !userExplicitlyExitedVideo &&
             (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK ||
                 reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) &&
-            player.currentMetadata?.isVideoSong == true &&
+            (player.currentMetadata?.isVideoSong == true || exportedMuxedVideoUri(mediaItem.mediaId) != null) &&
             !(iad1tya.echo.music.utils.PerformanceMode.isOn(this) &&
                 !iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this))
         ) {

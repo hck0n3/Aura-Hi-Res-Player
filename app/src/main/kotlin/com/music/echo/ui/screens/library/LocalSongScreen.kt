@@ -125,6 +125,8 @@ import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.SongListItem
 import iad1tya.echo.music.ui.component.SortHeader
 import iad1tya.echo.music.ui.menu.SongMenu
+import iad1tya.echo.music.ui.newui.AuraAppleCoverDividerInset
+import iad1tya.echo.music.ui.newui.AuraAppleListRowFrame
 import iad1tya.echo.music.ui.newui.AuraCover
 import iad1tya.echo.music.ui.newui.AuraIconButton
 import iad1tya.echo.music.ui.newui.AuraIcons
@@ -132,8 +134,10 @@ import iad1tya.echo.music.ui.newui.AuraPalette
 import iad1tya.echo.music.ui.newui.AuraRow
 import iad1tya.echo.music.ui.newui.AuraSectionLabel
 import iad1tya.echo.music.ui.newui.AuraShapes
+import iad1tya.echo.music.ui.newui.AuraSongRow
 import iad1tya.echo.music.ui.newui.AuraSpacing
 import iad1tya.echo.music.ui.newui.LocalAuraFloatingChrome
+import iad1tya.echo.music.ui.newui.auraAppleDurationLabel
 import iad1tya.echo.music.ui.newui.auraFloatingContainerColor
 import iad1tya.echo.music.ui.newui.auraFloatingScrimColor
 import iad1tya.echo.music.ui.newui.rememberAuraPanelSkin
@@ -528,65 +532,62 @@ fun LocalSongScreen(
                     key = { _, item -> item.id },
                     contentType = { _, _ -> CONTENT_TYPE_SONG },
                 ) { index, song ->
-                    SongListItem(
-                        song = song,
-                        showInLibraryIcon = false,
-                        showDownloadIcon = false,
-                        isActive = song.id == mediaMetadata?.id,
-                        isPlaying = isPlaying,
-                        trailingContent = {
-                            IconButton(
-                                onClick = {
-                                    menuState.show {
-                                        SongMenu(
-                                            originalSong = song,
-                                            navController = navController,
-                                            onDismiss = menuState::dismiss,
-                                        )
-                                    }
-                                },
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.more_vert),
-                                    contentDescription = null,
-                                )
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .combinedClickable(
-                                onClick = {
-                                    if (song.id == mediaMetadata?.id) {
-                                        playerConnection.player.togglePlayPause()
-                                    } else {
-                                        playerConnection.playQueue(
-                                            ListQueue(
-                                                title = if (query.isBlank()) {
-                                                    context.getString(R.string.local_history)
-                                                } else {
-                                                    context.getString(R.string.queue_searched_songs)
-                                                },
-                                                items = queueItems,
-                                                startIndex = index,
-                                                contextId = "local:music",
-                                            ),
-                                        )
-                                    }
-                                },
-                                onLongClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    menuState.show {
-                                        SongMenu(
-                                            originalSong = song,
-                                            navController = navController,
-                                            onDismiss = menuState::dismiss,
-                                        )
-                                    }
-                                },
-                            )
-                            .padding(horizontal = 16.dp)
-                            .animateItem(),
-                    )
+                    AuraAppleListRowFrame(
+                        showDivider = index < visibleSongs.lastIndex,
+                        dividerInset = AuraAppleCoverDividerInset,
+                        modifier = Modifier.animateItem(),
+                    ) {
+                        AuraSongRow(
+                            title = song.song.title,
+                            subtitle = song.artists.joinToString { it.name },
+                            thumbnailUrl = song.song.thumbnailUrl,
+                            seed = song.id,
+                            isActive = song.id == mediaMetadata?.id,
+                            isPlaying = isPlaying,
+                            liked = song.song.liked,
+                            explicit = song.song.explicit,
+                            inLibrary = song.song.inLibrary != null,
+                            durationLabel = auraAppleDurationLabel(song.song.duration.takeIf { it > 0 }),
+                            swipeMediaItem = song.toMediaItem(),
+                            onClick = {
+                                if (song.id == mediaMetadata?.id) {
+                                    playerConnection.player.togglePlayPause()
+                                } else {
+                                    playerConnection.playQueue(
+                                        ListQueue(
+                                            title = if (query.isBlank()) {
+                                                context.getString(R.string.local_history)
+                                            } else {
+                                                context.getString(R.string.queue_searched_songs)
+                                            },
+                                            items = queueItems,
+                                            startIndex = index,
+                                            contextId = "local:music",
+                                        ),
+                                    )
+                                }
+                            },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                menuState.show {
+                                    SongMenu(
+                                        originalSong = song,
+                                        navController = navController,
+                                        onDismiss = menuState::dismiss,
+                                    )
+                                }
+                            },
+                            onMenuClick = {
+                                menuState.show {
+                                    SongMenu(
+                                        originalSong = song,
+                                        navController = navController,
+                                        onDismiss = menuState::dismiss,
+                                    )
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }

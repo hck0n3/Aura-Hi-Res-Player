@@ -1,32 +1,28 @@
-# Aura Hi-Res Player 0.6.201
+# Aura Hi-Res Player 0.6.202
 
-Corrección urgente de inicio del servicio de reproducción, mejoras en vídeo, portadas sin parpadeo, recomendaciones y chips de inicio con tu cuenta, y sincronización mejorada.
+Carga instantánea de artistas desde la biblioteca, botón de compartir en archivos exportados, activación automática de modo vídeo al pulsar un vídeo, diseño homogéneo estilo Apple Music en canciones locales y de biblioteca, escaneo unificado de música y vídeos, memoria duradera para playlists eliminadas y actualización del descifrador de reproducción.
 
 ---
 
-## Reproducción y Vídeos
+## Biblioteca y Artistas
 
-- El reproductor de vídeo ahora carga con mayor estabilidad y sin cortes o pausas en los primeros segundos.
-- La descarga de streamings de vídeo de larga duración se mantiene rápida y fluida sin reducciones de velocidad.
-- Al dar «Me gusta» mientras ves un vídeo, el estado de descarga responde con precisión sin bloquear el indicador de progreso.
-- Si una fuente de vídeo no está disponible, el reproductor vuelve automáticamente y sin interrupción a la pista de audio.
+- La entrada a cualquier artista desde la biblioteca ahora carga de forma instantánea en el primer fotograma mostrando portada, canciones y acciones sin pantallas en blanco ni parpadeos.
+- Optimizada la sincronización de artistas y las búsquedas de colaboraciones («Aparece en») para evitar saturación de red y calentamiento.
+- El escáner de almacenamiento ahora detecta tanto canciones como vídeos locales, organizando los vídeos en el apartado de vídeos y la música en canciones locales.
+- Las listas de reproducción eliminadas desde el reproductor no vuelven a aparecer tras sincronizar con tu cuenta.
 
-## Portadas y Diseño
+## Reproductor y Vídeos
 
-- El mini reproductor ya no parpadea en blanco al cambiar de canción, manteniendo una transición de carátula limpia.
-- Las portadas en estanterías, explorador y mini reproductor ahora aprovechan todo su espacio sin barras grises en los laterales.
-- Añadida resolución automática de carátulas para pistas y vídeos que no traían imagen previa asignada.
+- Al pulsar sobre cualquier vídeo desde cualquier parte de la aplicación, el reproductor cambia de inmediato al modo vídeo y comienza la reproducción automáticamente.
+- El botón de compartir del reproductor ahora permite compartir directamente archivos MP3 y vídeos MP4 exportados o locales.
+- Las listas de reproducción de vídeo conservan su diseño en formato póster con tarjetas grandes hacia abajo.
+- Actualizado el descifrado y resolución de reproductor de YouTube, corrigiendo fallos de vídeos o canciones que indicaban no estar disponibles.
 
-## Inicio, Búsqueda y Navegación
+## Diseño y Experiencia
 
-- La pantalla de inicio y los filtros (chips de estado de ánimo y actividad) cargan con tu sesión de cuenta iniciada para mostrar recomendaciones acordes a tus gustos.
-- Al desplazarte verticalmente por la pantalla sobre estanterías horizontales, el movimiento es fluido sin atrancos.
-
-## Biblioteca y Sincronización
-
-- Las listas de reproducción creadas con IA se guardan exclusivamente en tu dispositivo, sin subirse a tu biblioteca de YouTube Music.
-- Dejar de seguir a un artista respeta tu decisión de forma definitiva y no vuelve a marcarlo como favorito automáticamente.
-- La sincronización de canciones favoritas concilia los cambios locales y remotos respetando tus acciones.
+- Filas con diseño homogéneo estilo Apple Music con separadores elegantes en canciones locales, canciones de biblioteca, favoritos y descargas.
+- Corregida la actualización de portadas en el reproductor al cambiar rápidamente de canción hacia adelante y hacia atrás.
+- Añadido botón «Compartir Aura Hi-Res» en la sección Acerca de para compartir el enlace de descarga de la aplicación fácilmente.
 
 ## Cómo actualizar
 

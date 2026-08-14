@@ -419,6 +419,8 @@ val ExportedVideoIdsKey = stringPreferencesKey("exportedVideoIds")
  * Used to share / reopen the file the user exported (not the YouTube stream).
  */
 val ExportedFileUrisKey = stringPreferencesKey("exportedFileUris")
+/** Set of deleted playlist browseIds so remote sync does not re-import them */
+val SuppressedPlaylistIdsKey = stringPreferencesKey("suppressedPlaylistIds")
 val EnableExportAsMp3Key = booleanPreferencesKey("enableExportAsMp3")
 /** One-shot: seed Export as MP3 ON for installs that never wrote the key. */
 val EnableExportAsMp3DefaultOnV1AppliedKey = booleanPreferencesKey("enable_export_as_mp3_default_on_v1_applied")

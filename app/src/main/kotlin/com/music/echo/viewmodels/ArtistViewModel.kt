@@ -39,6 +39,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -196,68 +197,8 @@ class ArtistViewModel @Inject constructor(
     ) {
         fetchJob?.cancel()
         fetchJob = viewModelScope.launch {
-            // A (re)try is starting: clear any previous terminal failure so the screen leaves the
-            // retry state and shows progress again.
             _hasFailed.value = false
-            // An artist row that was auto-created locally gets a generated id ("LA########", see
-            // ArtistEntity.generateArtistId) and therefore has NO YouTube page: YouTube.artist(id) can
-            // only fail for it, three times, plus a reportException. Skip the network entirely and leave
-            // hasFailed FALSE — ArtistScreen renders these as local (see its showLocal logic). Gated on the
-            // library row (not on the id alone) so an artist we simply don't have locally still fetches.
-            // An artist row auto-created locally gets a generated id ("LA########") and has no YouTube
-            // page of its own — but the ARTIST usually does exist on YouTube. Before falling back to the
-            // (tiny) local view, try to resolve the real channel: use a channelId we already stored, else
-            // search YouTube by name and accept ONLY an exact normalized name match. The resolved id is
-            // persisted on the row, so this costs one search the first time and nothing afterwards.
-            // Without this, following such an artist showed at most 6 local albums and NO discography
-            // (owner report: "las discografías no salen completas") with no way back to the online page.
-            val localRow = database.artist(artistId).first()?.artist
-            var effectiveArtistId = artistId
-            // `!isLocal` is REQUIRED, not decoration: rows scanned from local files are isLocal = true and
-            // their ids are not YouTube ids either, but ArtistScreen always renders them local — resolving
-            // them would burn a network search per open whose result can never be shown.
-            if (localRow != null && !localRow.isYouTubeArtist && !localRow.isLocal) {
-                val cached = resolvedChannelIds[artistId]
-                val resolved: String?
-                if (cached != null) {
-                    resolved = cached
-                } else {
-                    // Distinguish "YouTube answered, this artist isn't there" from "the request failed".
-                    // Only the FORMER may be cached as a miss: caching a transient failure (offline, one
-                    // throttled request) would pin the artist to the tiny local view for the whole
-                    // session, with no retry — the very dead end this resolution exists to remove.
-                    val searchResult = runCatching {
-                        YouTube.search(localRow.name, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
-                    }.getOrNull()
-                    val match = searchResult?.items
-                        ?.filterIsInstance<com.music.innertube.models.ArtistItem>()
-                        ?.firstOrNull { candidate ->
-                            candidate.id.startsWith("UC") &&
-                                candidate.title.trim().equals(localRow.name.trim(), ignoreCase = true)
-                        }
-                        ?.id
-                    if (match == null && searchResult != null) resolvedChannelIds[artistId] = ""
-                    resolved = match
-                }
-                if (resolved.isNullOrEmpty()) {
-                    // Local-only, offline, or a cached miss: leave hasFailed FALSE so the screen renders
-                    // the local view instead of a retry that could never succeed.
-                    return@launch
-                }
-                effectiveArtistId = resolved
-                // DELIBERATELY NOT PERSISTED to ArtistEntity.channelId. That column feeds
-                // ArtistEntity.toggleLike() and SyncUtils' subscription sync, which call
-                // YouTube.subscribeChannel — writing a NAME-MATCHED guess there would make "follow"
-                // subscribe the user's real YouTube account, possibly to a same-named wrong artist, with
-                // no way to re-resolve. A whole-row @Update from this stale snapshot could also revert a
-                // "follow" the user made while the search was in flight (lost update). Session cache only.
-                resolvedChannelIds[artistId] = resolved
-            }
-            // Instant re-open: show this session's cached artist page immediately (no spinner), then
-            // still refresh from YouTube below so the data stays up to date. On a COLD first entry (no
-            // in-memory cache yet) fall back to the page persisted last session, so the shelves (e.g.
-            // "Canciones más escuchadas") render instantly instead of waiting for the slow live fetch —
-            // which previously left the screen blank until the user backed out and re-entered.
+            
             popularSongsCache[artistId]?.let { cachedPopular ->
                 if (cachedPopular.isNotEmpty()) _expandedPopularSongs.value = cachedPopular
             }
@@ -281,24 +222,42 @@ class ArtistViewModel @Inject constructor(
             } else {
                 noteLibraryArtistName(artistPage?.artist?.title)
             }
-            // Capture any already-resolved "Aparece en" (appears-on) section from this session's cached
-            // page or the page just seeded from disk, BEFORE the live fetch below overwrites
-            // artistPage/pageCache. If present, the appears-on job reuses it verbatim and SKIPS the ~80
-            // YouTube guest searches entirely — so those searches run at most once per artist (per session,
-            // and per cache TTL once persisted), never again on revisits.
+
+            val localRow = database.artist(artistId).first()?.artist
+            var effectiveArtistId = artistId
+            if (localRow != null && !localRow.isYouTubeArtist && !localRow.isLocal) {
+                val cached = resolvedChannelIds[artistId]
+                val resolved: String?
+                if (cached != null) {
+                    resolved = cached
+                } else {
+                    val searchResult = runCatching {
+                        YouTube.search(localRow.name, YouTube.SearchFilter.FILTER_ARTIST).getOrNull()
+                    }.getOrNull()
+                    val match = searchResult?.items
+                        ?.filterIsInstance<com.music.innertube.models.ArtistItem>()
+                        ?.firstOrNull { candidate ->
+                            candidate.id.startsWith("UC") &&
+                                candidate.title.trim().equals(localRow.name.trim(), ignoreCase = true)
+                        }
+                        ?.id
+                    if (match == null && searchResult != null) resolvedChannelIds[artistId] = ""
+                    resolved = match
+                }
+                if (resolved.isNullOrEmpty()) {
+                    return@launch
+                }
+                effectiveArtistId = resolved
+                resolvedChannelIds[artistId] = resolved
+            }
+            
             val cachedAppearsOn: com.music.innertube.pages.ArtistSection? =
                 artistPage?.sections?.find { it.title.equals("Aparece en", ignoreCase = true) }
                     ?: pageCache[artistId]?.sections?.find { it.title.equals("Aparece en", ignoreCase = true) }
-            // Retry transient failures (YouTube throttling) so the screen doesn't get stuck on the spinner,
-            // which forced the user to leave and re-enter the artist several times.
+
             var attempt = 0
             var loaded = false
-            // `isActive` in the condition: YouTube.artist is runCatching{}-wrapped, so a CANCELLED job
-            // gets a plain failure back instead of unwinding — without this a superseded fetch kept
-            // burning its remaining attempts.
             while (!loaded && attempt < 3 && isActive) {
-            // effectiveArtistId, not artistId: for a locally-created row this is the resolved channel id.
-            // The CACHES stay keyed by artistId (what the user navigated to), so lookups still hit.
             YouTube.artist(effectiveArtistId)
                 .onSuccess { page ->
                     val filteredSections = page.sections
@@ -312,7 +271,6 @@ class ArtistViewModel @Inject constructor(
                     noteLibraryArtistName(filteredPage.artist.title)
                     pageCache[artistId] = filteredPage
                     loaded = true
-                    // Persist so a COLD first entry next session can show this instantly (see seed above).
                     launch { ArtistPageCache.save(context, artistId, filteredPage) }
                     launch(Dispatchers.IO) {
                         expandPopularSongsSection(
@@ -340,18 +298,6 @@ class ArtistViewModel @Inject constructor(
                         }
                     }
 
-                    // NOTE: an album-preload used to run here, fetching up to 6 albums the moment the
-                    // artist page opened. It saturated YouTube (which then throttles for ~30s), so the
-                    // FIRST album you tapped hung ~30s while re-entering worked (the storm was over). It
-                    // also only cached album metadata (withSongs=false), which AlbumViewModel re-fetches
-                    // anyway — net-negative. Removed: albums now load cleanly on open (AlbumViewModel)
-                    // and are cached for instant re-open, with no background storm starving that open.
-
-                    // "Aparece en" (Appears on), like Spotify: guest albums + featuring collabs. Built from
-                    // (1) native YTM shelves titled Appears/Featuring/Colaboraciones, (2) iTunes guest
-                    // album+song credits across storefronts, (3) YouTube "feat./ft." searches — then
-                    // resolved to playable YT items. Cache-first: once written to pageCache + disk,
-                    // revisits skip the fan-out entirely.
                     launch(Dispatchers.IO) {
                         val artistName = page.artist?.title ?: return@launch
                         val items: List<com.music.innertube.models.YTItem> = if (cachedAppearsOn != null) {
@@ -363,82 +309,84 @@ class ArtistViewModel @Inject constructor(
                             val norm = iad1tya.echo.music.utils.iTunesDiscography::normalizeTitle
                             val guest = iad1tya.echo.music.utils.iTunesDiscography
                                 .fetchAppearsOn(artistName, "us")
-                                .take(120)
+                                .take(12)
                             val sem = Semaphore(2)
                             val fromItunes = if (guest.isEmpty()) {
                                 emptyList()
                             } else {
+                                withTimeoutOrNull(5000L) {
+                                    coroutineScope {
+                                        guest.map { (title, primary) ->
+                                            async {
+                                                sem.withPermit {
+                                                    val target = norm(title)
+                                                    fun matches(t: String) =
+                                                        t == target ||
+                                                            (target.length >= 4 &&
+                                                                (t.contains(target) || target.contains(t)))
+                                                    val album = YouTube.search(
+                                                        "$primary $title",
+                                                        YouTube.SearchFilter.FILTER_ALBUM,
+                                                    ).getOrNull()?.items
+                                                        ?.filterIsInstance<com.music.innertube.models.AlbumItem>()
+                                                        ?.firstOrNull { matches(norm(it.title)) }
+                                                    if (album != null) {
+                                                        return@withPermit album as com.music.innertube.models.YTItem
+                                                    }
+                                                    val song = YouTube.search(
+                                                        "$primary $title",
+                                                        YouTube.SearchFilter.FILTER_SONG,
+                                                    ).getOrNull()?.items
+                                                        ?.filterIsInstance<com.music.innertube.models.SongItem>()
+                                                        ?.firstOrNull { s ->
+                                                            matches(norm(s.title)) &&
+                                                                s.artists.any {
+                                                                    it.name.contains(artistName, ignoreCase = true)
+                                                                }
+                                                        }
+                                                    song as? com.music.innertube.models.YTItem
+                                                }
+                                            }
+                                        }.awaitAll().filterNotNull()
+                                    }
+                                }.orEmpty()
+                            }
+                            val fromFeatSearch = withTimeoutOrNull(4000L) {
                                 coroutineScope {
-                                    guest.map { (title, primary) ->
+                                    listOf(
+                                        "feat. $artistName",
+                                        "ft. $artistName",
+                                        "featuring $artistName",
+                                    ).map { q ->
                                         async {
                                             sem.withPermit {
-                                                val target = norm(title)
-                                                fun matches(t: String) =
-                                                    t == target ||
-                                                        (target.length >= 4 &&
-                                                            (t.contains(target) || target.contains(t)))
-                                                val album = YouTube.search(
-                                                    "$primary $title",
-                                                    YouTube.SearchFilter.FILTER_ALBUM,
-                                                ).getOrNull()?.items
-                                                    ?.filterIsInstance<com.music.innertube.models.AlbumItem>()
-                                                    ?.firstOrNull { matches(norm(it.title)) }
-                                                if (album != null) {
-                                                    return@withPermit album as com.music.innertube.models.YTItem
-                                                }
-                                                val song = YouTube.search(
-                                                    "$primary $title",
-                                                    YouTube.SearchFilter.FILTER_SONG,
-                                                ).getOrNull()?.items
+                                                YouTube.search(q, YouTube.SearchFilter.FILTER_SONG)
+                                                    .getOrNull()?.items
                                                     ?.filterIsInstance<com.music.innertube.models.SongItem>()
-                                                    ?.firstOrNull { s ->
-                                                        matches(norm(s.title)) &&
-                                                            s.artists.any {
-                                                                it.name.contains(artistName, ignoreCase = true)
-                                                            }
+                                                    ?.filter { s ->
+                                                        val credited = s.artists.any {
+                                                            it.name.contains(artistName, ignoreCase = true)
+                                                        }
+                                                        val inTitle = s.title.contains(artistName, ignoreCase = true) &&
+                                                            (s.title.contains("feat", ignoreCase = true) ||
+                                                                s.title.contains("ft.", ignoreCase = true) ||
+                                                                s.title.contains("with ", ignoreCase = true))
+                                                        (credited || inTitle) &&
+                                                            s.artists.firstOrNull()
+                                                                ?.name
+                                                                ?.equals(artistName, ignoreCase = true) != true
                                                     }
-                                                song as? com.music.innertube.models.YTItem
+                                                    ?.take(15)
+                                                    .orEmpty()
                                             }
                                         }
-                                    }.awaitAll().filterNotNull()
+                                    }.awaitAll().flatten()
                                 }
-                            }
-                            // Direct featuring search fills gaps iTunes storefronts miss (esp. Latin collabs).
-                            val fromFeatSearch = coroutineScope {
-                                listOf(
-                                    "feat. $artistName",
-                                    "ft. $artistName",
-                                    "featuring $artistName",
-                                ).map { q ->
-                                    async {
-                                        sem.withPermit {
-                                            YouTube.search(q, YouTube.SearchFilter.FILTER_SONG)
-                                                .getOrNull()?.items
-                                                ?.filterIsInstance<com.music.innertube.models.SongItem>()
-                                                ?.filter { s ->
-                                                    val credited = s.artists.any {
-                                                        it.name.contains(artistName, ignoreCase = true)
-                                                    }
-                                                    val inTitle = s.title.contains(artistName, ignoreCase = true) &&
-                                                        (s.title.contains("feat", ignoreCase = true) ||
-                                                            s.title.contains("ft.", ignoreCase = true) ||
-                                                            s.title.contains("with ", ignoreCase = true))
-                                                    // Guest: credited OR titled feat, but not solo primary-only.
-                                                    (credited || inTitle) &&
-                                                        s.artists.firstOrNull()
-                                                            ?.name
-                                                            ?.equals(artistName, ignoreCase = true) != true
-                                                }
-                                                ?.take(25)
-                                                .orEmpty()
-                                        }
-                                    }
-                                }.awaitAll().flatten()
-                            }
+                            }.orEmpty()
                             (nativeSeed + fromItunes + fromFeatSearch)
                                 .distinctBy { it.id }
                                 .filter { !hideExplicit || !it.explicit }
-                                .take(120)
+                                .take(60)
                         }
                         if (items.isEmpty()) return@launch
                         withContext(Dispatchers.Main) {
