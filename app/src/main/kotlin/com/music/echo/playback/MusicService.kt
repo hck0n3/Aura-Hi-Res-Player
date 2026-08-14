@@ -54,8 +54,6 @@ import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERR
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.LoadControl
-import androidx.media3.exoplayer.source.MediaSource.MediaPeriodId
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
@@ -2829,32 +2827,30 @@ class MusicService :
             .setTrackSelector(videoTrackSelector)
             .setRenderersFactory(createRenderersFactory(silenceProcessor, eqProcessor, normProcessor, limiterProcessor))
             .setLoadControl(
-                VideoAwareLoadControl(
-                    DefaultLoadControl.Builder()
-                        .setBufferDurationsMs(
-                            DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
-                            // 120s max buffer: enough lead to ride out short connectivity drops without
-                            // the runaway RAM of the old 600s (10-min) value. The previous 600s combined with
-                            // a hard 32MB byte cap + prioritizeTimeOverSizeThresholds(false) starved the TIME
-                            // buffer for hi-res/FLAC (32MB << 50s of FLAC), so ExoPlayer reported "buffer full"
-                            // with an empty time buffer -> repeated STATE_BUFFERING micro-stalls (the audible
-                            // "trabones"/cuts on playback and at the crossfade swap, which the secondary player
-                            // inherited). Reconciled below. (High-Performance Mode uses 60s.)
-                            maxBufferMs,
-                            // Songs must start as soon as the first packets arrive. 2.5–4s was a video-merge
-                            // cushion that made every skip feel late. Keep a short start gate; rebuffer still
-                            // waits longer so a stall does not ping-pong STATE_BUFFERING.
-                            if (useSmallBuffer) 400 else 700,
-                            if (useSmallBuffer) 1_500 else 2_000,
-                        )
-                        // 64MB byte ceiling guards against OOM with multiple pre-loaded/crossfade players,
-                        // but prioritizeTimeOverSizeThresholds(true) lets the TIME buffer win so the min/max
-                        // duration is actually honored for hi-res streams instead of being clipped to the byte cap.
-                        // (High-Performance Mode uses 32MB.)
-                        .setTargetBufferBytes(targetBufferBytes)
-                        .setPrioritizeTimeOverSizeThresholds(true)
-                        .build(),
-                ) { _videoMode.value },
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+                        // 120s max buffer: enough lead to ride out short connectivity drops without
+                        // the runaway RAM of the old 600s (10-min) value. The previous 600s combined with
+                        // a hard 32MB byte cap + prioritizeTimeOverSizeThresholds(false) starved the TIME
+                        // buffer for hi-res/FLAC (32MB << 50s of FLAC), so ExoPlayer reported "buffer full"
+                        // with an empty time buffer -> repeated STATE_BUFFERING micro-stalls (the audible
+                        // "trabones"/cuts on playback and at the crossfade swap, which the secondary player
+                        // inherited). Reconciled below. (High-Performance Mode uses 60s.)
+                        maxBufferMs,
+                        // Songs must start as soon as the first packets arrive. 2.5–4s was a video-merge
+                        // cushion that made every skip feel late. Keep a short start gate; rebuffer still
+                        // waits longer so a stall does not ping-pong STATE_BUFFERING.
+                        if (useSmallBuffer) 400 else 700,
+                        if (useSmallBuffer) 1_500 else 2_000,
+                    )
+                    // 64MB byte ceiling guards against OOM with multiple pre-loaded/crossfade players,
+                    // but prioritizeTimeOverSizeThresholds(true) lets the TIME buffer win so the min/max
+                    // duration is actually honored for hi-res streams instead of being clipped to the byte cap.
+                    // (High-Performance Mode uses 32MB.)
+                    .setTargetBufferBytes(targetBufferBytes)
+                    .setPrioritizeTimeOverSizeThresholds(true)
+                    .build(),
             )
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -11289,37 +11285,4 @@ object EnhancedShuffleCycle {
      */
     fun shouldResetForNewCycle(isUserActivation: Boolean, cycleComplete: Boolean): Boolean =
         isUserActivation && cycleComplete
-}
-
-/**
- * LoadControl wrapper that dynamically requires a larger initial/rebuffer buffer (~2.0–2.5s)
- * when in video mode to prevent initial frame stalls, while keeping the snappy 400-700ms start
- * gate for normal audio tracks.
- */
-internal class VideoAwareLoadControl(
-    private val delegate: LoadControl,
-    private val isVideoMode: () -> Boolean,
-) : LoadControl by delegate {
-    override fun shouldStartPlayback(
-        timeline: Timeline,
-        mediaPeriodId: MediaPeriodId,
-        bufferedDurationUs: Long,
-        playbackSpeed: Float,
-        rebuffering: Boolean,
-        targetLiveOffsetUs: Long,
-    ): Boolean {
-        if (isVideoMode()) {
-            val minVideoBufferUs = if (rebuffering) 2_500_000L else 2_000_000L
-            val dtUs = (minVideoBufferUs * playbackSpeed).toLong()
-            if (bufferedDurationUs < dtUs) return false
-        }
-        return delegate.shouldStartPlayback(
-            timeline,
-            mediaPeriodId,
-            bufferedDurationUs,
-            playbackSpeed,
-            rebuffering,
-            targetLiveOffsetUs,
-        )
-    }
 }

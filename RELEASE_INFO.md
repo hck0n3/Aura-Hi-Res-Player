@@ -1,6 +1,6 @@
-# Aura Hi-Res Player 0.6.200
+# Aura Hi-Res Player 0.6.201
 
-Mejoras en reproducción de vídeo, portadas sin parpadeo, recomendaciones y chips de inicio con tu cuenta, y sincronización mejorada.
+Corrección urgente de inicio del servicio de reproducción, mejoras en vídeo, portadas sin parpadeo, recomendaciones y chips de inicio con tu cuenta, y sincronización mejorada.
 
 ---
 
