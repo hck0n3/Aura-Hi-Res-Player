@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-14T01:29:28Z",
+  "updatedAt": "2026-08-14T02:20:00Z",
   "items": [
+    {
+      "id": "aviso-20260814-022000",
+      "date": "2026-08-14",
+      "publishedAt": "2026-08-14T02:20:00Z",
+      "title": "Aura Hi-Res 0.6.199: vídeo y canción, títulos largos",
+      "body": "Aura Hi-Res 0.6.199 ya está lista para descargar.\n\n• Puedes pasar de vídeo a canción y volver al vídeo las veces que quieras: la imagen vuelve y el audio no se corta al cambiar.\n• Al empezar un vídeo ya no se para unos segundos al principio.\n• Si das Me gusta mientras ves el vídeo, el icono de descarga sigue respondiendo.\n• Si el nombre de la canción o del vídeo es muy largo, se desplaza solo hasta leerlo entero.\n• Álbumes, EP, singles y playlists: un renglón por pista, con línea entre cada una, como en Apple Music.\n\nActualiza desde el menú de tu cuenta (avatar) ▸ Actualizaciones. Gracias por estar en Aura.",
+      "priority": "important"
+    },
     {
       "id": "aviso-20260814-012928",
       "date": "2026-08-14",
