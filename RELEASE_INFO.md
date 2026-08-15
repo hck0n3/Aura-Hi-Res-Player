@@ -1,15 +1,18 @@
-# Aura Hi-Res Player 0.6.204
+# Aura Hi-Res Player 0.6.205
 
-Resolución de cierres inesperados, mejora de calidad de audio (DSP) y solución de miniaturas de YouTube.
+Resolución de cierres inesperados, mejoras en la calidad de audio (Simulador Tidal), y correcciones visuales importantes en la interfaz de usuario.
 
 ---
 
-## Correcciones
+## Novedades y Correcciones
 
-- **Calidad de Audio DSP**: Ajustados los niveles de procesamiento del limitador interno (Headroom a -2dB y Release de 50ms) para garantizar voces y agudos sin distorsión (reducción de sibilancias y sonido rasposo).
-- **Caída en Artistas (Redmi/MIUI)**: Resuelto un cierre inesperado de la aplicación al entrar al perfil de un artista causado por elementos duplicados en la lista.
-- **Portadas Faltantes en Vídeos**: Los resultados provenientes de la búsqueda estándar de YouTube ahora garantizan la visualización de su portada sin ser descartados erróneamente de la lista, e integran el nuevo flujo para prevenir el error "Vídeo no disponible".
-- **Botones inferiores amontonados**: Arreglado un defecto visual en la pantalla de cola de reproducción/pantalla completa donde los botones del panel inferior (letras, ecualizador, detalles) se mostraban extremadamente pequeños y juntos en dispositivos de alta densidad (Redmi Note 13 Pro+ 5G).
+- **Simulador Tidal (Audio)**: Integrado un simulador DSP nativo y un interruptor en los ajustes de sonido para recrear la firma acústica de Tidal.
+- **Navegación entre Canciones**: Arreglado un error crítico donde retroceder a la canción anterior cambiaba la portada pero se quedaba reproduciendo la canción actual.
+- **Carrusel "Para ti" y Modo Video**: Se ha restaurado la visibilidad del carrusel en el inicio y el botón de vídeo, que antes desaparecían dependiendo del modo de rendimiento del dispositivo.
+- **Consistencia Visual**: Las tarjetas de canciones y álbumes en el inicio ahora tienen un tamaño estandarizado para coincidir armónicamente con la sección de novedades.
+- **Portadas Faltantes en Vídeos**: Solucionado el problema donde algunos videos mostraban cuadros grises en lugar de su portada.
+- **Fiabilidad de Reproducción**: Solucionado el error "Vídeo no disponible" para contenido que sí está disponible en YouTube, mejorando el mecanismo de resolución de URL de streams de video.
+- **Botones inferiores amontonados**: Arreglado un defecto visual en la pantalla de cola de reproducción donde los botones del panel inferior se mostraban extremadamente pequeños y juntos.
 
 ## Cómo actualizar
 

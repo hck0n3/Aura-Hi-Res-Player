@@ -1,0 +1,365 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.3.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :app
+WARNING: The option setting 'android.newDsl=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+
+> Task :applecanvas:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :canvas:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :canvas:compileKotlin UP-TO-DATE
+> Task :canvas:compileJava NO-SOURCE
+> Task :canvas:processResources NO-SOURCE
+> Task :canvas:classes UP-TO-DATE
+> Task :canvas:jar UP-TO-DATE
+> Task :applecanvas:compileKotlin UP-TO-DATE
+> Task :applecanvas:compileJava NO-SOURCE
+> Task :applecanvas:processResources NO-SOURCE
+> Task :applecanvas:classes UP-TO-DATE
+> Task :applecanvas:jar UP-TO-DATE
+> Task :echomusiccanvas:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :echomusiccanvas:compileKotlin UP-TO-DATE
+> Task :echomusiccanvas:compileJava NO-SOURCE
+> Task :echomusiccanvas:processResources NO-SOURCE
+> Task :echomusiccanvas:classes UP-TO-DATE
+> Task :echomusiccanvas:jar UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preUniversalFossDebugBuild UP-TO-DATE
+> Task :app:generateUniversalFossDebugBuildConfig UP-TO-DATE
+> Task :app:protobufDummy UP-TO-DATE
+> Task :app:extractDebugProto UP-TO-DATE
+> Task :app:extractFossProto UP-TO-DATE
+> Task :artistvideo:preBuild UP-TO-DATE
+> Task :artistvideo:preDebugBuild UP-TO-DATE
+> Task :artistvideo:generateDebugResources UP-TO-DATE
+> Task :artistvideo:packageDebugResources UP-TO-DATE
+> Task :artistvideo:processDebugNavigationResources UP-TO-DATE
+> Task :artistvideo:parseDebugLocalResources UP-TO-DATE
+> Task :artistvideo:generateDebugRFile UP-TO-DATE
+> Task :artistvideo:compileDebugKotlin UP-TO-DATE
+> Task :artistvideo:javaPreCompileDebug UP-TO-DATE
+> Task :artistvideo:compileDebugJavaWithJavac NO-SOURCE
+> Task :artistvideo:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :artistvideo:processDebugJavaRes UP-TO-DATE
+> Task :artistvideo:createFullJarDebug UP-TO-DATE
+> Task :betterlyrics:preBuild UP-TO-DATE
+> Task :betterlyrics:preDebugBuild UP-TO-DATE
+> Task :betterlyrics:generateDebugResources UP-TO-DATE
+> Task :betterlyrics:packageDebugResources UP-TO-DATE
+> Task :betterlyrics:processDebugNavigationResources UP-TO-DATE
+> Task :betterlyrics:parseDebugLocalResources UP-TO-DATE
+> Task :betterlyrics:generateDebugRFile UP-TO-DATE
+> Task :betterlyrics:compileDebugKotlin UP-TO-DATE
+> Task :betterlyrics:javaPreCompileDebug UP-TO-DATE
+> Task :betterlyrics:compileDebugJavaWithJavac NO-SOURCE
+> Task :betterlyrics:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :betterlyrics:processDebugJavaRes UP-TO-DATE
+> Task :betterlyrics:createFullJarDebug UP-TO-DATE
+> Task :innertube:preBuild UP-TO-DATE
+> Task :innertube:preDebugBuild UP-TO-DATE
+> Task :innertube:generateDebugResources UP-TO-DATE
+> Task :innertube:packageDebugResources UP-TO-DATE
+> Task :innertube:processDebugNavigationResources UP-TO-DATE
+> Task :innertube:parseDebugLocalResources UP-TO-DATE
+> Task :innertube:generateDebugRFile UP-TO-DATE
+> Task :innertube:compileDebugKotlin UP-TO-DATE
+> Task :innertube:javaPreCompileDebug UP-TO-DATE
+> Task :innertube:compileDebugJavaWithJavac NO-SOURCE
+> Task :innertube:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :innertube:processDebugJavaRes UP-TO-DATE
+> Task :innertube:createFullJarDebug UP-TO-DATE
+> Task :jiosaavn:preBuild UP-TO-DATE
+> Task :jiosaavn:preDebugBuild UP-TO-DATE
+> Task :jiosaavn:generateDebugResources UP-TO-DATE
+> Task :jiosaavn:packageDebugResources UP-TO-DATE
+> Task :jiosaavn:processDebugNavigationResources UP-TO-DATE
+> Task :jiosaavn:parseDebugLocalResources UP-TO-DATE
+> Task :jiosaavn:generateDebugRFile UP-TO-DATE
+> Task :jiosaavn:compileDebugKotlin UP-TO-DATE
+> Task :jiosaavn:javaPreCompileDebug UP-TO-DATE
+> Task :jiosaavn:compileDebugJavaWithJavac NO-SOURCE
+> Task :jiosaavn:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :jiosaavn:processDebugJavaRes UP-TO-DATE
+> Task :jiosaavn:createFullJarDebug UP-TO-DATE
+> Task :kugou:preBuild UP-TO-DATE
+> Task :kugou:preDebugBuild UP-TO-DATE
+> Task :kugou:generateDebugResources UP-TO-DATE
+> Task :kugou:packageDebugResources UP-TO-DATE
+> Task :kugou:processDebugNavigationResources UP-TO-DATE
+> Task :kugou:parseDebugLocalResources UP-TO-DATE
+> Task :kugou:generateDebugRFile UP-TO-DATE
+> Task :kugou:compileDebugKotlin UP-TO-DATE
+> Task :kugou:javaPreCompileDebug UP-TO-DATE
+> Task :kugou:compileDebugJavaWithJavac NO-SOURCE
+> Task :kugou:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :kugou:processDebugJavaRes UP-TO-DATE
+> Task :kugou:createFullJarDebug UP-TO-DATE
+> Task :lrclib:preBuild UP-TO-DATE
+> Task :lrclib:preDebugBuild UP-TO-DATE
+> Task :lrclib:generateDebugResources UP-TO-DATE
+> Task :lrclib:packageDebugResources UP-TO-DATE
+> Task :lrclib:processDebugNavigationResources UP-TO-DATE
+> Task :lrclib:parseDebugLocalResources UP-TO-DATE
+> Task :lrclib:generateDebugRFile UP-TO-DATE
+> Task :lrclib:compileDebugKotlin UP-TO-DATE
+> Task :lrclib:javaPreCompileDebug UP-TO-DATE
+> Task :lrclib:compileDebugJavaWithJavac NO-SOURCE
+> Task :lrclib:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :lrclib:processDebugJavaRes UP-TO-DATE
+> Task :lrclib:createFullJarDebug UP-TO-DATE
+> Task :migration:preBuild UP-TO-DATE
+> Task :migration:preDebugBuild UP-TO-DATE
+> Task :migration:generateDebugResources UP-TO-DATE
+> Task :migration:packageDebugResources UP-TO-DATE
+> Task :migration:processDebugNavigationResources UP-TO-DATE
+> Task :migration:parseDebugLocalResources UP-TO-DATE
+> Task :migration:generateDebugRFile UP-TO-DATE
+> Task :migration:kspDebugKotlin UP-TO-DATE
+> Task :migration:compileDebugKotlin UP-TO-DATE
+> Task :migration:javaPreCompileDebug UP-TO-DATE
+> Task :migration:compileDebugJavaWithJavac NO-SOURCE
+> Task :migration:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :migration:processDebugJavaRes UP-TO-DATE
+> Task :migration:createFullJarDebug UP-TO-DATE
+> Task :betterlyrics:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :paxsenixlyrics:preBuild UP-TO-DATE
+> Task :paxsenixlyrics:preDebugBuild UP-TO-DATE
+> Task :paxsenixlyrics:generateDebugResources UP-TO-DATE
+> Task :paxsenixlyrics:packageDebugResources UP-TO-DATE
+> Task :paxsenixlyrics:processDebugNavigationResources UP-TO-DATE
+> Task :paxsenixlyrics:parseDebugLocalResources UP-TO-DATE
+> Task :paxsenixlyrics:generateDebugRFile UP-TO-DATE
+> Task :paxsenixlyrics:compileDebugKotlin UP-TO-DATE
+> Task :paxsenixlyrics:javaPreCompileDebug UP-TO-DATE
+> Task :paxsenixlyrics:compileDebugJavaWithJavac NO-SOURCE
+> Task :paxsenixlyrics:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :paxsenixlyrics:processDebugJavaRes UP-TO-DATE
+> Task :paxsenixlyrics:createFullJarDebug UP-TO-DATE
+> Task :shazamkit:preBuild UP-TO-DATE
+> Task :shazamkit:preDebugBuild UP-TO-DATE
+> Task :shazamkit:generateDebugResources UP-TO-DATE
+> Task :shazamkit:packageDebugResources UP-TO-DATE
+> Task :shazamkit:processDebugNavigationResources UP-TO-DATE
+> Task :shazamkit:parseDebugLocalResources UP-TO-DATE
+> Task :shazamkit:generateDebugRFile UP-TO-DATE
+> Task :shazamkit:compileDebugKotlin UP-TO-DATE
+> Task :shazamkit:javaPreCompileDebug UP-TO-DATE
+> Task :shazamkit:compileDebugJavaWithJavac NO-SOURCE
+> Task :shazamkit:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :shazamkit:processDebugJavaRes UP-TO-DATE
+> Task :shazamkit:createFullJarDebug UP-TO-DATE
+> Task :simpmusic:preBuild UP-TO-DATE
+> Task :simpmusic:preDebugBuild UP-TO-DATE
+> Task :simpmusic:generateDebugResources UP-TO-DATE
+> Task :simpmusic:packageDebugResources UP-TO-DATE
+> Task :simpmusic:processDebugNavigationResources UP-TO-DATE
+> Task :simpmusic:parseDebugLocalResources UP-TO-DATE
+> Task :simpmusic:generateDebugRFile UP-TO-DATE
+> Task :simpmusic:compileDebugKotlin UP-TO-DATE
+> Task :simpmusic:javaPreCompileDebug UP-TO-DATE
+> Task :simpmusic:compileDebugJavaWithJavac NO-SOURCE
+> Task :simpmusic:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :simpmusic:processDebugJavaRes UP-TO-DATE
+> Task :simpmusic:createFullJarDebug UP-TO-DATE
+> Task :unison:preBuild UP-TO-DATE
+> Task :unison:preDebugBuild UP-TO-DATE
+> Task :unison:generateDebugResources UP-TO-DATE
+> Task :unison:packageDebugResources UP-TO-DATE
+> Task :unison:processDebugNavigationResources UP-TO-DATE
+> Task :unison:parseDebugLocalResources UP-TO-DATE
+> Task :unison:generateDebugRFile UP-TO-DATE
+> Task :unison:compileDebugKotlin UP-TO-DATE
+> Task :unison:javaPreCompileDebug UP-TO-DATE
+> Task :unison:compileDebugJavaWithJavac NO-SOURCE
+> Task :unison:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :unison:processDebugJavaRes UP-TO-DATE
+> Task :unison:createFullJarDebug UP-TO-DATE
+> Task :youlyplus:preBuild UP-TO-DATE
+> Task :youlyplus:preDebugBuild UP-TO-DATE
+> Task :youlyplus:generateDebugResources UP-TO-DATE
+> Task :youlyplus:packageDebugResources UP-TO-DATE
+> Task :youlyplus:processDebugNavigationResources UP-TO-DATE
+> Task :youlyplus:parseDebugLocalResources UP-TO-DATE
+> Task :youlyplus:generateDebugRFile UP-TO-DATE
+> Task :youlyplus:compileDebugKotlin UP-TO-DATE
+> Task :youlyplus:javaPreCompileDebug UP-TO-DATE
+> Task :youlyplus:compileDebugJavaWithJavac NO-SOURCE
+> Task :youlyplus:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :youlyplus:processDebugJavaRes UP-TO-DATE
+> Task :youlyplus:createFullJarDebug UP-TO-DATE
+> Task :app:extractIncludeUniversalFossDebugProto UP-TO-DATE
+> Task :app:extractProto UP-TO-DATE
+> Task :app:extractUniversalFossDebugProto UP-TO-DATE
+> Task :app:extractUniversalFossProto UP-TO-DATE
+> Task :app:extractUniversalProto UP-TO-DATE
+> Task :app:generateUniversalFossDebugProto UP-TO-DATE
+> Task :app:extractUniversalFossDebugSupportedLocales UP-TO-DATE
+> Task :artistvideo:extractDebugSupportedLocales UP-TO-DATE
+> Task :betterlyrics:extractDebugSupportedLocales UP-TO-DATE
+> Task :innertube:extractDebugSupportedLocales UP-TO-DATE
+> Task :jiosaavn:extractDebugSupportedLocales UP-TO-DATE
+> Task :kugou:extractDebugSupportedLocales UP-TO-DATE
+> Task :lrclib:extractDebugSupportedLocales UP-TO-DATE
+> Task :migration:extractDebugSupportedLocales UP-TO-DATE
+> Task :paxsenixlyrics:extractDebugSupportedLocales UP-TO-DATE
+> Task :shazamkit:extractDebugSupportedLocales UP-TO-DATE
+> Task :simpmusic:extractDebugSupportedLocales UP-TO-DATE
+> Task :unison:extractDebugSupportedLocales UP-TO-DATE
+> Task :youlyplus:extractDebugSupportedLocales UP-TO-DATE
+> Task :app:generateUniversalFossDebugLocaleConfig UP-TO-DATE
+> Task :app:generateUniversalFossDebugResources UP-TO-DATE
+> Task :app:packageUniversalFossDebugResources UP-TO-DATE
+> Task :app:processUniversalFossDebugNavigationResources UP-TO-DATE
+> Task :app:parseUniversalFossDebugLocalResources UP-TO-DATE
+> Task :app:generateUniversalFossDebugRFile UP-TO-DATE
+> Task :artistvideo:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :innertube:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :jiosaavn:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :kugou:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :lrclib:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :migration:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :paxsenixlyrics:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :shazamkit:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :simpmusic:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :unison:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :youlyplus:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :app:kspUniversalFossDebugKotlin UP-TO-DATE
+> Task :app:compileUniversalFossDebugKotlin UP-TO-DATE
+> Task :app:javaPreCompileUniversalFossDebug UP-TO-DATE
+> Task :app:compileUniversalFossDebugJavaWithJavac UP-TO-DATE
+> Task :app:hiltSyncUniversalFossDebug UP-TO-DATE
+> Task :app:hiltAggregateDepsUniversalFossDebug UP-TO-DATE
+> Task :app:hiltJavaCompileUniversalFossDebug UP-TO-DATE
+> Task :artistvideo:writeDebugAarMetadata UP-TO-DATE
+> Task :betterlyrics:writeDebugAarMetadata UP-TO-DATE
+> Task :innertube:writeDebugAarMetadata UP-TO-DATE
+> Task :jiosaavn:writeDebugAarMetadata UP-TO-DATE
+> Task :kugou:writeDebugAarMetadata UP-TO-DATE
+> Task :lrclib:writeDebugAarMetadata UP-TO-DATE
+> Task :migration:writeDebugAarMetadata UP-TO-DATE
+> Task :paxsenixlyrics:writeDebugAarMetadata UP-TO-DATE
+> Task :shazamkit:writeDebugAarMetadata UP-TO-DATE
+> Task :simpmusic:writeDebugAarMetadata UP-TO-DATE
+> Task :unison:writeDebugAarMetadata UP-TO-DATE
+> Task :youlyplus:writeDebugAarMetadata UP-TO-DATE
+> Task :app:checkUniversalFossDebugAarMetadata UP-TO-DATE
+> Task :app:compileUniversalFossDebugNavigationResources UP-TO-DATE
+> Task :app:mapUniversalFossDebugSourceSetPaths UP-TO-DATE
+> Task :app:mergeUniversalFossDebugResources UP-TO-DATE
+> Task :app:createUniversalFossDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksUniversalFossDebug UP-TO-DATE
+> Task :artistvideo:extractDeepLinksDebug UP-TO-DATE
+> Task :artistvideo:processDebugManifest UP-TO-DATE
+> Task :betterlyrics:extractDeepLinksDebug UP-TO-DATE
+> Task :betterlyrics:processDebugManifest UP-TO-DATE
+> Task :innertube:extractDeepLinksDebug UP-TO-DATE
+> Task :innertube:processDebugManifest UP-TO-DATE
+> Task :jiosaavn:extractDeepLinksDebug UP-TO-DATE
+> Task :jiosaavn:processDebugManifest UP-TO-DATE
+> Task :kugou:extractDeepLinksDebug UP-TO-DATE
+> Task :kugou:processDebugManifest UP-TO-DATE
+> Task :lrclib:extractDeepLinksDebug UP-TO-DATE
+> Task :lrclib:processDebugManifest UP-TO-DATE
+> Task :migration:extractDeepLinksDebug UP-TO-DATE
+> Task :migration:processDebugManifest UP-TO-DATE
+> Task :paxsenixlyrics:extractDeepLinksDebug UP-TO-DATE
+> Task :paxsenixlyrics:processDebugManifest UP-TO-DATE
+> Task :shazamkit:extractDeepLinksDebug UP-TO-DATE
+> Task :shazamkit:processDebugManifest UP-TO-DATE
+> Task :simpmusic:extractDeepLinksDebug UP-TO-DATE
+> Task :simpmusic:processDebugManifest UP-TO-DATE
+> Task :unison:extractDeepLinksDebug UP-TO-DATE
+> Task :unison:processDebugManifest UP-TO-DATE
+> Task :youlyplus:extractDeepLinksDebug UP-TO-DATE
+> Task :youlyplus:processDebugManifest UP-TO-DATE
+> Task :app:processUniversalFossDebugMainManifest UP-TO-DATE
+> Task :app:processUniversalFossDebugManifest UP-TO-DATE
+> Task :app:processUniversalFossDebugManifestForPackage UP-TO-DATE
+> Task :artistvideo:compileDebugLibraryResources UP-TO-DATE
+> Task :betterlyrics:compileDebugLibraryResources UP-TO-DATE
+> Task :innertube:compileDebugLibraryResources UP-TO-DATE
+> Task :jiosaavn:compileDebugLibraryResources UP-TO-DATE
+> Task :kugou:compileDebugLibraryResources UP-TO-DATE
+> Task :lrclib:compileDebugLibraryResources UP-TO-DATE
+> Task :migration:compileDebugLibraryResources UP-TO-DATE
+> Task :paxsenixlyrics:compileDebugLibraryResources UP-TO-DATE
+> Task :shazamkit:compileDebugLibraryResources UP-TO-DATE
+> Task :simpmusic:compileDebugLibraryResources UP-TO-DATE
+> Task :unison:compileDebugLibraryResources UP-TO-DATE
+> Task :youlyplus:compileDebugLibraryResources UP-TO-DATE
+> Task :app:processUniversalFossDebugResources UP-TO-DATE
+> Task :app:transformUniversalFossDebugClassesWithAsm UP-TO-DATE
+> Task :app:bundleUniversalFossDebugClassesToRuntimeJar UP-TO-DATE
+> Task :app:preUniversalFossDebugUnitTestBuild UP-TO-DATE
+> Task :app:processUniversalFossDebugJavaRes UP-TO-DATE
+> Task :app:bundleUniversalFossDebugClassesToCompileJar UP-TO-DATE
+> Task :app:extractIncludeUniversalFossDebugUnitTestProto UP-TO-DATE
+> Task :app:extractTestDebugProto UP-TO-DATE
+> Task :app:extractTestFossProto UP-TO-DATE
+> Task :app:extractTestProto UP-TO-DATE
+> Task :app:extractTestUniversalFossDebugProto UP-TO-DATE
+> Task :app:extractTestUniversalFossProto UP-TO-DATE
+> Task :app:extractTestUniversalProto UP-TO-DATE
+> Task :app:generateUniversalFossDebugUnitTestProto NO-SOURCE
+> Task :app:kspUniversalFossDebugUnitTestKotlin UP-TO-DATE
+> Task :app:compileUniversalFossDebugUnitTestKotlin UP-TO-DATE
+> Task :app:processUniversalFossDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:javaPreCompileUniversalFossDebugUnitTest UP-TO-DATE
+> Task :app:compileUniversalFossDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:hiltSyncUniversalFossDebugUnitTest UP-TO-DATE
+> Task :app:hiltAggregateDepsUniversalFossDebugUnitTest UP-TO-DATE
+> Task :app:hiltJavaCompileUniversalFossDebugUnitTest NO-SOURCE
+> Task :app:transformUniversalFossDebugUnitTestClassesWithAsm UP-TO-DATE
+Could not write standard input to Gradle Test Executor 1.
+java.io.IOException: Se está cerrando la canalización
+	at java.base/java.io.FileOutputStream.writeBytes(Native Method)
+	at java.base/java.io.FileOutputStream.write(FileOutputStream.java:367)
+	at java.base/java.io.BufferedOutputStream.flushBuffer(BufferedOutputStream.java:125)
+	at java.base/java.io.BufferedOutputStream.implFlush(BufferedOutputStream.java:252)
+	at java.base/java.io.BufferedOutputStream.flush(BufferedOutputStream.java:240)
+	at org.gradle.process.internal.streams.ExecOutputHandleRunner.writeBuffer(ExecOutputHandleRunner.java:98)
+	at org.gradle.process.internal.streams.ExecOutputHandleRunner.forwardContent(ExecOutputHandleRunner.java:85)
+	at org.gradle.process.internal.streams.ExecOutputHandleRunner.run(ExecOutputHandleRunner.java:64)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:47)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+> Task :app:testUniversalFossDebugUnitTest FAILED
+Error: no se ha encontrado o cargado la clase principal worker.org.gradle.process.internal.worker.GradleWorkerMain
+Causado por: java.lang.ClassNotFoundException: worker.org.gradle.process.internal.worker.GradleWorkerMain
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:testUniversalFossDebugUnitTest'.
+> Test process encountered an unexpected problem.
+   > Process 'Gradle Test Executor 1' finished with non-zero exit value 1
+
+* Try:
+> Check common problems https://docs.gradle.org/9.3.1/userguide/java_testing.html#sec:java_testing_troubleshooting.
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 20s
+251 actionable tasks: 1 executed, 250 up-to-date

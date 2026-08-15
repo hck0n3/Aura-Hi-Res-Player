@@ -387,6 +387,7 @@ val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
 // reference (attenuate-only) + a gentle limiter, applied in the live float Superpowered EQ processor, so
 // loud tracks don't blast at full native level. Does not break Hi-Res output.
 val SafeVolumeEnabledKey = booleanPreferencesKey("safeVolume")
+val TidalSimulationEnabledKey = booleanPreferencesKey("tidalSimulation")
 val AutoLoadMoreKey = booleanPreferencesKey("autoLoadMore")
 val DisableLoadMoreWhenRepeatAllKey = booleanPreferencesKey("disableLoadMoreWhenRepeatAll")
 val AutoDownloadOnLikeKey = booleanPreferencesKey("autoDownloadOnLike")

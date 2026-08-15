@@ -51,13 +51,13 @@ data class MusicResponsiveListItemRenderer(
                 ?.musicVideoType
                 ?: navigationEndpoint?.musicVideoType
 
-    val thumbnailUrlOrFallback: String?
-        get() {
-            val url = thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
-            if (!url.isNullOrEmpty()) return url
-            val vidId = playlistItemData?.videoId ?: navigationEndpoint?.watchEndpoint?.videoId
-            return if (vidId != null) "https://i.ytimg.com/vi/$vidId/maxresdefault.jpg" else null
-        }
+        val thumbnailUrlOrFallback: String?
+            get() {
+                val url = thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
+                if (!url.isNullOrEmpty()) return url
+                val vidId = playlistItemData?.videoId ?: navigationEndpoint?.watchEndpoint?.videoId
+                return if (vidId != null) "https://i.ytimg.com/vi/$vidId/hqdefault.jpg" else null
+            }
 
     @Serializable
     data class FlexColumn(

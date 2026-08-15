@@ -1232,12 +1232,12 @@ private fun ThumbnailImage(
     ) {
         fun upgradeYoutube(raw: String): String {
             // For YouTube VIDEO thumbnails the passed url is sddefault (640×480) — pixelated as a big player
-            // cover. Start from maxresdefault (1280×720, sharp, no letterbox) and fall back to sddefault on
-            // 404 (onError). Non-ytimg covers (googleusercontent, already hi-res) are left untouched.
+            // cover. Start from hqdefault (480x360, guaranteed to exist) instead of maxresdefault which can 
+            // sometimes return a 120x90 gray placeholder instead of 404ing.
             return if (raw.contains("ytimg.com") || raw.contains("img.youtube.com")) {
                 raw.replace(
                     Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.(jpg|webp)"),
-                    "maxresdefault.$2",
+                    "hqdefault.$2",
                 )
             } else raw
         }

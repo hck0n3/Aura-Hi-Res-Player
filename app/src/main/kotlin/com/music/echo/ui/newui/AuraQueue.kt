@@ -1213,20 +1213,20 @@ private fun AuraQueueBar(
     activeContainerColor: Color,
     activeContentColor: Color,
 ) {
-    Row(
+    @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+    androidx.compose.foundation.layout.FlowRow(
         // Centred, not left-packed with a trailing ⋮: the bar is now four or five buttons of the same
         // rank, and it sits directly under the player's own centred transport and centred quick-access
         // row. Left-packing them and hanging one button off the right edge is what the removed ⋮ was
         // holding the layout in.
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 18.dp)
             .windowInsetsPadding(
                 WindowInsets.systemBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
-            )
-            .horizontalScroll(rememberScrollState()),
+            ),
     ) {
         AuraBarButton(
             contentDescription = stringResource(R.string.cd_open_queue),

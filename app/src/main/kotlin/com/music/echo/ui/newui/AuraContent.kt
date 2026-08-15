@@ -378,12 +378,12 @@ fun AuraStableCoverImage(
     }
 }
 
-/** Upgrade ytimg URLs to maxresdefault for sharp exploration/player covers. */
+/** Upgrade ytimg URLs to hqdefault for sharp exploration/player covers. */
 internal fun upgradeAuraYoutubeCover(raw: String): String {
     if (!raw.contains("ytimg.com") && !raw.contains("img.youtube.com")) return raw
     return raw.replace(
         Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.(jpg|webp)"),
-        "maxresdefault.$2",
+        "hqdefault.$2",
     )
 }
 

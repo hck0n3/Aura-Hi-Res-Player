@@ -145,6 +145,7 @@ struct EqSnapshot {
     float preampMultiplier = 1.0f;
     bool safeVolumeEnabled = false;
     float safeVolumeGain = 1.0f;
+    bool tidalSimulationEnabled = false;
     /// Spatial stage (opt-in). Disabled by default so EQ-only playback stays bit-identical in this
     /// branch. Parameter layout is owned by Kotlin SpatialAudioProfile.toNativeParams().
     bool spatialEnabled = false;
@@ -180,6 +181,12 @@ public:
     Superpowered::Limiter* limiter = nullptr;
     Superpowered::Filter* deEsser = nullptr;
     Superpowered::Filter* deEsserDetector = nullptr;
+
+    Superpowered::Filter* tidalLowShelf = nullptr;
+    Superpowered::Filter* tidalMidParam = nullptr;
+    Superpowered::Filter* tidalHighMidParam = nullptr;
+    Superpowered::Filter* tidalDeEsser = nullptr;
+    Superpowered::Filter* tidalHighShelf = nullptr;
 
     Superpowered::Spatializer* spatFrontL = nullptr;
     Superpowered::Spatializer* spatFrontR = nullptr;
@@ -225,6 +232,7 @@ public:
     // reference instead of blasting at full native level.
     bool activeSafeVolumeEnabled = false;
     float activeSafeVolumeGain = 1.0f;
+    bool activeTidalSimulationEnabled = false;
     bool activeSpatialEnabled = false;
     int activeSpatialAlgorithm = 0;
     float activeAzL = 330.0f;
@@ -330,6 +338,7 @@ public:
         activePreampMultiplier = s.preampMultiplier;
         activeSafeVolumeEnabled = s.safeVolumeEnabled;
         activeSafeVolumeGain = s.safeVolumeGain;
+        activeTidalSimulationEnabled = s.tidalSimulationEnabled;
         activeSpatialEnabled = s.spatialEnabled;
         activeSpatialAlgorithm = s.spatialAlgorithm;
         activeAzL = s.azL;
@@ -516,6 +525,36 @@ public:
         deEsserDetector->octave = 1.0f;
         deEsserDetector->enabled = true;
 
+        tidalLowShelf = new Superpowered::Filter(Superpowered::Filter::LowShelf, samplerate);
+        tidalLowShelf->frequency = 85.0f;
+        tidalLowShelf->slope = 0.5f;
+        tidalLowShelf->decibel = 2.5f;
+        tidalLowShelf->enabled = true;
+
+        tidalMidParam = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
+        tidalMidParam->frequency = 250.0f;
+        tidalMidParam->octave = 1.0f;
+        tidalMidParam->decibel = 1.5f;
+        tidalMidParam->enabled = true;
+
+        tidalHighMidParam = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
+        tidalHighMidParam->frequency = 3500.0f;
+        tidalHighMidParam->octave = 1.2f;
+        tidalHighMidParam->decibel = -1.5f;
+        tidalHighMidParam->enabled = true;
+
+        tidalDeEsser = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
+        tidalDeEsser->frequency = 6500.0f;
+        tidalDeEsser->octave = 0.5f;
+        tidalDeEsser->decibel = -4.0f;
+        tidalDeEsser->enabled = true;
+
+        tidalHighShelf = new Superpowered::Filter(Superpowered::Filter::HighShelf, samplerate);
+        tidalHighShelf->frequency = 12000.0f;
+        tidalHighShelf->slope = 0.5f;
+        tidalHighShelf->decibel = 1.2f;
+        tidalHighShelf->enabled = true;
+
         spatFrontL = new Superpowered::Spatializer(samplerate);
         spatFrontR = new Superpowered::Spatializer(samplerate);
         spatRearL = new Superpowered::Spatializer(samplerate);
@@ -536,6 +575,11 @@ public:
         if (limiter) { delete limiter; limiter = nullptr; }
         if (deEsser) { delete deEsser; deEsser = nullptr; }
         if (deEsserDetector) { delete deEsserDetector; deEsserDetector = nullptr; }
+        if (tidalLowShelf) { delete tidalLowShelf; tidalLowShelf = nullptr; }
+        if (tidalMidParam) { delete tidalMidParam; tidalMidParam = nullptr; }
+        if (tidalHighMidParam) { delete tidalHighMidParam; tidalHighMidParam = nullptr; }
+        if (tidalDeEsser) { delete tidalDeEsser; tidalDeEsser = nullptr; }
+        if (tidalHighShelf) { delete tidalHighShelf; tidalHighShelf = nullptr; }
         if (spatFrontL) { delete spatFrontL; spatFrontL = nullptr; }
         if (spatFrontR) { delete spatFrontR; spatFrontR = nullptr; }
         if (spatRearL) { delete spatRearL; spatRearL = nullptr; }
@@ -813,7 +857,8 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
     bool runSpatial = processor && processor->activeSpatialEnabled;
     bool runChain = runEq ||
         (processor && (processor->activeSafeVolumeEnabled || processor->safeVolumeGainCurrent != 1.0f)) ||
-        runSpatial;
+        runSpatial ||
+        (processor && processor->activeTidalSimulationEnabled);
     if (runChain && workBuffer && processor) {
         // NO LOCK HERE. Parameters were taken in above via consumeAndApplySnapshot, which is wait-free
         // and delivers a complete set or nothing at all. Everything read below is either that applied
@@ -925,6 +970,36 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
             processor->processSpatial(workBuffer, num_frames);
         }
 
+        // TIDAL SIMULATOR
+        if (processor->activeTidalSimulationEnabled) {
+            if (processor->tidalLowShelf) {
+                if (channels == 1) processor->tidalLowShelf->processMono(workBuffer, workBuffer, num_frames);
+                else processor->tidalLowShelf->process(workBuffer, workBuffer, num_frames);
+            }
+            if (processor->tidalMidParam) {
+                if (channels == 1) processor->tidalMidParam->processMono(workBuffer, workBuffer, num_frames);
+                else processor->tidalMidParam->process(workBuffer, workBuffer, num_frames);
+            }
+            if (processor->tidalHighMidParam) {
+                if (channels == 1) processor->tidalHighMidParam->processMono(workBuffer, workBuffer, num_frames);
+                else processor->tidalHighMidParam->process(workBuffer, workBuffer, num_frames);
+            }
+            if (processor->tidalDeEsser) {
+                if (channels == 1) processor->tidalDeEsser->processMono(workBuffer, workBuffer, num_frames);
+                else processor->tidalDeEsser->process(workBuffer, workBuffer, num_frames);
+            }
+            if (processor->tidalHighShelf) {
+                if (channels == 1) processor->tidalHighShelf->processMono(workBuffer, workBuffer, num_frames);
+                else processor->tidalHighShelf->process(workBuffer, workBuffer, num_frames);
+            }
+            
+            // Pre-Gain: +9.0 dB (factor 2.818f)
+            float tidalGain = 2.818f;
+            for (int i = 0; i < num_frames * channels; ++i) {
+                workBuffer[i] *= tidalGain;
+            }
+        }
+
         // Limiter (peak safety) — runs for EQ OR Safe Volume. Stereo only (Superpowered Limiter is stereo);
         // mono relies on the soft-clip knee below, which runs for every channel count.
         if (processor->limiter && processor->limiter->enabled && channels == 2) {
@@ -963,5 +1038,17 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_releaseSuperpower
     if (processor) {
         delete processor;
     }
+#endif
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_setTidalSimulationEnabled(JNIEnv *env, jobject thiz, jlong ptr, jboolean enabled) {
+#if HAS_SUPERPOWERED
+    auto* processor = reinterpret_cast<SuperpoweredProcessor*>(ptr);
+    if (!processor) return;
+
+    std::lock_guard<std::mutex> lock(processor->writerMutex);
+    processor->staging.tidalSimulationEnabled = (enabled == JNI_TRUE);
+    processor->publishIfNotBatchingLocked();
 #endif
 }

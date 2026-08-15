@@ -1,0 +1,287 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.3.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :app
+WARNING: The option setting 'android.newDsl=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+
+> Task :canvas:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :canvas:compileKotlin UP-TO-DATE
+> Task :canvas:compileJava NO-SOURCE
+> Task :canvas:processResources NO-SOURCE
+> Task :canvas:classes UP-TO-DATE
+> Task :canvas:jar UP-TO-DATE
+> Task :applecanvas:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :applecanvas:compileKotlin UP-TO-DATE
+> Task :applecanvas:compileJava NO-SOURCE
+> Task :applecanvas:processResources NO-SOURCE
+> Task :applecanvas:classes UP-TO-DATE
+> Task :applecanvas:jar UP-TO-DATE
+> Task :echomusiccanvas:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :echomusiccanvas:compileKotlin UP-TO-DATE
+> Task :echomusiccanvas:compileJava NO-SOURCE
+> Task :echomusiccanvas:processResources NO-SOURCE
+> Task :echomusiccanvas:classes UP-TO-DATE
+> Task :echomusiccanvas:jar UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preUniversalGmsReleaseBuild UP-TO-DATE
+> Task :app:generateUniversalGmsReleaseBuildConfig
+> Task :app:protobufDummy UP-TO-DATE
+> Task :app:extractGmsProto UP-TO-DATE
+> Task :artistvideo:preBuild UP-TO-DATE
+> Task :artistvideo:preReleaseBuild UP-TO-DATE
+> Task :artistvideo:generateReleaseResources UP-TO-DATE
+> Task :artistvideo:packageReleaseResources UP-TO-DATE
+> Task :artistvideo:processReleaseNavigationResources UP-TO-DATE
+> Task :artistvideo:parseReleaseLocalResources UP-TO-DATE
+> Task :artistvideo:generateReleaseRFile UP-TO-DATE
+> Task :artistvideo:compileReleaseKotlin UP-TO-DATE
+> Task :artistvideo:javaPreCompileRelease UP-TO-DATE
+> Task :artistvideo:compileReleaseJavaWithJavac NO-SOURCE
+> Task :artistvideo:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :artistvideo:processReleaseJavaRes UP-TO-DATE
+> Task :artistvideo:createFullJarRelease UP-TO-DATE
+> Task :betterlyrics:preBuild UP-TO-DATE
+> Task :betterlyrics:preReleaseBuild UP-TO-DATE
+> Task :betterlyrics:generateReleaseResources UP-TO-DATE
+> Task :betterlyrics:packageReleaseResources UP-TO-DATE
+> Task :betterlyrics:processReleaseNavigationResources UP-TO-DATE
+> Task :betterlyrics:parseReleaseLocalResources UP-TO-DATE
+> Task :betterlyrics:generateReleaseRFile UP-TO-DATE
+> Task :betterlyrics:compileReleaseKotlin UP-TO-DATE
+> Task :betterlyrics:javaPreCompileRelease UP-TO-DATE
+> Task :betterlyrics:compileReleaseJavaWithJavac NO-SOURCE
+> Task :betterlyrics:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :betterlyrics:processReleaseJavaRes UP-TO-DATE
+> Task :betterlyrics:createFullJarRelease UP-TO-DATE
+> Task :innertube:preBuild UP-TO-DATE
+> Task :innertube:preReleaseBuild UP-TO-DATE
+> Task :innertube:generateReleaseResources UP-TO-DATE
+> Task :innertube:packageReleaseResources UP-TO-DATE
+> Task :innertube:processReleaseNavigationResources UP-TO-DATE
+> Task :innertube:parseReleaseLocalResources UP-TO-DATE
+> Task :innertube:generateReleaseRFile UP-TO-DATE
+> Task :innertube:compileReleaseKotlin UP-TO-DATE
+> Task :innertube:javaPreCompileRelease UP-TO-DATE
+> Task :innertube:compileReleaseJavaWithJavac NO-SOURCE
+> Task :innertube:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :innertube:processReleaseJavaRes UP-TO-DATE
+> Task :innertube:createFullJarRelease UP-TO-DATE
+> Task :jiosaavn:preBuild UP-TO-DATE
+> Task :jiosaavn:preReleaseBuild UP-TO-DATE
+> Task :jiosaavn:generateReleaseResources UP-TO-DATE
+> Task :jiosaavn:packageReleaseResources UP-TO-DATE
+> Task :jiosaavn:processReleaseNavigationResources UP-TO-DATE
+> Task :jiosaavn:parseReleaseLocalResources UP-TO-DATE
+> Task :jiosaavn:generateReleaseRFile UP-TO-DATE
+> Task :jiosaavn:compileReleaseKotlin UP-TO-DATE
+> Task :jiosaavn:javaPreCompileRelease UP-TO-DATE
+> Task :jiosaavn:compileReleaseJavaWithJavac NO-SOURCE
+> Task :jiosaavn:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :jiosaavn:processReleaseJavaRes UP-TO-DATE
+> Task :jiosaavn:createFullJarRelease UP-TO-DATE
+> Task :kugou:preBuild UP-TO-DATE
+> Task :kugou:preReleaseBuild UP-TO-DATE
+> Task :kugou:generateReleaseResources UP-TO-DATE
+> Task :kugou:packageReleaseResources UP-TO-DATE
+> Task :kugou:processReleaseNavigationResources UP-TO-DATE
+> Task :kugou:parseReleaseLocalResources UP-TO-DATE
+> Task :kugou:generateReleaseRFile UP-TO-DATE
+> Task :kugou:compileReleaseKotlin UP-TO-DATE
+> Task :kugou:javaPreCompileRelease UP-TO-DATE
+> Task :kugou:compileReleaseJavaWithJavac NO-SOURCE
+> Task :kugou:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :kugou:processReleaseJavaRes UP-TO-DATE
+> Task :kugou:createFullJarRelease UP-TO-DATE
+> Task :lrclib:preBuild UP-TO-DATE
+> Task :lrclib:preReleaseBuild UP-TO-DATE
+> Task :lrclib:generateReleaseResources UP-TO-DATE
+> Task :lrclib:packageReleaseResources UP-TO-DATE
+> Task :lrclib:processReleaseNavigationResources UP-TO-DATE
+> Task :lrclib:parseReleaseLocalResources UP-TO-DATE
+> Task :lrclib:generateReleaseRFile UP-TO-DATE
+> Task :lrclib:compileReleaseKotlin UP-TO-DATE
+> Task :lrclib:javaPreCompileRelease UP-TO-DATE
+> Task :lrclib:compileReleaseJavaWithJavac NO-SOURCE
+> Task :lrclib:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :lrclib:processReleaseJavaRes UP-TO-DATE
+> Task :lrclib:createFullJarRelease UP-TO-DATE
+> Task :migration:preBuild UP-TO-DATE
+> Task :migration:preReleaseBuild UP-TO-DATE
+> Task :migration:generateReleaseResources UP-TO-DATE
+> Task :migration:packageReleaseResources UP-TO-DATE
+> Task :migration:processReleaseNavigationResources UP-TO-DATE
+> Task :migration:parseReleaseLocalResources UP-TO-DATE
+> Task :migration:generateReleaseRFile UP-TO-DATE
+> Task :migration:kspReleaseKotlin UP-TO-DATE
+> Task :migration:compileReleaseKotlin UP-TO-DATE
+> Task :migration:javaPreCompileRelease UP-TO-DATE
+> Task :migration:compileReleaseJavaWithJavac NO-SOURCE
+> Task :migration:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :migration:processReleaseJavaRes UP-TO-DATE
+> Task :migration:createFullJarRelease UP-TO-DATE
+> Task :betterlyrics:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :paxsenixlyrics:preBuild UP-TO-DATE
+> Task :paxsenixlyrics:preReleaseBuild UP-TO-DATE
+> Task :paxsenixlyrics:generateReleaseResources UP-TO-DATE
+> Task :paxsenixlyrics:packageReleaseResources UP-TO-DATE
+> Task :paxsenixlyrics:processReleaseNavigationResources UP-TO-DATE
+> Task :paxsenixlyrics:parseReleaseLocalResources UP-TO-DATE
+> Task :paxsenixlyrics:generateReleaseRFile UP-TO-DATE
+> Task :paxsenixlyrics:compileReleaseKotlin UP-TO-DATE
+> Task :paxsenixlyrics:javaPreCompileRelease UP-TO-DATE
+> Task :paxsenixlyrics:compileReleaseJavaWithJavac NO-SOURCE
+> Task :paxsenixlyrics:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :paxsenixlyrics:processReleaseJavaRes UP-TO-DATE
+> Task :paxsenixlyrics:createFullJarRelease UP-TO-DATE
+> Task :shazamkit:preBuild UP-TO-DATE
+> Task :shazamkit:preReleaseBuild UP-TO-DATE
+> Task :shazamkit:generateReleaseResources UP-TO-DATE
+> Task :shazamkit:packageReleaseResources UP-TO-DATE
+> Task :shazamkit:processReleaseNavigationResources UP-TO-DATE
+> Task :shazamkit:parseReleaseLocalResources UP-TO-DATE
+> Task :shazamkit:generateReleaseRFile UP-TO-DATE
+> Task :shazamkit:compileReleaseKotlin UP-TO-DATE
+> Task :shazamkit:javaPreCompileRelease UP-TO-DATE
+> Task :shazamkit:compileReleaseJavaWithJavac NO-SOURCE
+> Task :shazamkit:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :shazamkit:processReleaseJavaRes UP-TO-DATE
+> Task :shazamkit:createFullJarRelease UP-TO-DATE
+> Task :simpmusic:preBuild UP-TO-DATE
+> Task :simpmusic:preReleaseBuild UP-TO-DATE
+> Task :simpmusic:generateReleaseResources UP-TO-DATE
+> Task :simpmusic:packageReleaseResources UP-TO-DATE
+> Task :simpmusic:processReleaseNavigationResources UP-TO-DATE
+> Task :simpmusic:parseReleaseLocalResources UP-TO-DATE
+> Task :simpmusic:generateReleaseRFile UP-TO-DATE
+> Task :simpmusic:compileReleaseKotlin UP-TO-DATE
+> Task :simpmusic:javaPreCompileRelease UP-TO-DATE
+> Task :simpmusic:compileReleaseJavaWithJavac NO-SOURCE
+> Task :simpmusic:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :simpmusic:processReleaseJavaRes UP-TO-DATE
+> Task :simpmusic:createFullJarRelease UP-TO-DATE
+> Task :unison:preBuild UP-TO-DATE
+> Task :unison:preReleaseBuild UP-TO-DATE
+> Task :unison:generateReleaseResources UP-TO-DATE
+> Task :unison:packageReleaseResources UP-TO-DATE
+> Task :unison:processReleaseNavigationResources UP-TO-DATE
+> Task :unison:parseReleaseLocalResources UP-TO-DATE
+> Task :unison:generateReleaseRFile UP-TO-DATE
+> Task :unison:compileReleaseKotlin UP-TO-DATE
+> Task :unison:javaPreCompileRelease UP-TO-DATE
+> Task :unison:compileReleaseJavaWithJavac NO-SOURCE
+> Task :unison:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :unison:processReleaseJavaRes UP-TO-DATE
+> Task :unison:createFullJarRelease UP-TO-DATE
+> Task :youlyplus:preBuild UP-TO-DATE
+> Task :youlyplus:preReleaseBuild UP-TO-DATE
+> Task :youlyplus:generateReleaseResources UP-TO-DATE
+> Task :youlyplus:packageReleaseResources UP-TO-DATE
+> Task :youlyplus:processReleaseNavigationResources UP-TO-DATE
+> Task :youlyplus:parseReleaseLocalResources UP-TO-DATE
+> Task :youlyplus:generateReleaseRFile UP-TO-DATE
+> Task :youlyplus:compileReleaseKotlin UP-TO-DATE
+> Task :youlyplus:javaPreCompileRelease UP-TO-DATE
+> Task :youlyplus:compileReleaseJavaWithJavac NO-SOURCE
+> Task :youlyplus:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :youlyplus:processReleaseJavaRes UP-TO-DATE
+> Task :youlyplus:createFullJarRelease UP-TO-DATE
+> Task :app:extractIncludeUniversalGmsReleaseProto UP-TO-DATE
+> Task :app:extractProto UP-TO-DATE
+> Task :app:extractReleaseProto UP-TO-DATE
+> Task :app:extractUniversalGmsProto UP-TO-DATE
+> Task :app:extractUniversalGmsReleaseProto UP-TO-DATE
+> Task :app:extractUniversalProto UP-TO-DATE
+> Task :app:generateUniversalGmsReleaseProto UP-TO-DATE
+> Task :app:extractUniversalGmsReleaseSupportedLocales UP-TO-DATE
+> Task :artistvideo:extractReleaseSupportedLocales UP-TO-DATE
+> Task :betterlyrics:extractReleaseSupportedLocales UP-TO-DATE
+> Task :innertube:extractReleaseSupportedLocales UP-TO-DATE
+> Task :jiosaavn:extractReleaseSupportedLocales UP-TO-DATE
+> Task :kugou:extractReleaseSupportedLocales UP-TO-DATE
+> Task :lrclib:extractReleaseSupportedLocales UP-TO-DATE
+> Task :migration:extractReleaseSupportedLocales UP-TO-DATE
+> Task :paxsenixlyrics:extractReleaseSupportedLocales UP-TO-DATE
+> Task :shazamkit:extractReleaseSupportedLocales UP-TO-DATE
+> Task :simpmusic:extractReleaseSupportedLocales UP-TO-DATE
+> Task :unison:extractReleaseSupportedLocales UP-TO-DATE
+> Task :youlyplus:extractReleaseSupportedLocales UP-TO-DATE
+> Task :app:generateUniversalGmsReleaseLocaleConfig UP-TO-DATE
+> Task :app:generateUniversalGmsReleaseResources UP-TO-DATE
+> Task :app:packageUniversalGmsReleaseResources UP-TO-DATE
+> Task :app:processUniversalGmsReleaseNavigationResources UP-TO-DATE
+> Task :app:parseUniversalGmsReleaseLocalResources UP-TO-DATE
+> Task :app:generateUniversalGmsReleaseRFile UP-TO-DATE
+> Task :artistvideo:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :innertube:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :jiosaavn:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :kugou:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :lrclib:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :migration:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :paxsenixlyrics:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :shazamkit:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :simpmusic:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :unison:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :youlyplus:bundleLibCompileToJarRelease UP-TO-DATE
+
+> Task :app:kspUniversalGmsReleaseKotlin
+w: [ksp] D:/7-8-26/AURA HI-RES/app/src/main/kotlin/com/music/echo/db/DatabaseDao.kt:1119: The return value includes a data class with a @Relation. It is usually desired to annotate this function with @Transaction to avoid possibility of inconsistent results between the data class and its relations. See https://developer.android.com/reference/androidx/room/Transaction.html for details.
+w: [ksp] D:/7-8-26/AURA HI-RES/app/src/main/kotlin/com/music/echo/db/DatabaseDao.kt:1122: The return value includes a data class with a @Relation. It is usually desired to annotate this function with @Transaction to avoid possibility of inconsistent results between the data class and its relations. See https://developer.android.com/reference/androidx/room/Transaction.html for details.
+
+> Task :app:compileUniversalGmsReleaseKotlin
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/App.kt:314:58 'static field TRIM_MEMORY_RUNNING_LOW: Int' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/App.kt:315:58 'static field TRIM_MEMORY_RUNNING_CRITICAL: Int' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/App.kt:332:66 'static field TRIM_MEMORY_RUNNING_CRITICAL: Int' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/App.kt:355:48 This declaration needs opt-in. Its usage should be marked with '@coil3.annotation.DelicateCoilApi' or '@OptIn(coil3.annotation.DelicateCoilApi::class)'
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/MainActivity.kt:1957:41 'when' is exhaustive so 'else' is redundant here.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:153:75 Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:154:73 Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:155:74 Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:432:49 'fun ClickableText(text: AnnotatedString, modifier: Modifier = ..., style: TextStyle = ..., softWrap: Boolean = ..., overflow: TextOverflow = ..., maxLines: Int = ..., onTextLayout: (TextLayoutResult) -> Unit = ..., onClick: (Int) -> Unit): Unit' is deprecated. Use Text or BasicText and pass an AnnotatedString that contains a LinkAnnotation. Check LinkAnnotation's documentation for more details and samples.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:436:75 'static fun startActivity(p0: Context, p1: Intent, p2: Bundle?): Unit' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:535:50 Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:536:62 Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:537:54 Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:173:41 Unnecessary safe call on a non-null receiver of type 'List<WorkInfo>'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:317:44 'fun largeTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:411:63 'static fun startActivity(p0: Context, p1: Intent, p2: Bundle?): Unit' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:591:41 'fun ClickableText(text: AnnotatedString, modifier: Modifier = ..., style: TextStyle = ..., softWrap: Boolean = ..., overflow: TextOverflow = ..., maxLines: Int = ..., onTextLayout: (TextLayoutResult) -> Unit = ..., onClick: (Int) -> Unit): Unit' is deprecated. Use Text or BasicText and pass an AnnotatedString that contains a LinkAnnotation. Check LinkAnnotation's documentation for more details and samples.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:595:67 'static fun startActivity(p0: Context, p1: Intent, p2: Bundle?): Unit' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:634:72 'fun LinearProgressIndicator(progress: Float, modifier: Modifier = ..., color: Color = ..., trackColor: Color = ..., strokeCap: StrokeCap = ...): Unit' is deprecated. Use the overload that takes `progress` as a lambda.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/legal/TermsScreens.kt:289:48 'fun largeTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/AudioExportService.kt:171:42 Elvis operator (?:) always returns the left operand of non-nullable type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/AudioExportService.kt:424:30 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/MusicService.kt:4301:27 Unnecessary safe call on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/MusicService.kt:4822:57 Unnecessary safe call on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/newui/AuraMigrationScreen.kt:111:37 'fun <reified VM : ViewModel> hiltViewModel(viewModelStoreOwner: ViewModelStoreOwner = ..., key: String? = ...): VM' is deprecated. Moved to package: androidx.hilt.lifecycle.viewmodel.compose.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/newui/AuraMigrationScreen.kt:916:41 'fun <reified VM : ViewModel> hiltViewModel(viewModelStoreOwner: ViewModelStoreOwner = ..., key: String? = ...): VM' is deprecated. Moved to package: androidx.hilt.lifecycle.viewmodel.compose.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/newui/AuraMigrationScreen.kt:939:56 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/newui/AuraMigrationScreen.kt:944:57 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/migration/MigrationTidalScreen.kt:61:41 'fun <reified VM : ViewModel> hiltViewModel(viewModelStoreOwner: ViewModelStoreOwner = ..., key: String? = ...): VM' is deprecated. Moved to package: androidx.hilt.lifecycle.viewmodel.compose.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/migration/MigrationTidalScreen.kt:85:56 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/migration/MigrationTidalScreen.kt:89:57 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/settings/AboutScreen.kt:185:44 'fun largeTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/settings/ListenBrainzManager.kt:62:42 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/settings/ListenBrainzManager.kt:125:42 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/potoken/PoTokenWebView.kt:389:34 Unnecessary non-null assertion (!!) on a non-null receiver of type 'ResponseBody'.
+
+BUILD SUCCESSFUL in 1m 19s
+169 actionable tasks: 3 executed, 166 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html

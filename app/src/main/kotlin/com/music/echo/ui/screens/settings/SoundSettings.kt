@@ -100,6 +100,24 @@ fun SoundSettings(
                     },
                     onClick = { onSafeVolumeChange(!safeVolume) },
                 ),
+                Material3SettingsItem(
+                    icon = painterResource(R.drawable.music_note),
+                    title = { Text("Simulador Tidal") },
+                    description = {
+                        Text("Aplica la configuración DSP (pre-gain + filtros) para emular la firma de sonido de TIDAL.")
+                    },
+                    trailingContent = {
+                        val (tidal, onTidalChange) = rememberPreference(
+                            iad1tya.echo.music.constants.TidalSimulationEnabledKey, defaultValue = false
+                        )
+                        Switch(
+                            checked = tidal,
+                            onCheckedChange = onTidalChange,
+                            thumbContent = thumb(tidal),
+                        )
+                    },
+                    onClick = {},
+                ),
             ),
         )
 

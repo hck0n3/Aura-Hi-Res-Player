@@ -747,6 +747,7 @@ class MusicService :
     @Volatile private var safeVolumeEnabledHint: Boolean = true
     @Volatile private var spatialEnabledHint: Boolean = false
     @Volatile private var spatialProfileNameHint: String = SpatialAudioProfile.WIDE_SURROUND.name
+    @Volatile private var tidalEnabledHint: Boolean = false
     // The offload request CURRENTLY PUBLISHED to the players (not merely the gate's latest verdict — an
     // approved enable can be waiting for a track boundary; see publishOffloadDecision). Read by
     // onPlaybackParametersChanged, which only re-publishes the speed requirement while offload is live.
@@ -1833,6 +1834,10 @@ class MusicService :
         playerEqProcessors.values.forEach { it.applySpatial(live, algorithm, params) }
     }
 
+    private fun applyTidalFromPrefs() {
+        playerEqProcessors.values.forEach { it.applyTidalSimulation(tidalEnabledHint) }
+    }
+
     override fun onCreate() {
         super.onCreate()
         isRunning = true
@@ -2425,6 +2430,16 @@ class MusicService :
                 }
         }
 
+        scope.launch {
+            dataStore.data
+                .map { it[iad1tya.echo.music.constants.TidalSimulationEnabledKey] ?: false }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    tidalEnabledHint = enabled
+                    applyTidalFromPrefs()
+                }
+        }
+
         // NOTE (0.6.145): two collectors used to sit here, feeding AudioEnhanceProcessor.enabled and
         // JrDspAudioProcessor.config from DataStore. Both target classes are inert stubs — isActive()
         // returns false and NEITHER is ever inserted into any AudioProcessorChain (see
@@ -2518,8 +2533,11 @@ class MusicService :
                 eqProfileRepository.activeProfile,
                 eqProfileRepository.unsavedProfile,
             ) { active, unsaved -> (unsaved ?: active) != null }.distinctUntilChanged(),
-            dataStore.data.map { it[SpatialAudioEnabledKey] ?: false }.distinctUntilChanged(),
-        ) { offloadPref, (crossfadeKey, perfMode), safeVolume, eqActive, spatial ->
+            combine(
+                dataStore.data.map { it[SpatialAudioEnabledKey] ?: false }.distinctUntilChanged(),
+                dataStore.data.map { it[iad1tya.echo.music.constants.TidalSimulationEnabledKey] ?: false }.distinctUntilChanged()
+            ) { spatial, tidal -> spatial || tidal },
+        ) { offloadPref, (crossfadeKey, perfMode), safeVolume, eqActive, spatialOrTidal ->
             AudioOffloadGate.allowOffload(
                 AudioOffloadGate.Inputs(
                     userWantsOffload = offloadPref,
@@ -2527,7 +2545,7 @@ class MusicService :
                     highPerformanceMode = perfMode,
                     safeVolumeEnabled = safeVolume,
                     equalizerActive = eqActive,
-                    spatialEnabled = spatial,
+                    spatialEnabled = spatialOrTidal,
                 ),
             )
         }.distinctUntilChanged()
@@ -7557,15 +7575,8 @@ class MusicService :
      * (see onMediaItemTransition). The music is NEVER paused; only the current track's source changes.
      */
     fun toggleVideoMode() {
-        // High-Performance Mode defaults to audio-only. EXCEPTION: on TV/car the user explicitly asked to be able
-        // to switch to video on demand — a big screen is where video matters most. So we allow the opt-in there
-        // even in perf mode (the video track is resolution-capped by device tier in createExoPlayer, so it stays
-        // gama-baja friendly). On non-TV low-end devices in perf mode, video stays blocked (heaviest decode path).
-        if (iad1tya.echo.music.utils.PerformanceMode.isOn(this) &&
-            !iad1tya.echo.music.utils.DeviceForm.isTvOrCar(this)) {
-            if (_videoMode.value) exitVideoMode()
-            return
-        }
+        // High-Performance Mode defaults to audio-only, but if the user explicitly taps the Video toggle,
+        // we should respect their intent and let them switch. We no longer block it here.
         if (_videoMode.value) {
             exitVideoMode()
         } else {

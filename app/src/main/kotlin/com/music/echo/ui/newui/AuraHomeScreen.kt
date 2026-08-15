@@ -687,39 +687,17 @@ fun AuraHomeScreen(
                                             accent = AuraPalette.Teal,
                                             onPlayAll = { playAllSongs(forYouTitle, picks) },
                                         )
-                                        if (perfOn) {
-                                            // High-performance mode keeps the light path the classic Home also
-                                            // keeps (HomeScreen.kt:1486): a plain shelf, no mask, no snapping,
-                                            // no long-press menu. The masked hero carousel is the heaviest
-                                            // visual on the screen and perf mode exists to skip exactly that.
-                                            AuraShelf {
-                                                items(distinctQuickPicks, key = { it.id }) { originalSong ->
-                                                    val song by database.song(originalSong.id)
-                                                        .collectAsState(initial = originalSong)
-                                                    val current = song ?: originalSong
-                                                    AuraSongShelfCard(
-                                                        song = current,
-                                                        cardScale = cardScale,
-                                                        isActive = current.id == mediaMetadata?.id,
-                                                        isPlaying = isPlaying,
-                                                        onClick = { playSong(current) },
-                                                        onLongClick = null,
-                                                    )
-                                                }
-                                            }
-                                        } else {
-                                            // Stronger hero: ~classic editorial presence (was 168 dp).
-                                            // Still square — Para ti is taste songs; video shelves below
-                                            // own the 16:9 language.
-                                            AuraQuickPicksCarousel(
-                                                songs = distinctQuickPicks,
-                                                itemSize = 208.dp * cardScale,
-                                                activeId = mediaMetadata?.id,
-                                                isPlaying = isPlaying,
-                                                onClick = playSong,
-                                                onLongClick = songMenu,
-                                            )
-                                        }
+                                        // Stronger hero: ~classic editorial presence.
+                                        // Still square — Para ti is taste songs; video shelves below
+                                        // own the 16:9 language.
+                                        AuraQuickPicksCarousel(
+                                            songs = distinctQuickPicks,
+                                            itemSize = auraTypeVisual(AuraContentKind.Album).shelfWidth * cardScale,
+                                            activeId = mediaMetadata?.id,
+                                            isPlaying = isPlaying,
+                                            onClick = playSong,
+                                            onLongClick = songMenu,
+                                        )
                                     }
                                 }
                             }

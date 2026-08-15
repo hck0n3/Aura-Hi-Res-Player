@@ -1451,9 +1451,15 @@ object YTPlayerUtils {
             // via a VIDEO-ONLY adaptive stream (merged with a separate audio track in MusicService). Phones/tablets
             // pass null → keep the existing metered-aware cap (720p WiFi / 360p data) EXACTLY as before.
             val targetHeight = videoMaxHeight ?: if (metered) 360 else 720
-            val videoOnly = playerResponse.streamingData?.adaptiveFormats
-                ?.filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
-                ?.filter { !it.isAudio && it.mimeType.startsWith("video/") }
+            
+            // Search BOTH adaptiveFormats (video-only) and formats (muxed) to ensure we always find a video stream if one exists.
+            val allFormats = (playerResponse.streamingData?.adaptiveFormats ?: emptyList()) + 
+                             (playerResponse.streamingData?.formats ?: emptyList())
+                             
+            val videoOnly = allFormats
+                .filter { !it.url.isNullOrEmpty() || !it.signatureCipher.isNullOrEmpty() || !it.cipher.isNullOrEmpty() }
+                .filter { !it.isAudio && it.mimeType.startsWith("video/") }
+                
             if (videoOnly.isNullOrEmpty()) return null
             // H.264 ONLY = widest hardware-decode compatibility on low-end. Match the codec token (avc1/avc3),
             // NOT the "mp4" container — AV1 is ALSO delivered as video/mp4 (codecs="av01...") and many low-end

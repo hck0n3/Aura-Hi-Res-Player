@@ -570,8 +570,7 @@ class PlayerConnection(
                 player.playWhenReady = true
                 onRestartSong?.invoke()
             } else {
-                
-                player.seekToPreviousMediaItem()
+                player.seekToPrevious()
                 if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
                     player.prepare()
                 }
