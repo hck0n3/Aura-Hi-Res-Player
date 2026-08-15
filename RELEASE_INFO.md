@@ -1,4 +1,4 @@
-# Aura Hi-Res Player 0.6.206
+# Aura Hi-Res Player 0.6.207
 
 Corrección urgente en la calidad de audio del Simulador Tidal (resolución de distorsión y rango dinámico).
 
