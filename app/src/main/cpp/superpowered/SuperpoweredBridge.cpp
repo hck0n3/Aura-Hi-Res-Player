@@ -528,31 +528,31 @@ public:
         tidalLowShelf = new Superpowered::Filter(Superpowered::Filter::LowShelf, samplerate);
         tidalLowShelf->frequency = 85.0f;
         tidalLowShelf->slope = 0.5f;
-        tidalLowShelf->decibel = 2.5f;
+        tidalLowShelf->decibel = 1.5f; // Más sutil, menos muddy (antes 2.5)
         tidalLowShelf->enabled = true;
 
         tidalMidParam = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
         tidalMidParam->frequency = 250.0f;
         tidalMidParam->octave = 1.0f;
-        tidalMidParam->decibel = 1.5f;
+        tidalMidParam->decibel = 0.8f; // Calidez sutil (antes 1.5)
         tidalMidParam->enabled = true;
 
         tidalHighMidParam = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
         tidalHighMidParam->frequency = 3500.0f;
         tidalHighMidParam->octave = 1.2f;
-        tidalHighMidParam->decibel = -1.5f;
+        tidalHighMidParam->decibel = -1.0f; // Menos fatiga, pero sin hundir voces (antes -1.5)
         tidalHighMidParam->enabled = true;
 
         tidalDeEsser = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
         tidalDeEsser->frequency = 6500.0f;
         tidalDeEsser->octave = 0.5f;
-        tidalDeEsser->decibel = -4.0f;
+        tidalDeEsser->decibel = -2.0f; // De-esser más natural (antes -4.0)
         tidalDeEsser->enabled = true;
 
         tidalHighShelf = new Superpowered::Filter(Superpowered::Filter::HighShelf, samplerate);
         tidalHighShelf->frequency = 12000.0f;
         tidalHighShelf->slope = 0.5f;
-        tidalHighShelf->decibel = 1.2f;
+        tidalHighShelf->decibel = 1.5f; // Un poco más de aire para compensar la limpieza media (antes 1.2)
         tidalHighShelf->enabled = true;
 
         spatFrontL = new Superpowered::Spatializer(samplerate);
@@ -993,8 +993,10 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
                 else processor->tidalHighShelf->process(workBuffer, workBuffer, num_frames);
             }
             
-            // Pre-Gain: +9.0 dB (factor 2.818f)
-            float tidalGain = 2.818f;
+            // Headroom Gain: -1.5 dB (factor 0.841f) para evitar clipping al sumar los filtros.
+            // El multiplicador anterior de +9.0 dB (2.818f) saturaba la señal masivamente 
+            // y al chocar con el Limitador o el Volumen Seguro destrozaba el rango dinámico.
+            float tidalGain = 0.841f; 
             for (int i = 0; i < num_frames * channels; ++i) {
                 workBuffer[i] *= tidalGain;
             }
