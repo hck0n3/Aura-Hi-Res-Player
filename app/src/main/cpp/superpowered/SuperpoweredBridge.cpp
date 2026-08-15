@@ -502,7 +502,7 @@ public:
         // instead of the old thresholdDb=0 all-or-nothing catch right at full scale (which forced the
         // tanh soft-clip to mop up = harshness). -3 dB gives gentler, more transparent limiting.
         limiter->thresholdDb = -3.0f;
-        limiter->releaseSec = 0.1f; // slightly longer release avoids pumping at the lower threshold
+        limiter->releaseSec = 0.05f; // slightly longer release avoids pumping at the lower threshold
         limiter->enabled = true;
 
         deEsser = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
@@ -830,7 +830,7 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
         // is worst exactly on DYNAMIC masters (classical/jazz/hi-res): low integrated loudness means a
         // large makeup while peaks already sit near full scale, so the limiter would ride ~10 dB of gain
         // reduction on every transient — the "saturation / boxy / pumping" complaint on record.
-        float frontGain = processor->activePreampMultiplier;
+        float frontGain = processor->activePreampMultiplier * 0.7943f; // -2.0 dB headroom
         if (frontGain != 1.0f) {
             for (int i = 0; i < num_frames * channels; ++i) {
                 workBuffer[i] *= frontGain;
