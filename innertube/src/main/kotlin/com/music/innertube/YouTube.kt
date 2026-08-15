@@ -1064,7 +1064,7 @@ object YouTube {
                         id = renderer.playlistItemData.videoId,
                         title = title,
                         artists = artists,
-                        thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                         musicVideoType = renderer.musicVideoType,
                         explicit = renderer.badges?.any { 
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE" 
@@ -1097,7 +1097,7 @@ object YouTube {
                                 Artist(name = it.text, id = id)
                             }
                         },
-                        thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                         musicVideoType = renderer.musicVideoType,
                         explicit = renderer.subtitleBadges?.any {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
@@ -1117,7 +1117,7 @@ object YouTube {
                             }
                         },
                         year = renderer.subtitle?.runs?.lastOrNull()?.text?.toIntOrNull(),
-                        thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                         explicit = renderer.subtitleBadges?.any {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                         } == true
@@ -1750,3 +1750,4 @@ object YouTube {
         Pair(mergedReplies, nextToken)
     }
 }
+

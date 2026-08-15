@@ -65,7 +65,7 @@ data class RelatedPage(
                     },
                 duration = null,
                 musicVideoType = renderer.musicVideoType,
-                thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                 explicit =
                     renderer.badges?.find {
                         it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
@@ -104,7 +104,7 @@ data class RelatedPage(
                                 ?.lastOrNull()
                                 ?.text
                                 ?.toIntOrNull(),
-                        thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                         explicit =
                             renderer.subtitleBadges?.find {
                                 it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
@@ -127,7 +127,7 @@ data class RelatedPage(
                         songCountText = renderer.subtitle?.runs?.findLast {
                             it.text.any { c -> c.isDigit() } && !it.text.contains("view", ignoreCase = true)
                         }?.text,
-                        thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                         playEndpoint =
                             renderer.thumbnailOverlay
                                 ?.musicItemThumbnailOverlayRenderer
@@ -159,7 +159,7 @@ data class RelatedPage(
                             renderer.title.runs
                                 ?.firstOrNull()
                                 ?.text ?: return null,
-                        thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                         shuffleEndpoint =
                             renderer.menu
                                 ?.menuRenderer
@@ -183,3 +183,4 @@ data class RelatedPage(
         }
     }
 }
+

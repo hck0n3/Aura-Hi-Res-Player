@@ -90,7 +90,7 @@ data class HomePage(
                                 )
                             },
                             duration = null,
-                            thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl()
+                            thumbnail = renderer.thumbnailUrlOrFallback
                                 ?: return null,
                             explicit = renderer.subtitleBadges?.any {
                                 it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
@@ -114,7 +114,7 @@ data class HomePage(
                                 )
                             },
                             year = null,
-                            thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                            thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                             explicit = renderer.subtitleBadges?.find {
                                 it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                             } != null
@@ -130,7 +130,7 @@ data class HomePage(
                                 id = null
                             ),
                             songCountText = null,
-                            thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                            thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                             playEndpoint = renderer.thumbnailOverlay
                                 ?.musicItemThumbnailOverlayRenderer?.content
                                 ?.musicPlayButtonRenderer?.playNavigationEndpoint
@@ -148,7 +148,7 @@ data class HomePage(
                         ArtistItem(
                             id = renderer.navigationEndpoint.browseEndpoint?.browseId ?: return null,
                             title = renderer.title.runs?.lastOrNull()?.text ?: return null,
-                            thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                            thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                             shuffleEndpoint = renderer.menu?.menuRenderer?.items?.find {
                                 it.menuNavigationItemRenderer?.icon?.iconType == "MUSIC_SHUFFLE"
                             }?.menuNavigationItemRenderer?.navigationEndpoint?.watchPlaylistEndpoint ?: return null,
@@ -178,3 +178,4 @@ data class HomePage(
             })
         } else this
 }
+

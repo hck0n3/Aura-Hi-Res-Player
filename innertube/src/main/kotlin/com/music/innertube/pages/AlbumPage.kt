@@ -120,7 +120,7 @@ data class AlbumPage(
                     ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()
                     ?.text?.parseTime() ?: return null,
                 musicVideoType = renderer.musicVideoType,
-                thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: album?.thumbnail ?: return null,
+                thumbnail = renderer.thumbnailUrlOrFallback ?: album?.thumbnail ?: return null,
                 explicit = renderer.badges?.find {
                     it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                 } != null,
@@ -130,3 +130,4 @@ data class AlbumPage(
         }
     }
 }
+

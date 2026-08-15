@@ -268,7 +268,7 @@ data class SearchSummaryPage(
                                 ?.text
                                 ?.parseTime(),
                         musicVideoType = renderer.musicVideoType,
-                        thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
+                        thumbnail = renderer.thumbnailUrlOrFallback.orEmpty(),
                         explicit =
                             renderer.badges?.find {
                                 it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
@@ -290,7 +290,7 @@ data class SearchSummaryPage(
                                 ?.firstOrNull()
                                 ?.text
                                 ?: return null,
-                        thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
+                        thumbnail = renderer.thumbnailUrlOrFallback.orEmpty(),
                         shuffleEndpoint =
                             renderer.menu
                                 ?.menuRenderer
@@ -341,7 +341,7 @@ data class SearchSummaryPage(
                                 ?.firstOrNull()
                                 ?.text
                                 ?.toIntOrNull(),
-                        thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
+                        thumbnail = renderer.thumbnailUrlOrFallback.orEmpty(),
                         explicit =
                             renderer.badges?.find {
                                 it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
@@ -379,7 +379,7 @@ data class SearchSummaryPage(
                                 ?.runs
                                 ?.lastOrNull()
                                 ?.text ?: return null,
-                        thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
+                        thumbnail = renderer.thumbnailUrlOrFallback.orEmpty(),
                         playEndpoint =
                             renderer.overlay
                                 ?.musicItemThumbnailOverlayRenderer
@@ -415,7 +415,7 @@ data class SearchSummaryPage(
                             Artist(name = it.text, id = it.navigationEndpoint?.browseEndpoint?.browseId)
                         },
                         songCountText = null,
-                        thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
+                        thumbnail = renderer.thumbnailUrlOrFallback.orEmpty(),
                         playEndpoint = null,
                         shuffleEndpoint = null,
                         radioEndpoint = null,
@@ -427,3 +427,4 @@ data class SearchSummaryPage(
         }
     }
 }
+

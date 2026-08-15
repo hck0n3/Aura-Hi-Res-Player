@@ -1225,7 +1225,8 @@ private fun AuraQueueBar(
             .padding(horizontal = 18.dp)
             .windowInsetsPadding(
                 WindowInsets.systemBars.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
-            ),
+            )
+            .horizontalScroll(rememberScrollState()),
     ) {
         AuraBarButton(
             contentDescription = stringResource(R.string.cd_open_queue),

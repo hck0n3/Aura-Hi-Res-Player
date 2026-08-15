@@ -67,7 +67,7 @@ object SearchSuggestionPage {
                             },
                     duration = null,
                     musicVideoType = renderer.musicVideoType,
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                    thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                     explicit =
                         renderer.badges?.find {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
@@ -86,7 +86,7 @@ object SearchSuggestionPage {
                             ?.firstOrNull()
                             ?.text
                             ?: return null,
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                    thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                     shuffleEndpoint =
                         renderer.menu
                             ?.menuRenderer
@@ -146,7 +146,7 @@ object SearchSuggestionPage {
                             ?.firstOrNull()
                             ?.text
                             ?.toIntOrNull(),
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                    thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                     explicit =
                         renderer.badges?.find {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
@@ -157,3 +157,4 @@ object SearchSuggestionPage {
         }
     }
 }
+

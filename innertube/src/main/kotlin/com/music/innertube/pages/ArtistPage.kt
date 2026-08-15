@@ -117,7 +117,7 @@ data class ArtistPage(
                 album = album,
                 duration = null,
                 musicVideoType = renderer.musicVideoType,
-                thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                 explicit = renderer.badges?.find {
                     it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                 } != null,
@@ -151,7 +151,7 @@ data class ArtistPage(
                         album = null,
                         duration = null,
                         musicVideoType = renderer.musicVideoType,
-                        thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                         explicit = renderer.subtitleBadges?.find {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                         } != null
@@ -167,7 +167,7 @@ data class ArtistPage(
                         title = renderer.title.runs?.firstOrNull()?.text ?: return null,
                         artists = null,
                         year = renderer.subtitle?.runs?.lastOrNull()?.text?.toIntOrNull(),
-                        thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                         explicit = renderer.subtitleBadges?.find {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                         } != null
@@ -184,7 +184,7 @@ data class ArtistPage(
                             id = null
                         ),
                         songCountText = null,
-                        thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                         playEndpoint = renderer.thumbnailOverlay
                             ?.musicItemThumbnailOverlayRenderer?.content
                             ?.musicPlayButtonRenderer?.playNavigationEndpoint
@@ -202,7 +202,7 @@ data class ArtistPage(
                     ArtistItem(
                         id = renderer.navigationEndpoint.browseEndpoint?.browseId ?: return null,
                         title = renderer.title.runs?.lastOrNull()?.text ?: return null,
-                        thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                         channelId = renderer.menu?.menuRenderer?.items?.find {
                             it.toggleMenuServiceItemRenderer?.defaultIcon?.iconType == "SUBSCRIBE"
                         }?.toggleMenuServiceItemRenderer?.defaultServiceEndpoint?.subscribeEndpoint?.channelIds?.firstOrNull(),
@@ -220,3 +220,4 @@ data class ArtistPage(
         }
     }
 }
+

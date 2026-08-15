@@ -73,7 +73,7 @@ object SearchPage {
                             ?.parseTime(),
                     musicVideoType = renderer.musicVideoType,
                     // Never drop a hit for a missing thumb — i.ytimg fallback keeps a real cover.
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
+                    thumbnail = renderer.thumbnailUrlOrFallback
                         ?: "https://i.ytimg.com/vi/$songId/hqdefault.jpg",
                     explicit =
                         renderer.badges?.find {
@@ -95,7 +95,7 @@ object SearchPage {
                             ?.firstOrNull()
                             ?.text
                             ?: return null,
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
+                    thumbnail = renderer.thumbnailUrlOrFallback.orEmpty(),
                     shuffleEndpoint =
                         renderer.menu
                             ?.menuRenderer
@@ -145,7 +145,7 @@ object SearchPage {
                             ?.firstOrNull()
                             ?.text
                             ?.toIntOrNull(),
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
+                    thumbnail = renderer.thumbnailUrlOrFallback.orEmpty(),
                     explicit =
                         renderer.badges?.find {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
@@ -182,7 +182,7 @@ object SearchPage {
                             ?.runs
                             ?.lastOrNull()
                             ?.text ?: return null,
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
+                    thumbnail = renderer.thumbnailUrlOrFallback.orEmpty(),
                     playEndpoint =
                         renderer.overlay
                             ?.musicItemThumbnailOverlayRenderer
@@ -216,7 +216,7 @@ object SearchPage {
                         Artist(name = it.text, id = it.navigationEndpoint?.browseEndpoint?.browseId)
                     },
                     songCountText = null,
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl().orEmpty(),
+                    thumbnail = renderer.thumbnailUrlOrFallback.orEmpty(),
                     playEndpoint = null,
                     shuffleEndpoint = null,
                     radioEndpoint = null,
@@ -226,3 +226,4 @@ object SearchPage {
         }
     }
 }
+

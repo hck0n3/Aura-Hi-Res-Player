@@ -221,13 +221,13 @@ object YTPlayerUtils {
     private val VIDEO_CLIENT: YouTubeClient = TVHTML5
 
 
-    private val METADATA_CLIENT: YouTubeClient = WEB_REMIX
+    private val METADATA_CLIENT: YouTubeClient = WEB
 
     private val STREAM_FALLBACK_CLIENTS: Array<YouTubeClient> = arrayOf(
+        TVHTML5,
+        TVHTML5_SIMPLY_EMBEDDED_PLAYER,
         ANDROID_VR_1_61_48,
         WEB_REMIX,
-        TVHTML5_SIMPLY_EMBEDDED_PLAYER,  
-        TVHTML5,
         ANDROID_CREATOR,
         IPADOS,
         ANDROID_VR_NO_AUTH,

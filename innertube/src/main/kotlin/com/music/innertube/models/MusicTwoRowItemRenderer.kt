@@ -59,4 +59,12 @@ data class MusicTwoRowItemRenderer(
                 ?.playNavigationEndpoint
                 ?.musicVideoType
                 ?: navigationEndpoint.musicVideoType
+
+    val thumbnailUrlOrFallback: String?
+        get() {
+            val url = thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl()
+            if (!url.isNullOrEmpty()) return url
+            val vidId = navigationEndpoint.watchEndpoint?.videoId
+            return if (vidId != null) "https://i.ytimg.com/vi/$vidId/maxresdefault.jpg" else null
+        }
 }

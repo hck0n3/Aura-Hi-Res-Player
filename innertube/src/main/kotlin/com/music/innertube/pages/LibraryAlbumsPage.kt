@@ -17,7 +17,7 @@ data class LibraryAlbumsPage(
                         title = renderer.title.runs?.firstOrNull()?.text ?: return null,
                         artists = null,
                         year = renderer.subtitle?.runs?.lastOrNull()?.text?.toIntOrNull(),
-                        thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
+                        thumbnail = renderer.thumbnailUrlOrFallback ?: return null,
                         explicit = renderer.subtitleBadges?.find {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                         } != null
@@ -25,3 +25,4 @@ data class LibraryAlbumsPage(
         }
     }
 }
+
