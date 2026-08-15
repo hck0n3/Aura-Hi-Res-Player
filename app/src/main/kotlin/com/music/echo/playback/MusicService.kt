@@ -7879,9 +7879,9 @@ class MusicService :
         player.seekTo(idx, pos)
         player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.DEFAULT)
         // Muxed same-URI rebuild must prepare even from READY so ProgressiveMediaSource takes over.
-        if (player.playbackState == Player.STATE_IDLE || (isMuxed && sameUri)) {
-            player.prepare()
-        }
+        // YouTube (different URI, same tag/mediaId) also requires prepare() so ExoPlayer actually
+        // recreates the MediaPeriod instead of ignoring the URI change on the active window.
+        player.prepare()
         _videoUrl.value = url
         pauseOfflineDownloadsForVideoPlayback()
         scheduleVideoStuckRecoveryCheck()
