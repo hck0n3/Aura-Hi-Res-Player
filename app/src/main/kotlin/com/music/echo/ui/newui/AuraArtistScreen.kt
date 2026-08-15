@@ -914,7 +914,7 @@ fun AuraArtistScreen(
                             }
                         }
                     }
-                    if (libraryInsertIndex >= onlineArtistSections.size) {
+                    if (onlineArtistSections.isNotEmpty() && libraryInsertIndex >= onlineArtistSections.size) {
                         auraArtistLibraryPreviewItems(
                             songs = filteredLibrarySongsYt,
                             allSongs = filteredLibrarySongsYt,
