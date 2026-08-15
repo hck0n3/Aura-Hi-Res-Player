@@ -526,33 +526,33 @@ public:
         deEsserDetector->enabled = true;
 
         tidalLowShelf = new Superpowered::Filter(Superpowered::Filter::LowShelf, samplerate);
-        tidalLowShelf->frequency = 85.0f;
+        tidalLowShelf->frequency = 60.0f; // Más bajo para dar profundidad sin barro (antes 85)
         tidalLowShelf->slope = 0.5f;
-        tidalLowShelf->decibel = 1.5f; // Más sutil, menos muddy (antes 2.5)
+        tidalLowShelf->decibel = 1.0f; // Sutil golpe sub-grave
         tidalLowShelf->enabled = true;
 
         tidalMidParam = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
         tidalMidParam->frequency = 250.0f;
         tidalMidParam->octave = 1.0f;
-        tidalMidParam->decibel = 0.8f; // Calidez sutil (antes 1.5)
+        tidalMidParam->decibel = -0.5f; // Corte leve para quitar la sensación de caja/barro
         tidalMidParam->enabled = true;
 
         tidalHighMidParam = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
-        tidalHighMidParam->frequency = 3500.0f;
+        tidalHighMidParam->frequency = 3000.0f;
         tidalHighMidParam->octave = 1.2f;
-        tidalHighMidParam->decibel = -1.0f; // Menos fatiga, pero sin hundir voces (antes -1.5)
+        tidalHighMidParam->decibel = 0.5f; // Leve presencia vocal para acercar las voces (antes -1.0)
         tidalHighMidParam->enabled = true;
 
         tidalDeEsser = new Superpowered::Filter(Superpowered::Filter::Parametric, samplerate);
         tidalDeEsser->frequency = 6500.0f;
         tidalDeEsser->octave = 0.5f;
-        tidalDeEsser->decibel = -2.0f; // De-esser más natural (antes -4.0)
+        tidalDeEsser->decibel = 0.0f; // Desactivado (plano) para no quitar brillo
         tidalDeEsser->enabled = true;
 
         tidalHighShelf = new Superpowered::Filter(Superpowered::Filter::HighShelf, samplerate);
         tidalHighShelf->frequency = 12000.0f;
         tidalHighShelf->slope = 0.5f;
-        tidalHighShelf->decibel = 1.5f; // Un poco más de aire para compensar la limpieza media (antes 1.2)
+        tidalHighShelf->decibel = 1.5f; // Aire y separación estéreo (Premium)
         tidalHighShelf->enabled = true;
 
         spatFrontL = new Superpowered::Spatializer(samplerate);
@@ -993,10 +993,11 @@ Java_iad1tya_echo_music_eq_audio_CustomEqualizerAudioProcessor_processAudio(JNIE
                 else processor->tidalHighShelf->process(workBuffer, workBuffer, num_frames);
             }
             
-            // Headroom Gain: -1.5 dB (factor 0.841f) para evitar clipping al sumar los filtros.
-            // El multiplicador anterior de +9.0 dB (2.818f) saturaba la señal masivamente 
-            // y al chocar con el Limitador o el Volumen Seguro destrozaba el rango dinámico.
-            float tidalGain = 0.841f; 
+            // Headroom Gain: 1.0 (0 dB).
+            // Al haber limpiado los filtros (máximo +1.5dB y cortes en zonas de barro),
+            // la suma total no satura agresivamente. El limitador del Volumen Seguro
+            // absorberá cualquier pico milimétrico natural sin perder el nivel general de volumen.
+            float tidalGain = 1.0f; 
             for (int i = 0; i < num_frames * channels; ++i) {
                 workBuffer[i] *= tidalGain;
             }

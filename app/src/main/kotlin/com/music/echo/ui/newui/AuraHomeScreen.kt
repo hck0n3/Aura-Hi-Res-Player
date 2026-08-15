@@ -213,8 +213,14 @@ fun AuraHomeScreen(
     // same width scale rather than becoming a second one, so the two controls compose instead of
     // fighting: `SmallGridThumbnailHeight / GridThumbnailHeight` is exactly the ratio the classic Home
     // shrinks by.
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    // Match the exact width calculation from AuraArtistItemsScreen (GridCells.Fixed(2) with 14.dp gap)
+    val twoColumnWidth = (screenWidth - AuraSpacing.Gutter * 2 - 14.dp) / 2
+    val referenceScale = twoColumnWidth / 156.dp
+
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
-    val cardScale = (if (homeRichLayout) 1f else 1f / 1.25f) *
+    val cardScale = referenceScale * (if (homeRichLayout) 1f else 1f / 1.25f) *
         (if (gridItemSize == GridItemSize.BIG) 1f else 104f / 128f)
 
     val pullRefreshState = rememberPullToRefreshState()

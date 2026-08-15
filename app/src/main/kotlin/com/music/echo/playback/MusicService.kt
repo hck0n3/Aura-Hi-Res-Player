@@ -7580,7 +7580,7 @@ class MusicService :
         if (_videoMode.value) {
             exitVideoMode()
         } else {
-            enterVideoModeInternal()
+            enterVideoModeInternal(forceExplicit = true)
         }
     }
 
@@ -7599,10 +7599,10 @@ class MusicService :
             return
         }
         if (_videoMode.value) return
-        enterVideoModeInternal()
+        enterVideoModeInternal(forceExplicit = forceFromUserTap)
     }
 
-    private fun enterVideoModeInternal() {
+    private fun enterVideoModeInternal(forceExplicit: Boolean = false) {
         userExplicitlyExitedVideo = false
         userHasUsedVideo = true
         player.currentMediaItem?.mediaId?.let { resetRetryCount(it) }
@@ -7614,7 +7614,7 @@ class MusicService :
             // Do NOT pause downloads until swapToVideo actually commits. Pausing here and then
             // early-outing (no video / resolve fail) left Exo downloads frozen and the player
             // download icon stuck with no tap response.
-            applyVideoToCurrent(swapGeneration = gen)
+            applyVideoToCurrent(swapGeneration = gen, forceExplicit = forceExplicit)
         } else {
             pauseOfflineDownloadsForVideoPlayback()
         }
@@ -7708,6 +7708,7 @@ class MusicService :
     private fun applyVideoToCurrent(
         armModeWhenReady: Boolean = false,
         swapGeneration: Int = videoSwapGeneration.get(),
+        forceExplicit: Boolean = false,
     ) {
         val item = player.currentMediaItem ?: return
         val id = item.mediaId
@@ -7748,7 +7749,7 @@ class MusicService :
         // A YouTube track that is NOT a video song can't show video → disarm video mode SILENTLY (no
         // resolution attempt, no "Video falló" toast) and keep playing audio. This is the sticky-video case
         // where the next track has no video: we drop to audio cleanly instead of erroring.
-        if (player.currentMetadata?.isVideoSong != true) {
+        if (!forceExplicit && player.currentMetadata?.isVideoSong != true) {
             disarmVideoModeKeepAudio()
             return
         }
