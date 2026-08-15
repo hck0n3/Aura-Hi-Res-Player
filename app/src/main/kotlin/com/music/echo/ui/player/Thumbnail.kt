@@ -1266,6 +1266,8 @@ private fun ThumbnailImage(
                         currentUrl = when {
                             url.contains("maxresdefault") -> url.replace("maxresdefault", "sddefault")
                             url.contains("sddefault") -> url.replace("sddefault", "hqdefault")
+                            url.contains("hqdefault") -> url.replace("hqdefault", "mqdefault")
+                            url.contains("mqdefault") -> url.replace("mqdefault", "default")
                             else -> null
                         }
                     }

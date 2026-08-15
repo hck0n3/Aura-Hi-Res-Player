@@ -390,6 +390,8 @@ internal fun upgradeAuraYoutubeCover(raw: String): String {
 internal fun downgradeAuraYoutubeCover(url: String): String? = when {
     url.contains("maxresdefault") -> url.replace("maxresdefault", "sddefault")
     url.contains("sddefault") -> url.replace("sddefault", "hqdefault")
+    url.contains("hqdefault") -> url.replace("hqdefault", "mqdefault")
+    url.contains("mqdefault") -> url.replace("mqdefault", "default")
     else -> null
 }
 

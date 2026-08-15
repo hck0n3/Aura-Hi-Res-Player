@@ -17,8 +17,8 @@ fun String.resize(
         // videos (404 / gray placeholder), which left the player cover and background BLACK when playing a
         // video's audio. hqdefault.jpg exists for every video, so the thumbnail always shows.
         return this.replace(
-            Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.jpg"),
-            "hqdefault.jpg",
+            Regex("(default|mqdefault|hqdefault|sddefault|maxresdefault)\\.(jpg|webp)"),
+            "hqdefault.$2",
         )
     }
 

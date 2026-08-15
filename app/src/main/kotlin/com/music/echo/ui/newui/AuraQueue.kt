@@ -294,10 +294,7 @@ fun AuraQueue(
     val isTvOrCarBar = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
     val hasVideo = mediaMetadata?.let { meta ->
         val exportedVideo = isExportedVideo
-        videoMode || (
-            (!highPerfMode || isTvOrCarBar) &&
-                (meta.isVideoSong || exportedVideo || !meta.podcastVideoUrl.isNullOrEmpty())
-            )
+        meta.isVideoSong || exportedVideo || !meta.podcastVideoUrl.isNullOrEmpty()
     } ?: false
     val shareableLink = mediaMetadata != null
 
