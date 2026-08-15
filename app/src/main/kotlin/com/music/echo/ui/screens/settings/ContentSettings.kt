@@ -188,6 +188,7 @@ fun ContentSettings(
     )
     var showPlaybackLogsDialog by rememberSaveable { mutableStateOf(false) }
     var showSuggestionSheet by rememberSaveable { mutableStateOf(false) }
+    var youtubeSettingsExpanded by rememberSaveable { mutableStateOf(false) }
     val playbackLogs by PlaybackLogManager.logs.collectAsState()
 
     var showProxyConfigurationDialog by rememberSaveable {
@@ -655,67 +656,6 @@ fun ContentSettings(
                         )
                     },
                     onClick = { showSuggestionSheet = true }
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.explicit),
-                    title = { Text(stringResource(R.string.hide_explicit)) },
-                    trailingContent = {
-                        Switch(
-                            checked = hideExplicit,
-                            onCheckedChange = onHideExplicitChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (hideExplicit) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onHideExplicitChange(!hideExplicit) }
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.slow_motion_video),
-                    title = { Text(stringResource(R.string.hide_video_songs)) },
-                    trailingContent = {
-                        Switch(
-                            checked = hideVideoSongs,
-                            onCheckedChange = onHideVideoSongsChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (hideVideoSongs) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onHideVideoSongsChange(!hideVideoSongs) }
-                ),
-
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.hide_image),
-                    title = { Text(stringResource(R.string.hide_youtube_shorts)) },
-                    trailingContent = {
-                        Switch(
-                            checked = hideYoutubeShorts,
-                            onCheckedChange = onHideYoutubeShortsChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (hideYoutubeShorts) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onHideYoutubeShortsChange(!hideYoutubeShorts) }
                 )
             )
         )
@@ -723,112 +663,196 @@ fun ContentSettings(
         Spacer(modifier = Modifier.height(27.dp))
 
         Material3SettingsGroup(
-            title = stringResource(R.string.artist_page_settings),
+            title = "Configuración de YouTube",
             items = listOf(
                 Material3SettingsItem(
-                    icon = painterResource(R.drawable.info),
-                    title = { Text(stringResource(R.string.show_artist_description)) },
-                    trailingContent = {
-                        Switch(
-                            checked = showArtistDescription,
-                            onCheckedChange = onShowArtistDescriptionChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (showArtistDescription) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onShowArtistDescriptionChange(!showArtistDescription) }
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.person),
-                    title = { Text(stringResource(R.string.show_artist_subscriber_count)) },
-                    trailingContent = {
-                        Switch(
-                            checked = showArtistSubscriberCount,
-                            onCheckedChange = onShowArtistSubscriberCountChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (showArtistSubscriberCount) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onShowArtistSubscriberCountChange(!showArtistSubscriberCount) }
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.person),
-                    title = { Text(stringResource(R.string.show_artist_monthly_listeners)) },
-                    trailingContent = {
-                        Switch(
-                            checked = showMonthlyListeners,
-                            onCheckedChange = onShowMonthlyListenersChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (showMonthlyListeners) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onShowMonthlyListenersChange(!showMonthlyListeners) }
-                ),
-                Material3SettingsItem(
                     icon = painterResource(R.drawable.slow_motion_video),
-                    title = { Text(stringResource(R.string.show_artist_video)) },
-                    description = { Text(stringResource(R.string.show_artist_video_desc)) },
+                    title = { Text("Opciones de YouTube") },
+                    description = { Text("Filtros, videos cortos y detalles de artista") },
                     trailingContent = {
-                        Switch(
-                            checked = showArtistVideo,
-                            onCheckedChange = onShowArtistVideoChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (showArtistVideo) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
+                        Icon(
+                            imageVector = if (youtubeSettingsExpanded) iad1tya.echo.music.ui.newui.AuraIcons.ChevronDown else iad1tya.echo.music.ui.newui.AuraIcons.ChevronRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp)
                         )
                     },
-                    onClick = { onShowArtistVideoChange(!showArtistVideo) }
-                ),
-                Material3SettingsItem(
-                    icon = painterResource(R.drawable.slow_motion_video),
-                    title = { Text(stringResource(R.string.show_artist_background_video)) },
-                    description = { Text(stringResource(R.string.show_artist_background_video_desc)) },
-                    trailingContent = {
-                        Switch(
-                            checked = showArtistBackgroundVideo,
-                            onCheckedChange = onShowArtistBackgroundVideoChange,
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(
-                                        id = if (showArtistBackgroundVideo) R.drawable.check else R.drawable.close
-                                    ),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize)
-                                )
-                            }
-                        )
-                    },
-                    onClick = { onShowArtistBackgroundVideoChange(!showArtistBackgroundVideo) }
+                    onClick = { youtubeSettingsExpanded = !youtubeSettingsExpanded }
                 )
             )
         )
+
+        AnimatedVisibility(visible = youtubeSettingsExpanded) {
+            Column {
+                Spacer(modifier = Modifier.height(8.dp))
+                Material3SettingsGroup(
+                    title = null,
+                    items = listOf(
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.explicit),
+                            title = { Text(stringResource(R.string.hide_explicit)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = hideExplicit,
+                                    onCheckedChange = onHideExplicitChange,
+                                    thumbContent = {
+                                        Icon(
+                                            painter = painterResource(
+                                                id = if (hideExplicit) R.drawable.check else R.drawable.close
+                                            ),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(SwitchDefaults.IconSize)
+                                        )
+                                    }
+                                )
+                            },
+                            onClick = { onHideExplicitChange(!hideExplicit) }
+                        ),
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.slow_motion_video),
+                            title = { Text(stringResource(R.string.hide_video_songs)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = hideVideoSongs,
+                                    onCheckedChange = onHideVideoSongsChange,
+                                    thumbContent = {
+                                        Icon(
+                                            painter = painterResource(
+                                                id = if (hideVideoSongs) R.drawable.check else R.drawable.close
+                                            ),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(SwitchDefaults.IconSize)
+                                        )
+                                    }
+                                )
+                            },
+                            onClick = { onHideVideoSongsChange(!hideVideoSongs) }
+                        ),
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.hide_image),
+                            title = { Text(stringResource(R.string.hide_youtube_shorts)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = hideYoutubeShorts,
+                                    onCheckedChange = onHideYoutubeShortsChange,
+                                    thumbContent = {
+                                        Icon(
+                                            painter = painterResource(
+                                                id = if (hideYoutubeShorts) R.drawable.check else R.drawable.close
+                                            ),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(SwitchDefaults.IconSize)
+                                        )
+                                    }
+                                )
+                            },
+                            onClick = { onHideYoutubeShortsChange(!hideYoutubeShorts) }
+                        ),
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.info),
+                            title = { Text(stringResource(R.string.show_artist_description)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = showArtistDescription,
+                                    onCheckedChange = onShowArtistDescriptionChange,
+                                    thumbContent = {
+                                        Icon(
+                                            painter = painterResource(
+                                                id = if (showArtistDescription) R.drawable.check else R.drawable.close
+                                            ),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(SwitchDefaults.IconSize)
+                                        )
+                                    }
+                                )
+                            },
+                            onClick = { onShowArtistDescriptionChange(!showArtistDescription) }
+                        ),
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.person),
+                            title = { Text(stringResource(R.string.show_artist_subscriber_count)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = showArtistSubscriberCount,
+                                    onCheckedChange = onShowArtistSubscriberCountChange,
+                                    thumbContent = {
+                                        Icon(
+                                            painter = painterResource(
+                                                id = if (showArtistSubscriberCount) R.drawable.check else R.drawable.close
+                                            ),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(SwitchDefaults.IconSize)
+                                        )
+                                    }
+                                )
+                            },
+                            onClick = { onShowArtistSubscriberCountChange(!showArtistSubscriberCount) }
+                        ),
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.person),
+                            title = { Text(stringResource(R.string.show_artist_monthly_listeners)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = showMonthlyListeners,
+                                    onCheckedChange = onShowMonthlyListenersChange,
+                                    thumbContent = {
+                                        Icon(
+                                            painter = painterResource(
+                                                id = if (showMonthlyListeners) R.drawable.check else R.drawable.close
+                                            ),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(SwitchDefaults.IconSize)
+                                        )
+                                    }
+                                )
+                            },
+                            onClick = { onShowMonthlyListenersChange(!showMonthlyListeners) }
+                        ),
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.slow_motion_video),
+                            title = { Text(stringResource(R.string.show_artist_video)) },
+                            description = { Text(stringResource(R.string.show_artist_video_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = showArtistVideo,
+                                    onCheckedChange = onShowArtistVideoChange,
+                                    thumbContent = {
+                                        Icon(
+                                            painter = painterResource(
+                                                id = if (showArtistVideo) R.drawable.check else R.drawable.close
+                                            ),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(SwitchDefaults.IconSize)
+                                        )
+                                    }
+                                )
+                            },
+                            onClick = { onShowArtistVideoChange(!showArtistVideo) }
+                        ),
+                        Material3SettingsItem(
+                            icon = painterResource(R.drawable.slow_motion_video),
+                            title = { Text(stringResource(R.string.show_artist_background_video)) },
+                            description = { Text(stringResource(R.string.show_artist_background_video_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = showArtistBackgroundVideo,
+                                    onCheckedChange = onShowArtistBackgroundVideoChange,
+                                    thumbContent = {
+                                        Icon(
+                                            painter = painterResource(
+                                                id = if (showArtistBackgroundVideo) R.drawable.check else R.drawable.close
+                                            ),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(SwitchDefaults.IconSize)
+                                        )
+                                    }
+                                )
+                            },
+                            onClick = { onShowArtistBackgroundVideoChange(!showArtistBackgroundVideo) }
+                        )
+                    )
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(27.dp))
 

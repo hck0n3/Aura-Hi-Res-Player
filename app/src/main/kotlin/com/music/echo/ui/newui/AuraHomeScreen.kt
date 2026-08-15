@@ -221,8 +221,8 @@ fun AuraHomeScreen(
     val referenceScale = twoColumnWidth / 156.dp
 
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
-    val cardScale = referenceScale * (if (homeRichLayout) 1f else 1f / 1.25f) *
-        (if (gridItemSize == GridItemSize.BIG) 1f else 104f / 128f)
+    val cardScale = referenceScale * (if (homeRichLayout) 1.35f else 1f / 1.25f) *
+        (if (gridItemSize == GridItemSize.BIG) 1.15f else 104f / 128f)
 
     val pullRefreshState = rememberPullToRefreshState()
     val listState = rememberLazyListState()
@@ -641,6 +641,31 @@ fun AuraHomeScreen(
                     }
                 }
 
+                // Apple Music style: Hero carousel "Para ti" at the very top.
+                quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
+                    item(key = "aura_quick_picks") {
+                        val forYouTitle = stringResource(R.string.home_for_you)
+                        val distinctQuickPicks = remember(picks) { picks.distinctBy { it.id } }
+                        Column(Modifier.animateItem()) {
+                            Spacer(Modifier.height(AuraSpacing.SectionGap))
+                            AuraSectionHeader(
+                                title = forYouTitle,
+                                label = stringResource(R.string.quick_picks),
+                                accent = AuraPalette.Teal,
+                                onPlayAll = { playAllSongs(forYouTitle, picks) },
+                            )
+                            AuraQuickPicksCarousel(
+                                songs = distinctQuickPicks,
+                                itemSize = auraTypeVisual(AuraContentKind.Album).shelfWidth * cardScale * 1.2f,
+                                activeId = mediaMetadata?.id,
+                                isPlaying = isPlaying,
+                                onClick = playSong,
+                                onLongClick = songMenu,
+                            )
+                        }
+                    }
+                }
+
                 homeSections.forEach { section ->
                     when (section) {
                         HomeSection.SpeedDial -> {
@@ -681,34 +706,8 @@ fun AuraHomeScreen(
                             }
                         }
 
-                        HomeSection.QuickPicks -> {
-                            quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
-                                item(key = "aura_quick_picks") {
-                                    val forYouTitle = stringResource(R.string.home_for_you)
-                                    val distinctQuickPicks = remember(picks) { picks.distinctBy { it.id } }
-                                    Column(Modifier.animateItem()) {
-                                        Spacer(Modifier.height(AuraSpacing.SectionGap))
-                                        AuraSectionHeader(
-                                            title = forYouTitle,
-                                            label = stringResource(R.string.quick_picks),
-                                            accent = AuraPalette.Teal,
-                                            onPlayAll = { playAllSongs(forYouTitle, picks) },
-                                        )
-                                        // Stronger hero: ~classic editorial presence.
-                                        // Still square — Para ti is taste songs; video shelves below
-                                        // own the 16:9 language.
-                                        AuraQuickPicksCarousel(
-                                            songs = distinctQuickPicks,
-                                            itemSize = auraTypeVisual(AuraContentKind.Album).shelfWidth * cardScale,
-                                            activeId = mediaMetadata?.id,
-                                            isPlaying = isPlaying,
-                                            onClick = playSong,
-                                            onLongClick = songMenu,
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        // HomeSection.QuickPicks is now rendered at the top of the list unconditionally.
+                        HomeSection.QuickPicks -> {}
 
                         HomeSection.FromTheCommunity -> {
                             communityPlaylists?.takeIf { it.isNotEmpty() }?.let { playlists ->

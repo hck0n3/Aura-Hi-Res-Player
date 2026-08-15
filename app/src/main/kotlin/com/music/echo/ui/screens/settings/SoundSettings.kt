@@ -108,7 +108,7 @@ fun SoundSettings(
                     },
                     trailingContent = {
                         val (tidal, onTidalChange) = rememberPreference(
-                            iad1tya.echo.music.constants.TidalSimulationEnabledKey, defaultValue = false
+                            iad1tya.echo.music.constants.TidalSimulationEnabledKey, defaultValue = true
                         )
                         Switch(
                             checked = tidal,

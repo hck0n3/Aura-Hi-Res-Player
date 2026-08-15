@@ -1859,34 +1859,6 @@ fun BottomSheetPlayer(
                     )
                 }
                 }
-                // Audio↔video toggle at the END of the song title (per request). Hidden in High-Performance Mode
-                // on phones (audio only), BUT shown on TV/car even in perf mode — the user asked to be able to
-                // switch to video on the big screen on demand (the video track is resolution-capped by device tier).
-                // wantsHiResBackdrop (= isTvOrCar || isWideLayout), not isTvOrCar: this is a FUNCTIONAL gate, and
-                // isTvOrCar no longer carries a width term, so a plain tablet in High-Performance Mode would
-                // otherwise lose the video button it used to have.
-                if ((!highPerfMode || wantsHiResBackdrop) && (mediaMetadata.isVideoSong || !mediaMetadata.podcastVideoUrl.isNullOrEmpty())) {
-                    Spacer(Modifier.width(4.dp))
-                    // Chip-style (matches the action chips below) and pinned to the right of the title.
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                if (videoMode) textButtonColor.copy(alpha = 0.45f)
-                                else textButtonColor.copy(alpha = 0.18f)
-                            )
-                            .clickable { playerConnection.toggleVideoMode() },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            painter = painterResource(if (videoMode) R.drawable.music_note else R.drawable.videocam),
-                            contentDescription = null,
-                            tint = textButtonColor,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
             }
             }
 
@@ -3111,25 +3083,6 @@ fun BottomSheetPlayer(
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
-                                if (ptControls && !inPip) {
-                                    FilledIconButton(
-                                        onClick = { playerConnection.toggleVideoMode() },
-                                        colors = IconButtonDefaults.filledIconButtonColors(
-                                            containerColor = Color.White.copy(alpha = 0.85f),
-                                            contentColor = Color.Black,
-                                        ),
-                                        modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .padding(8.dp)
-                                            .size(40.dp),
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.music_note),
-                                            contentDescription = null,
-                                            modifier = Modifier.size(22.dp),
-                                        )
-                                    }
-                                }
                             }
                         }
                         // Tap-toggled controls (title, scrubbable seekbar, transport, chips, video toggle).
@@ -3268,6 +3221,58 @@ fun BottomSheetPlayer(
                     .size(24.dp),
                 tintColor = TextBackgroundColor,
             )
+
+            // Audio/Video toggle at the top center
+            if ((!highPerfMode || wantsHiResBackdrop) && (mediaMetadata?.isVideoSong == true || mediaMetadata?.podcastVideoUrl.isNullOrEmpty() == false)) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
+                        .padding(top = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .height(32.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(textButtonColor.copy(alpha = 0.15f))
+                            .padding(2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(50))
+                                .background(if (!videoMode) textButtonColor.copy(alpha = 0.3f) else Color.Transparent)
+                                .clickable { if (videoMode) playerConnection.toggleVideoMode() }
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Canción",
+                                color = if (!videoMode) TextBackgroundColor else textButtonColor.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (!videoMode) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(50))
+                                .background(if (videoMode) textButtonColor.copy(alpha = 0.3f) else Color.Transparent)
+                                .clickable { if (!videoMode) playerConnection.toggleVideoMode() }
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Video",
+                                color = if (videoMode) TextBackgroundColor else textButtonColor.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (videoMode) FontWeight.Bold else FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         AnimatedVisibility(
