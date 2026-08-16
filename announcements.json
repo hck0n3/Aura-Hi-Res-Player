@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-14T07:38:00Z",
+  "updatedAt": "2026-08-16T20:41:36Z",
   "items": [
+    {
+      "id": "aviso-20260816-204136",
+      "date": "2026-08-16",
+      "publishedAt": "2026-08-16T20:41:36Z",
+      "title": "⚠️ Aviso Importante de Mantenimiento - AURA HI-RES 🛠️",
+      "body": "¡Hola a todos! 👋\n\nQueremos informarles que actualmente las funciones de exportación de videos 🎬, exportación de MP3 🎵 y exportación de listas de reproducción 📋 se encuentran en fase de mantenimiento 🚧.\n\nPor lo tanto, recomendamos no utilizar estas herramientas dentro de la aplicación hasta nuevo aviso ⏳.\n\nContinuamos trabajando para ofrecerles la mejor experiencia posible 💻. ¡Por favor sigan enviando sus reportes si encuentran errores diferentes a los mencionados! 🐛🔍\n\nAdicionalmente, queremos compartir un cambio importante en nuestra dinámica. Para evitar que tengan que descargar versiones a cada rato 🔄, pasaremos a un modelo de actualizaciones de calidad ⭐. Estas nuevas versiones se lanzarán una vez al mes o cada dos meses 📅.\n\nEsto nos permitirá probar exhaustivamente cada actualización antes de su salida, asegurando una mayor estabilidad y evitando los errores de los lanzamientos prematuros ✅.\n\n¡Agradecemos mucho su paciencia y comprensión mientras seguimos mejorando! 🙏✨",
+      "priority": "urgent"
+    },
     {
       "id": "aviso-20260814-073800",
       "date": "2026-08-14",
