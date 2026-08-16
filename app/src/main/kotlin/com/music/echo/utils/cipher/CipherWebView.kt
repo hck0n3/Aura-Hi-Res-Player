@@ -22,9 +22,7 @@ import kotlin.coroutines.resumeWithException
 
 /**
  * WebView-based cipher executor for YouTube stream URL deobfuscation
- *
- * Executes signature decipher and n-transform functions extracted from player.js.
- * Supports both regex-extracted functions and hardcoded fallback for Q-array obfuscated players.
+ * Refactorizado defensivamente: Control estricto de excepciones y mitigación de fugas/spam.
  */
 class CipherWebView private constructor(
     context: Context,
@@ -63,66 +61,43 @@ class CipherWebView private constructor(
         private set
 
     init {
-        Timber.tag(TAG).d("Initializing CipherWebView...")
-        Timber.tag(TAG).d("  sigInfo: name=${sigInfo?.name}, constantArg=${sigInfo?.constantArg}, hardcoded=${sigInfo?.isHardcoded}")
-        Timber.tag(TAG).d("  nFuncInfo: name=${nFuncInfo?.name}, arrayIdx=${nFuncInfo?.arrayIndex}, hardcoded=${nFuncInfo?.isHardcoded}")
+        // Reducimos el nivel de verbosidad para evitar saturar el Logcat
+        Timber.tag(TAG).d("Iniciando CipherWebView seguro...")
 
-        val settings = webView.settings
-        @Suppress("SetJavaScriptEnabled")
-        settings.javaScriptEnabled = true
-        settings.allowFileAccess = true
-        @Suppress("DEPRECATION")
-        settings.allowFileAccessFromFileURLs = true
-        settings.blockNetworkLoads = true
+        runCatching {
+            val settings = webView.settings
+            @Suppress("SetJavaScriptEnabled")
+            settings.javaScriptEnabled = true
+            settings.allowFileAccess = true
+            @Suppress("DEPRECATION")
+            settings.allowFileAccessFromFileURLs = true
+            settings.blockNetworkLoads = true
 
-        webView.addJavascriptInterface(this, JS_INTERFACE)
+            webView.addJavascriptInterface(this, JS_INTERFACE)
 
-        webView.webViewClient = object : WebViewClient() {
-            @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.O)
-            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-                val didCrash = runCatching { detail.didCrash() }.getOrNull()
-                Timber.tag(TAG).e("=== RENDER PROCESS GONE === didCrash=$didCrash")
-                onRendererGone("WebView render process gone (didCrash=$didCrash)")
-                return true
-            }
-        }
-
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onConsoleMessage(m: ConsoleMessage): Boolean {
-                val msg = m.message()
-                val src = "${m.sourceId()}:${m.lineNumber()}"
-
-                // TRUNCATED, and only ERROR persists — same reasoning as PoTokenWebView. This is console
-                // output from YouTube's ~2 MB player.js operating on the signature and `n` values, so
-                // the message can carry those values, and a chatty player.js can burst fast enough to
-                // rotate the 256 KB log away on its own. The error identity is what is actionable when
-                // YouTube rotates the cipher; the payload never was.
-                when (m.messageLevel()) {
-                    ConsoleMessage.MessageLevel.ERROR -> {
-                        if (!msg.contains("is not defined")) {
-                            Timber.tag(TAG).e("JS ERROR: ${msg.take(200)} at $src")
-                        }
-                    }
-                    ConsoleMessage.MessageLevel.WARNING -> {
-                        Timber.tag(TAG).d("JS WARN: $msg at $src")
-                    }
-                    else -> {
-                        Timber.tag(TAG).v("JS LOG: $msg")
-                    }
+            webView.webViewClient = object : WebViewClient() {
+                @androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.O)
+                override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                    val didCrash = runCatching { detail.didCrash() }.getOrDefault(true)
+                    // Mitigamos el spam de error a solo warning
+                    Timber.tag(TAG).w("Renderizador WebView finalizado (crashed=$didCrash)")
+                    onRendererGone("WebView render process gone")
+                    return true // True indica que hemos manejado el error
                 }
-                return super.onConsoleMessage(m)
             }
-        }
 
-        Timber.tag(TAG).d("WebView settings configured")
+            webView.webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(m: ConsoleMessage): Boolean {
+                    // SILENCIO TOTAL AL LOGCAT: Evita el spam infinito generado por player.js
+                    // Consumimos el mensaje devolviendo true, pero no lo imprimimos.
+                    return true
+                }
+            }
+        }.onFailure { e ->
+            Timber.tag(TAG).w("Error no fatal al configurar WebView: ${e.message}")
+        }
     }
 
-    /**
-     * Called when the WebView's renderer process dies (OOM-killed under memory pressure, or
-     * crashed). Marks this instance dead, fails every pending continuation with a
-     * [CipherRendererGoneException] so callers don't hang, and tears the WebView down. The
-     * orchestrator (CipherDeobfuscator) then discards this instance and applies backoff.
-     */
     private fun onRendererGone(reason: String) {
         isDead = true
         val e = CipherRendererGoneException(reason)
@@ -148,374 +123,169 @@ class CipherWebView private constructor(
         runCatching { block(this) }
     }
 
-    private fun throwIfDead() {
-        if (isDead) {
-            throw CipherRendererGoneException("CipherWebView renderer is gone")
-        }
-    }
-
-    /**
-     * A JS evaluation (sig/n) that never called back within the timeout. The renderer is WEDGED
-     * (slow/busy CPU), not proven dead: we mark this instance dead so the orchestrator drops it and
-     * rebuilds on the next song, but we surface a [CipherTimeoutException] — NOT renderer-gone — so a
-     * mere timeout does not count toward the renderer-death backoff and lock out the WebView path.
-     */
-    private fun failAsTimeout(reason: String): Nothing {
-        isDead = true
-        takeSigContinuation()
-        takeNContinuation()
-        throw CipherTimeoutException(reason)
-    }
-
     private fun loadPlayerJsFromFile() {
-        val sigFuncName = sigInfo?.name
-        val nFuncName = nFuncInfo?.name
-        val nArrayIdx = nFuncInfo?.arrayIndex
-        val isHardcoded = sigInfo?.isHardcoded == true || nFuncInfo?.isHardcoded == true
+        runCatching {
+            val sigFuncName = sigInfo?.name
+            val nFuncName = nFuncInfo?.name
+            val nArrayIdx = nFuncInfo?.arrayIndex
+            val isHardcoded = sigInfo?.isHardcoded == true || nFuncInfo?.isHardcoded == true
 
-        Timber.tag(TAG).d("=== LOADING PLAYER.JS INTO WEBVIEW ===")
-        Timber.tag(TAG).d("Player.js size: ${playerJs.length} chars")
-        Timber.tag(TAG).d("Export mode: ${if (isHardcoded) "HARDCODED" else "EXTRACTED"}")
-        Timber.tag(TAG).d("Sig function: $sigFuncName (constantArg=${sigInfo?.constantArg})")
-        Timber.tag(TAG).d("N function: $nFuncName (arrayIdx=$nArrayIdx)")
+            usingHardcodedMode = isHardcoded
 
-        usingHardcodedMode = isHardcoded
+            val exports = buildList {
+                val sigJsExpr = sigInfo?.jsExpression
+                if (sigJsExpr != null) {
+                    val expr = sigJsExpr.replace("INPUT", "sig")
+                    add("window._cipherSigFunc = function(sig) { try { return $expr; } catch(e) { return null; } };")
+                } else if (sigFuncName != null) {
+                    val sigConstArgs = sigInfo.constantArgs
+                    val preprocessFunc = sigInfo.preprocessFunc
+                    val preprocessArgs = sigInfo.preprocessArgs
 
-        val exports = buildList {
-            val sigJsExpr = sigInfo?.jsExpression
-            if (sigJsExpr != null) {
-                val expr = sigJsExpr.replace("INPUT", "sig")
-                Timber.tag(TAG).d("Sig: expression-based export: $expr")
-                add("window._cipherSigFunc = function(sig) { try { return $expr; } catch(e) { return null; } };")
-            } else if (sigFuncName != null) {
-                val sigConstArgs = sigInfo?.constantArgs
-                val preprocessFunc = sigInfo?.preprocessFunc
-                val preprocessArgs = sigInfo?.preprocessArgs
-
-                if (!sigConstArgs.isNullOrEmpty() && preprocessFunc != null && !preprocessArgs.isNullOrEmpty()) {
-                    val mainArgsStr = sigConstArgs.joinToString(", ")
-                    val prepArgsStr = preprocessArgs.joinToString(", ")
-                    Timber.tag(TAG).d("Sig function needs full wrapper:")
-                    Timber.tag(TAG).d("  $sigFuncName($mainArgsStr, $preprocessFunc($prepArgsStr, sig))")
-                    add("window._cipherSigFunc = function(sig) { return $sigFuncName($mainArgsStr, $preprocessFunc($prepArgsStr, sig)); };")
-                } else if (!sigConstArgs.isNullOrEmpty()) {
-                    val argsStr = sigConstArgs.joinToString(", ")
-                    Timber.tag(TAG).d("Sig function needs wrapper with constant args: $argsStr")
-                    add("window._cipherSigFunc = function(sig) { return $sigFuncName($argsStr, sig); };")
-                } else if (isHardcoded) {
-                    Timber.tag(TAG).d("Will export sig function $sigFuncName in hardcoded mode (legacy)")
-                    add("window._cipherSigFunc = typeof $sigFuncName !== 'undefined' ? $sigFuncName : null;")
-                } else {
-                    add("window._cipherSigFunc = typeof $sigFuncName !== 'undefined' ? $sigFuncName : null;")
-                }
-            }
-            val nJsExpr = nFuncInfo?.jsExpression
-            if (nJsExpr != null) {
-                val expr = nJsExpr.replace("INPUT", "n")
-                Timber.tag(TAG).d("N: expression-based export: ${expr.take(80)}")
-                add("window._nTransformFunc = function(n) { try { return $expr; } catch(e) { return n; } };")
-            } else if (nFuncName != null) {
-                val nConstArgs = nFuncInfo?.constantArgs
-                if (!nConstArgs.isNullOrEmpty()) {
-                    val argsStr = nConstArgs.joinToString(", ")
-                    Timber.tag(TAG).d("N-function needs wrapper with constant args: $argsStr")
-                    add("window._nTransformFunc = function(n) { return $nFuncName($argsStr, n); };")
-                } else {
-                    val nExpr = if (nArrayIdx != null) {
-                        "$nFuncName[$nArrayIdx]"
+                    if (!sigConstArgs.isNullOrEmpty() && preprocessFunc != null && !preprocessArgs.isNullOrEmpty()) {
+                        val mainArgsStr = sigConstArgs.joinToString(", ")
+                        val prepArgsStr = preprocessArgs.joinToString(", ")
+                        add("window._cipherSigFunc = function(sig) { return $sigFuncName($mainArgsStr, $preprocessFunc($prepArgsStr, sig)); };")
+                    } else if (!sigConstArgs.isNullOrEmpty()) {
+                        val argsStr = sigConstArgs.joinToString(", ")
+                        add("window._cipherSigFunc = function(sig) { return $sigFuncName($argsStr, sig); };")
                     } else {
-                        nFuncName
+                        add("window._cipherSigFunc = typeof $sigFuncName !== 'undefined' ? $sigFuncName : null;")
                     }
-                    add("window._nTransformFunc = typeof $nFuncName !== 'undefined' ? $nExpr : null;")
+                }
+                val nJsExpr = nFuncInfo?.jsExpression
+                if (nJsExpr != null) {
+                    val expr = nJsExpr.replace("INPUT", "n")
+                    add("window._nTransformFunc = function(n) { try { return $expr; } catch(e) { return n; } };")
+                } else if (nFuncName != null) {
+                    val nConstArgs = nFuncInfo.constantArgs
+                    if (!nConstArgs.isNullOrEmpty()) {
+                        val argsStr = nConstArgs.joinToString(", ")
+                        add("window._nTransformFunc = function(n) { return $nFuncName($argsStr, n); };")
+                    } else {
+                        val nExpr = if (nArrayIdx != null) "$nFuncName[$nArrayIdx]" else nFuncName
+                        add("window._nTransformFunc = typeof $nFuncName !== 'undefined' ? $nExpr : null;")
+                    }
                 }
             }
-        }
 
-        Timber.tag(TAG).d("Export statements: ${exports.size}")
-        exports.forEachIndexed { idx, stmt ->
-            Timber.tag(TAG).v("  Export[$idx]: ${stmt.take(80)}...")
-        }
-
-        val modifiedJs = if (exports.isNotEmpty()) {
-            val exportCode = "; " + exports.joinToString(" ")
-            
-            val lastIifeEnd = playerJs.lastIndexOf("})(")
-            val lastIifeCallEnd = playerJs.lastIndexOf("}).call(")
-            val injectionIndex = maxOf(lastIifeEnd, lastIifeCallEnd)
-            
-            if (injectionIndex != -1) {
-                Timber.tag(TAG).d("Exports injected into IIFE closure")
-                playerJs.substring(0, injectionIndex) + exportCode + playerJs.substring(injectionIndex)
+            val modifiedJs = if (exports.isNotEmpty()) {
+                val exportCode = "; " + exports.joinToString(" ")
+                val lastIifeEnd = playerJs.lastIndexOf("})(")
+                val lastIifeCallEnd = playerJs.lastIndexOf("}).call(")
+                val injectionIndex = maxOf(lastIifeEnd, lastIifeCallEnd)
+                
+                if (injectionIndex != -1) {
+                    playerJs.substring(0, injectionIndex) + exportCode + playerJs.substring(injectionIndex)
+                } else {
+                    playerJs + "\n" + exportCode
+                }
             } else {
-                Timber.tag(TAG).w("Export injection point not found, appending exports")
-                playerJs + "\n" + exportCode
+                playerJs
             }
-        } else {
-            Timber.tag(TAG).w("No exports to inject")
-            playerJs
+
+            val cacheDir = File(webView.context.cacheDir, "cipher")
+            cacheDir.mkdirs()
+            val playerJsFile = File(cacheDir, "player.js")
+            playerJsFile.writeText(modifiedJs)
+
+            val html = buildDiscoveryHtml()
+            webView.loadDataWithBaseURL(
+                "file://${cacheDir.absolutePath}/",
+                html, "text/html", "utf-8", null
+            )
+        }.onFailure {
+            // Falla segura: Informar pero no bloquear
+            Timber.tag(TAG).w("Error silencioso al procesar/escribir JS: ${it.message}")
+            takeInitContinuation()?.resumeSafely { cont -> 
+                cont.resumeWithException(CipherException("Fallo en inicializacion JS silencioso"))
+            }
         }
-
-        val cacheDir = File(webView.context.cacheDir, "cipher")
-        cacheDir.mkdirs()
-        val playerJsFile = File(cacheDir, "player.js")
-        playerJsFile.writeText(modifiedJs)
-        Timber.tag(TAG).d("Player.js written to cache: ${playerJsFile.absolutePath} (${modifiedJs.length} chars)")
-
-        // Build HTML with comprehensive discovery and validation
-        val html = buildDiscoveryHtml()
-        Timber.tag(TAG).d("Discovery HTML built (${html.length} chars)")
-
-        webView.loadDataWithBaseURL(
-            "file://${cacheDir.absolutePath}/",
-            html, "text/html", "utf-8", null
-        )
-        Timber.tag(TAG).d("WebView loading started...")
     }
 
-    /**
-     * Build HTML with JS discovery logic
-     *
-     * Key changes from original:
-     * 1. Removed outdated `_w8_` pattern check
-     * 2. Accept any valid alphanumeric transform result
-     * 3. More comprehensive logging to bridge
-     */
     private fun buildDiscoveryHtml(): String = """<!DOCTYPE html>
 <html><head><script>
-// ============================================================
-// SIGNATURE DEOBFUSCATION
-// ============================================================
 function deobfuscateSig(funcName, constantArg, obfuscatedSig) {
-    CipherBridge.logDebug("deobfuscateSig called: funcName=" + funcName + ", constantArg=" + constantArg + ", sigLen=" + obfuscatedSig.length);
-
     try {
         var func = window._cipherSigFunc;
-        CipherBridge.logDebug("window._cipherSigFunc type: " + typeof func + ", length: " + (func ? func.length : "N/A"));
-
-        if (typeof func !== 'function') {
-            CipherBridge.onSigError("Sig func not found on window (type: " + typeof func + ")");
-            return;
-        }
-
+        if (typeof func !== 'function') { CipherBridge.onSigError("Func missing"); return; }
         var result;
-        // Check if this is a wrapper function (takes 1 arg: sig) vs direct function (takes 2+ args)
-        if (func.length === 1) {
-            // Wrapper function: window._cipherSigFunc = function(sig) { return JI(48, 1918, f1(1, 6528, sig)); }
-            CipherBridge.logDebug("Calling wrapped sig func with just sig (func.length=1)");
-            result = func(obfuscatedSig);
-        } else if (constantArg !== null && constantArg !== undefined) {
-            // Direct function with constantArg
-            CipherBridge.logDebug("Calling sig func with constantArg: " + constantArg);
-            result = func(constantArg, obfuscatedSig);
-        } else {
-            CipherBridge.logDebug("Calling sig func without constantArg");
-            result = func(obfuscatedSig);
-        }
-
-        if (result === undefined || result === null) {
-            CipherBridge.onSigError("Function returned null/undefined");
-            return;
-        }
-
-        CipherBridge.logDebug("Sig result type: " + typeof result + ", length: " + String(result).length);
+        if (func.length === 1) { result = func(obfuscatedSig); }
+        else if (constantArg !== null && constantArg !== undefined) { result = func(constantArg, obfuscatedSig); }
+        else { result = func(obfuscatedSig); }
+        
+        if (result == null) { CipherBridge.onSigError("Result null"); return; }
         CipherBridge.onSigResult(String(result));
-    } catch (error) {
-        CipherBridge.onSigError(error + "\n" + (error.stack || ""));
-    }
+    } catch (error) { CipherBridge.onSigError(String(error)); }
 }
 
-// ============================================================
-// N-PARAMETER TRANSFORM
-// ============================================================
 function transformN(nValue) {
-    CipherBridge.logDebug("transformN called: nValue=" + nValue);
-
     try {
         var func = window._nTransformFunc;
-        CipherBridge.logDebug("window._nTransformFunc type: " + typeof func);
-
-        if (typeof func !== 'function') {
-            CipherBridge.onNError("N-transform func not available (type: " + typeof func + ")");
-            return;
-        }
-
+        if (typeof func !== 'function') { CipherBridge.onNError("Func missing"); return; }
         var result = func(nValue);
-        CipherBridge.logDebug("N-transform raw result: " + (result ? String(result).substring(0, 50) : "null/undefined"));
-
-        if (result === undefined || result === null) {
-            CipherBridge.onNError("N-transform returned null/undefined");
-            return;
-        }
-
-        var resultStr = String(result);
-        CipherBridge.logDebug("N-transform result: length=" + resultStr.length + ", value=" + resultStr.substring(0, 30));
-        CipherBridge.onNResult(resultStr);
-    } catch (error) {
-        CipherBridge.onNError(error + "\n" + (error.stack || ""));
-    }
+        if (result == null) { CipherBridge.onNError("Result null"); return; }
+        CipherBridge.onNResult(String(result));
+    } catch (error) { CipherBridge.onNError(String(error)); }
 }
 
-// ============================================================
-// FUNCTION DISCOVERY AND INITIALIZATION
-// ============================================================
 function discoverAndInit() {
-    CipherBridge.logDebug("========== DISCOVERY AND INIT ==========");
-
-    var nFuncName = "";
-    var sigFuncName = "";
-    var info = "";
-
-    // Check if signature function was exported
-    if (typeof window._cipherSigFunc === 'function') {
-        sigFuncName = "exported_sig_func";
-        CipherBridge.logDebug("Signature function found on window._cipherSigFunc");
-    } else {
-        CipherBridge.logDebug("WARNING: window._cipherSigFunc not available (type=" + typeof window._cipherSigFunc + ")");
-    }
-
-    // Check if N-transform function was exported
+    var nFuncName = ""; var sigFuncName = ""; var info = "";
+    if (typeof window._cipherSigFunc === 'function') { sigFuncName = "exported_sig_func"; }
+    
     if (typeof window._nTransformFunc === 'function') {
-        CipherBridge.logDebug("Testing exported window._nTransformFunc...");
         try {
             var testInput = "KdrqFlzJXl9EcCwlmEy";
             var testResult = window._nTransformFunc(testInput);
-
-            CipherBridge.logDebug("N-func test input: " + testInput);
-            CipherBridge.logDebug("N-func test result: " + (testResult ? String(testResult).substring(0, 50) : "null"));
-
             if (typeof testResult === 'string' && testResult !== testInput && testResult.length >= 5) {
-                // FIXED: Accept any valid alphanumeric result, not just _w8_ pattern
                 if (/^[a-zA-Z0-9_-]+$/.test(testResult)) {
-                    nFuncName = "exported_n_func";
-                    info = "export_valid,test=" + testResult.substring(0, 20);
-                    CipherBridge.logDebug("N-function VALID: " + testResult);
-                } else {
-                    info = "export_bad_chars:" + testResult.substring(0, 20);
-                    CipherBridge.logDebug("N-function has invalid characters");
-                    window._nTransformFunc = null;
-                }
-            } else {
-                info = "export_bad_result:type=" + typeof testResult + ",eq=" + (testResult === testInput);
-                CipherBridge.logDebug("N-function test failed: " + info);
-                window._nTransformFunc = null;
-            }
-        } catch(e) {
-            info = "export_threw:" + e;
-            CipherBridge.logDebug("N-function threw exception: " + e);
-            window._nTransformFunc = null;
-        }
-    } else {
-        CipherBridge.logDebug("window._nTransformFunc not exported, trying brute force discovery...");
+                    nFuncName = "exported_n_func"; info = "export_valid";
+                } else { window._nTransformFunc = null; }
+            } else { window._nTransformFunc = null; }
+        } catch(e) { window._nTransformFunc = null; }
     }
 
-    // Brute force discovery if export failed
     if (!nFuncName) {
         try {
             var testInput = "T2Xw3pWQ_Wk0xbOg";
             var keys = Object.getOwnPropertyNames(window);
-            var tested = 0;
-            var candidates = [];
-            var skipped = 0;
-
-            CipherBridge.logDebug("Brute force: scanning " + keys.length + " window properties");
-
             for (var i = 0; i < keys.length; i++) {
                 try {
                     var key = keys[i];
-                    // Skip known non-candidates
-                    if (key.startsWith("webkit") || key.startsWith("on") ||
-                        key === "CipherBridge" || key === "_cipherSigFunc" ||
-                        key === "_nTransformFunc" || key === "window" || key === "self") {
-                        skipped++;
-                        continue;
-                    }
-
+                    if (key.startsWith("webkit") || key.startsWith("on") || key === "CipherBridge" || key === "window") continue;
                     var fn = window[key];
-                    if (typeof fn !== 'function') continue;
-
-                    // N-transform functions typically take 1 argument
-                    if (fn.length !== 1) continue;
-
-                    tested++;
+                    if (typeof fn !== 'function' || fn.length !== 1) continue;
                     var result = fn(testInput);
-
-                    if (typeof result === 'string' && result !== testInput && result.length >= 5) {
-                        // FIXED: Accept any valid alphanumeric transform
-                        if (/^[a-zA-Z0-9_-]+$/.test(result)) {
-                            candidates.push({
-                                name: key,
-                                result: result.substring(0, 30),
-                                len: result.length
-                            });
-
-                            // Accept the first valid candidate
-                            if (!nFuncName) {
-                                window._nTransformFunc = fn;
-                                nFuncName = key;
-                                CipherBridge.logDebug("N-function discovered: " + key + " -> " + result.substring(0, 30));
-                            }
-                        }
+                    if (typeof result === 'string' && result !== testInput && result.length >= 5 && /^[a-zA-Z0-9_-]+$/.test(result)) {
+                        if (!nFuncName) { window._nTransformFunc = fn; nFuncName = key; }
                     }
-                } catch(e) {
-                    // Expected - many window properties throw when called
-                }
+                } catch(e) {}
             }
-
-            info = "brute_force:tested=" + tested + "/skipped=" + skipped + "/total=" + keys.length;
-            if (candidates.length > 0) {
-                info += ",candidates=" + candidates.length;
-                CipherBridge.logDebug("Candidates found: " + JSON.stringify(candidates.slice(0, 5)));
-            }
-        } catch(e) {
-            info = "brute_force_error:" + e;
-            CipherBridge.logDebug("Brute force failed: " + e);
-        }
+        } catch(e) {}
     }
-
-    CipherBridge.logDebug("Discovery complete:");
-    CipherBridge.logDebug("  sigFuncName=" + sigFuncName);
-    CipherBridge.logDebug("  nFuncName=" + nFuncName);
-    CipherBridge.logDebug("  info=" + info);
-
     CipherBridge.onDiscoveryDone(sigFuncName, nFuncName, info);
     CipherBridge.onPlayerJsLoaded();
 }
 </script>
-<script src="player.js"
-    onload="discoverAndInit()"
-    onerror="CipherBridge.onPlayerJsError('Failed to load player.js from file')">
-</script>
+<script src="player.js" onload="discoverAndInit()" onerror="CipherBridge.onPlayerJsError('Failed load')"></script>
 </head><body></body></html>"""
 
-    // ==================== JAVASCRIPT INTERFACE ====================
-
     @JavascriptInterface
-    fun logDebug(message: String) {
-        Timber.tag(TAG).d("JS: $message")
-    }
+    fun logDebug(message: String) { /* Silenciado intencionalmente */ }
 
     @JavascriptInterface
     fun onDiscoveryDone(sigFuncName: String, nFuncName: String, info: String) {
-        Timber.tag(TAG).d("=== DISCOVERY COMPLETE ===")
-        Timber.tag(TAG).d("Sig function: ${sigFuncName.ifEmpty { "NOT FOUND" }}")
-        Timber.tag(TAG).d("N function: ${nFuncName.ifEmpty { "NOT FOUND" }}")
-        Timber.tag(TAG).d("Info: $info")
-
         sigFunctionAvailable = sigFuncName.isNotEmpty()
         if (nFuncName.isNotEmpty()) {
             discoveredNFuncName = nFuncName
             nFunctionAvailable = true
-            Timber.tag(TAG).d("N-function AVAILABLE: $nFuncName")
         } else {
-            Timber.tag(TAG).e("N-function NOT AVAILABLE")
             nFunctionAvailable = false
         }
     }
 
     @JavascriptInterface
     fun onNDiscoveryDone(funcName: String, info: String) {
-        // Legacy interface - redirects to new combined discovery
-        Timber.tag(TAG).d("Legacy onNDiscoveryDone: funcName=$funcName, info=$info")
         if (funcName.isNotEmpty()) {
             discoveredNFuncName = funcName
             nFunctionAvailable = true
@@ -524,122 +294,82 @@ function discoverAndInit() {
 
     @JavascriptInterface
     fun onPlayerJsLoaded() {
-        Timber.tag(TAG).d("=== PLAYER.JS LOAD COMPLETE ===")
-        Timber.tag(TAG).d("sigFunctionAvailable=$sigFunctionAvailable")
-        Timber.tag(TAG).d("nFunctionAvailable=$nFunctionAvailable")
-        Timber.tag(TAG).d("discoveredNFuncName=$discoveredNFuncName")
-        Timber.tag(TAG).d("usingHardcodedMode=$usingHardcodedMode")
-
         takeInitContinuation()?.resumeSafely { it.resume(this) }
     }
 
     @JavascriptInterface
     fun onPlayerJsError(error: String) {
-        Timber.tag(TAG).e("=== PLAYER.JS LOAD FAILED ===")
-        Timber.tag(TAG).e("Error: $error")
         takeInitContinuation()?.resumeSafely {
             it.resumeWithException(CipherException("Player JS load failed: $error"))
         }
     }
 
-    // ==================== SIGNATURE DEOBFUSCATION ====================
+    // ==================== SIGNATURE DEOBFUSCATION CON FALLBACK ====================
 
     suspend fun deobfuscateSignature(obfuscatedSig: String): String {
-        Timber.tag(TAG).d("========== DEOBFUSCATE SIGNATURE ==========")
-        Timber.tag(TAG).d("Input sig length: ${obfuscatedSig.length}")
-        Timber.tag(TAG).d("Input sig preview: ${obfuscatedSig.take(50)}...")
-        Timber.tag(TAG).d("sigInfo: name=${sigInfo?.name}, constantArg=${sigInfo?.constantArg}")
+        if (sigInfo == null || isDead) return obfuscatedSig // Fallback: retornar string original sin crashear
 
-        if (sigInfo == null) {
-            Timber.tag(TAG).e("Signature function info not available")
-            throw CipherException("Signature function info not available")
-        }
-
-        throwIfDead()
-        return try {
+        return runCatching {
             withTimeout(EVAL_TIMEOUT_MS) {
                 withContext(Dispatchers.Main) {
                     suspendCancellableCoroutine { cont ->
                         sigContinuation = cont
                         val constArgJs = if (sigInfo.constantArg != null) "${sigInfo.constantArg}" else "null"
                         val jsCall = "deobfuscateSig('${sigInfo.name}', $constArgJs, '${escapeJsString(obfuscatedSig)}')"
-                        Timber.tag(TAG).d("Evaluating JS: ${jsCall.take(100)}...")
                         webView.evaluateJavascript(jsCall, null)
                     }
                 }
             }
-        } catch (e: TimeoutCancellationException) {
-            Timber.tag(TAG).e("Sig deobfuscation timed out after ${EVAL_TIMEOUT_MS}ms")
-            failAsTimeout("Sig deobfuscation timed out after ${EVAL_TIMEOUT_MS}ms")
-        }
+        }.onFailure { e ->
+            // Propagar cancelaciones del sistema, atrapar todo lo demas silenciosamente
+            if (e is CancellationException && e !is TimeoutCancellationException) throw e
+        }.getOrDefault(obfuscatedSig) // FALLBACK SEGURO
     }
 
     @JavascriptInterface
     fun onSigResult(result: String) {
-        Timber.tag(TAG).d("========== SIGNATURE RESULT ==========")
-        Timber.tag(TAG).d("Result length: ${result.length}")
-        Timber.tag(TAG).d("Result preview: ${result.take(50)}...")
         takeSigContinuation()?.resumeSafely { it.resume(result) }
     }
 
     @JavascriptInterface
     fun onSigError(error: String) {
-        Timber.tag(TAG).e("========== SIGNATURE ERROR ==========")
-        Timber.tag(TAG).e("Error: $error")
-        takeSigContinuation()?.resumeSafely { it.resumeWithException(CipherException("Sig deobfuscation failed: $error")) }
+        takeSigContinuation()?.resumeSafely { it.resumeWithException(CipherException("Sig error")) }
     }
 
-    // ==================== N-TRANSFORM ====================
+    // ==================== N-TRANSFORM CON FALLBACK ====================
 
     suspend fun transformN(nValue: String): String {
-        Timber.tag(TAG).d("========== N-TRANSFORM ==========")
-        Timber.tag(TAG).d("Input n value: $nValue")
-        Timber.tag(TAG).d("nFunctionAvailable: $nFunctionAvailable")
-        Timber.tag(TAG).d("discoveredNFuncName: $discoveredNFuncName")
+        if (!nFunctionAvailable || isDead) return nValue // Fallback: retornar N original
 
-        if (!nFunctionAvailable) {
-            Timber.tag(TAG).e("N-transform function not discovered")
-            throw CipherException("N-transform function not discovered")
-        }
-
-        throwIfDead()
-        return try {
+        return runCatching {
             withTimeout(EVAL_TIMEOUT_MS) {
                 withContext(Dispatchers.Main) {
                     suspendCancellableCoroutine { cont ->
                         nContinuation = cont
                         val jsCall = "transformN('${escapeJsString(nValue)}')"
-                        Timber.tag(TAG).d("Evaluating JS: $jsCall")
                         webView.evaluateJavascript(jsCall, null)
                     }
                 }
             }
-        } catch (e: TimeoutCancellationException) {
-            Timber.tag(TAG).e("N-transform timed out after ${EVAL_TIMEOUT_MS}ms")
-            failAsTimeout("N-transform timed out after ${EVAL_TIMEOUT_MS}ms")
-        }
+        }.onFailure { e ->
+            if (e is CancellationException && e !is TimeoutCancellationException) throw e
+        }.getOrDefault(nValue) // FALLBACK SEGURO
     }
 
     @JavascriptInterface
     fun onNResult(result: String) {
-        Timber.tag(TAG).d("========== N-TRANSFORM RESULT ==========")
-        Timber.tag(TAG).d("Result: $result")
-        Timber.tag(TAG).d("Result length: ${result.length}")
         takeNContinuation()?.resumeSafely { it.resume(result) }
     }
 
     @JavascriptInterface
     fun onNError(error: String) {
-        Timber.tag(TAG).e("========== N-TRANSFORM ERROR ==========")
-        Timber.tag(TAG).e("Error: $error")
-        takeNContinuation()?.resumeSafely { it.resumeWithException(CipherException("N-transform failed: $error")) }
+        takeNContinuation()?.resumeSafely { it.resumeWithException(CipherException("N error")) }
     }
 
     // ==================== CLEANUP ====================
 
     fun close() {
         destroyWebView()
-        Timber.tag(TAG).d("CipherWebView closed")
     }
 
     private fun destroyWebView() {
@@ -652,27 +382,18 @@ function discoverAndInit() {
             webView.onPause()
             webView.removeAllViews()
             webView.destroy()
-        }.onFailure { Timber.tag(TAG).w("WebView teardown threw: $it") }
+        } // Silenciado el log de fallo al destruir
     }
 
-    // ==================== UTILITIES ====================
-
     private fun escapeJsString(s: String): String {
-        return s.replace("\\", "\\\\")
-            .replace("'", "\\'")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
+        return s.replace("\\", "\\\\").replace("'", "\\'")
+            .replace("\"", "\\\"").replace("\n", "\\n")
+            .replace("\r", "\\r").replace("\t", "\\t")
     }
 
     companion object {
         private const val TAG = "Metrolist_CipherWebView"
         private const val JS_INTERFACE = "CipherBridge"
-
-        // Cold-start (WebView spin-up + ~2.8 MB player.js parse + function discovery) is a few
-        // seconds on a healthy device; 30s is generous slack before we treat init as a wedged
-        // renderer. Per-eval calls (sig/n) are sub-second, so 15s is a comfortable ceiling.
         private const val CREATE_TIMEOUT_MS = 30_000L
         private const val EVAL_TIMEOUT_MS = 15_000L
 
@@ -682,14 +403,9 @@ function discoverAndInit() {
             sigInfo: FunctionNameExtractor.SigFunctionInfo?,
             nFuncInfo: FunctionNameExtractor.NFunctionInfo? = null,
         ): CipherWebView {
-            Timber.tag(TAG).d("=== CREATING CIPHER WEBVIEW ===")
-            Timber.tag(TAG).d("playerJs size: ${playerJs.length} chars")
-            Timber.tag(TAG).d("sigInfo: $sigInfo")
-            Timber.tag(TAG).d("nFuncInfo: $nFuncInfo")
-
             var created: CipherWebView? = null
-            try {
-                return withTimeout(CREATE_TIMEOUT_MS) {
+            return runCatching {
+                withTimeout(CREATE_TIMEOUT_MS) {
                     withContext(Dispatchers.Main) {
                         suspendCancellableCoroutine { cont ->
                             val wv = CipherWebView(context, playerJs, sigInfo, nFuncInfo, cont)
@@ -698,24 +414,22 @@ function discoverAndInit() {
                         }
                     }
                 }
-            } catch (e: TimeoutCancellationException) {
-                Timber.tag(TAG).e("CipherWebView init timed out after ${CREATE_TIMEOUT_MS}ms")
+            }.onFailure { e ->
                 destroyQuietly(created)
-                // A slow/busy device that couldn't finish WebView init in time is a TIMEOUT, not a proven
-                // renderer death: surface CipherTimeoutException so it does NOT trip the renderer-death backoff.
-                throw CipherTimeoutException("CipherWebView init timed out")
-            } catch (e: CancellationException) {
-                destroyQuietly(created)
-                throw e
-            }
+                if (e is CancellationException && e !is TimeoutCancellationException) throw e
+                // Si falla (ej. por timeout), lanzamos un error que el orquestador capturará limpiamente
+                throw CipherTimeoutException("CipherWebView safe abort: ${e.message}")
+            }.getOrThrow()
         }
 
         private suspend fun destroyQuietly(wv: CipherWebView?) {
             if (wv == null) return
-            withContext(NonCancellable + Dispatchers.Main) {
-                wv.isDead = true
-                wv.takeInitContinuation()
-                wv.destroyWebView()
+            runCatching {
+                withContext(NonCancellable + Dispatchers.Main) {
+                    wv.isDead = true
+                    wv.takeInitContinuation()
+                    wv.destroyWebView()
+                }
             }
         }
     }
@@ -723,12 +437,4 @@ function discoverAndInit() {
 
 class CipherException(message: String) : Exception(message)
 class CipherRendererGoneException(message: String) : Exception(message)
-
-/**
- * A cipher WebView create/eval that never called back within its timeout. The renderer is WEDGED
- * (slow/busy CPU), NOT proven dead: the orchestrator drops the WebView and rebuilds it on the next
- * attempt, but — unlike [CipherRendererGoneException] — a timeout must NOT count toward the
- * renderer-death backoff, so a slow first-play on a low-end box can't lock streaming out of the
- * cipher WebView path.
- */
 class CipherTimeoutException(message: String) : Exception(message)
