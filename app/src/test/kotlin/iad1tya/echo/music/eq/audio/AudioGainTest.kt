@@ -96,15 +96,8 @@ class AudioGainTest {
     }
 
     @Test fun makeupIsCappedAtMaxBoost() {
-        // loudnessDb -20 would want +20 dB; the DEFAULT cap is +3 dB.
-        //
-        // It used to be +12, which was validated against TruePeakLimiterAudioProcessor — a STATIC tanh knee
-        // that saturates but has no time constant, so it cannot pump. That processor is now a dead stub and
-        // the makeup runs ahead of Superpowered's Limiter instead, which RIDES gain (threshold -3 dB,
-        // release 0.1 s). +12 dB into that on a dynamic master (quiet but peaky: classical / jazz / hi-res)
-        // demands 9-12 dB of reduction on every transient, recovering between them — audible pumping, and
-        // only on the best recordings, since loud masters never reach the boost path at all.
-        assertEquals(3.0, loudnessMakeupDb(-20.0, enabled = true), 1e-9)
+        // loudnessDb -20 would want +20 dB; the DEFAULT cap is +12 dB.
+        assertEquals(12.0, loudnessMakeupDb(-20.0, enabled = true), 1e-9)
         // The cap is a parameter, not a constant baked into the maths.
         assertEquals(9.0, loudnessMakeupDb(-20.0, enabled = true, maxBoostDb = 9.0), 1e-9)
     }
@@ -114,8 +107,8 @@ class AudioGainTest {
     @Test fun everyTrackReachesTheSameReferenceWithinTheCaps() {
         // Net gain (attenuation dB + makeup dB) == -loudnessDb, so a loud master and a quiet track end up at
         // the same perceived volume. Attenuation reaches -12 dB, so the LOUD side is fully levelled; the
-        // boost side is intentionally limited to +3 dB (see makeupIsCappedAtMaxBoost).
-        for (l in -3..9) {
+        // boost side is limited to +12 dB (see makeupIsCappedAtMaxBoost).
+        for (l in -12..12) {
             val ld = l.toDouble()
             val net = 20.0 * log10(normalizationMultiplier(ld, enabled = true).toDouble()) +
                 loudnessMakeupDb(ld, enabled = true)
@@ -126,17 +119,13 @@ class AudioGainTest {
     @Test fun aVeryQuietTrackIsBroughtUpButNotAllTheWay() {
         // The honest limit of the current design, asserted so it can't regress silently: a track more than
         // the cap below reference gets the cap, not full levelling — it ends up quieter than the rest.
-        //
-        // Closing that gap needs PEAK data, not loudness: makeupDb = min(cap, -1 - truePeakDbFS) boosts each
-        // track exactly as far as its own headroom allows, so nothing ever reaches the limiter hard. That
-        // requires a peak column on FormatEntity plus a measurement pass, and is deliberately NOT bundled
-        // with this change.
-        val net = 20.0 * log10(normalizationMultiplier(-9.0, enabled = true).toDouble()) +
-            loudnessMakeupDb(-9.0, enabled = true)
-        assertEquals(3.0, net, 0.05)   // wants +9, safely gets +3
+        val net = 20.0 * log10(normalizationMultiplier(-20.0, enabled = true).toDouble()) +
+            loudnessMakeupDb(-20.0, enabled = true)
+        assertEquals(12.0, net, 0.05)   // wants +20, safely gets +12
     }
 
     // ── effectiveLoudnessDb (no track escapes normalization) ──
+
 
     @Test fun effectiveLoudnessPrefersRealThenPerceptualThenDefault() {
         assertEquals(3.0, effectiveLoudnessDb(3.0, 9.0), 1e-9)            // prefer real loudnessDb

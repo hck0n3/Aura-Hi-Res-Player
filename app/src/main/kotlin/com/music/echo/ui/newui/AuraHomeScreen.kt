@@ -656,7 +656,7 @@ fun AuraHomeScreen(
                             )
                             AuraQuickPicksCarousel(
                                 songs = distinctQuickPicks,
-                                itemSize = auraTypeVisual(AuraContentKind.Album).shelfWidth * cardScale * 1.2f,
+                                itemWidth = (LocalConfiguration.current.screenWidthDp.dp * 0.85f).coerceIn(250.dp, 420.dp),
                                 activeId = mediaMetadata?.id,
                                 isPlaying = isPlaying,
                                 onClick = playSong,
@@ -1501,7 +1501,7 @@ private val AuraHeroScrim: Brush = Brush.verticalGradient(
 @Composable
 private fun AuraQuickPicksCarousel(
     songs: List<Song>,
-    itemSize: androidx.compose.ui.unit.Dp,
+    itemWidth: androidx.compose.ui.unit.Dp,
     activeId: String?,
     isPlaying: Boolean,
     onClick: (Song) -> Unit,
@@ -1515,13 +1515,13 @@ private fun AuraQuickPicksCarousel(
     key(songs.size) {
         HorizontalCenteredHeroCarousel(
             state = rememberCarouselState { songs.size },
-            maxItemWidth = itemSize,
+            maxItemWidth = itemWidth,
             itemSpacing = 8.dp,
             contentPadding = PaddingValues(horizontal = AuraSpacing.Gutter),
             modifier = modifier
                 .fillMaxWidth()
                 .padding(top = AuraSpacing.SectionGap)
-                .height(itemSize)
+                .height(260.dp)
                 // TV/car: hand focus back to the hero the D-pad last stood on when it re-enters, so the
                 // ring does not drop to the container root while the carousel scrolls. No-op on touch.
                 .tvFocusRestorer(),

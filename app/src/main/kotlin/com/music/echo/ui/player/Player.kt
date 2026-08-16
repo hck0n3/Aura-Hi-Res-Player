@@ -1906,7 +1906,7 @@ fun BottomSheetPlayer(
                         dislikeContentDescription = stringResource(R.string.action_dislike),
                     )
                     PlayerActionChip("Agregar", textButtonColor, chipBg, { showChoosePlaylistDialog = true }) {
-                        Icon(painterResource(R.drawable.playlist_add), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                        Icon(painterResource(R.drawable.playlist_add), null, tint = textButtonColor, modifier = Modifier.size(24.dp))
                     }
                     PlayerActionChip("Compartir", textButtonColor, chipBg, {
                         val intent = Intent().apply {
@@ -1916,7 +1916,7 @@ fun BottomSheetPlayer(
                         }
                         context.startActivity(Intent.createChooser(intent, null))
                     }) {
-                        Icon(painterResource(R.drawable.share), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                        Icon(painterResource(R.drawable.share), null, tint = textButtonColor, modifier = Modifier.size(24.dp))
                     }
                     if (!isLocalMedia) {
                     PlayerActionChip(
@@ -1941,9 +1941,9 @@ fun BottomSheetPlayer(
                         },
                     ) {
                         when (download?.state) {
-                            Download.STATE_COMPLETED -> Icon(painterResource(R.drawable.offline), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
-                            Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> CircularWavyProgressIndicator(modifier = Modifier.size(18.dp))
-                            else -> Icon(painterResource(R.drawable.download), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                            Download.STATE_COMPLETED -> Icon(painterResource(R.drawable.offline), null, tint = textButtonColor, modifier = Modifier.size(24.dp))
+                            Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> CircularWavyProgressIndicator(modifier = Modifier.size(22.dp))
+                            else -> Icon(painterResource(R.drawable.download), null, tint = textButtonColor, modifier = Modifier.size(24.dp))
                         }
                     }
                     }
@@ -1953,7 +1953,7 @@ fun BottomSheetPlayer(
                         container = if (mixActive) textButtonColor else chipBg,
                         onClick = { playerConnection.startRadioSeamlessly() },
                     ) {
-                        Icon(painterResource(R.drawable.radio), null, tint = if (mixActive) iconButtonColor else textButtonColor, modifier = Modifier.size(20.dp))
+                        Icon(painterResource(R.drawable.radio), null, tint = if (mixActive) iconButtonColor else textButtonColor, modifier = Modifier.size(24.dp))
                     }
                     PlayerActionChip("Audio", textButtonColor, chipBg, {
                         // Collapse the player first so the equalizer screen is actually visible (otherwise
@@ -1963,7 +1963,7 @@ fun BottomSheetPlayer(
                         navController.navigate("settings/equalizer") { launchSingleTop = true }
                         state.collapseSoft()
                     }) {
-                        Icon(painterResource(R.drawable.graphic_eq), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                        Icon(painterResource(R.drawable.graphic_eq), null, tint = textButtonColor, modifier = Modifier.size(24.dp))
                     }
                     PlayerActionChip(
                         label = "Más",
@@ -1981,7 +1981,7 @@ fun BottomSheetPlayer(
                             }
                         },
                     ) {
-                        Icon(painterResource(R.drawable.add), null, tint = textButtonColor, modifier = Modifier.size(20.dp))
+                        Icon(painterResource(R.drawable.add), null, tint = textButtonColor, modifier = Modifier.size(24.dp))
                     }
                 }
             }
@@ -3194,6 +3194,52 @@ fun BottomSheetPlayer(
                         }
                     }
 
+                    // Audio/Video toggle below the album art
+                    if ((!highPerfMode || wantsHiResBackdrop) && (mediaMetadata?.isVideoSong == true || mediaMetadata?.podcastVideoUrl.isNullOrEmpty() == false)) {
+                        Row(
+                            modifier = Modifier
+                                .padding(vertical = 12.dp)
+                                .height(32.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(textButtonColor.copy(alpha = 0.15f))
+                                .padding(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (!videoMode) textButtonColor.copy(alpha = 0.3f) else Color.Transparent)
+                                    .clickable { if (videoMode) playerConnection.toggleVideoMode() }
+                                    .padding(horizontal = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Canción",
+                                    color = if (!videoMode) TextBackgroundColor else textButtonColor.copy(alpha = 0.7f),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (!videoMode) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(50))
+                                    .background(if (videoMode) textButtonColor.copy(alpha = 0.3f) else Color.Transparent)
+                                    .clickable { if (!videoMode) playerConnection.toggleVideoMode() }
+                                    .padding(horizontal = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Video",
+                                    color = if (videoMode) TextBackgroundColor else textButtonColor.copy(alpha = 0.7f),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = if (videoMode) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
                     mediaMetadata?.let {
                         controlsContent(it, false)
                     }
@@ -3222,57 +3268,7 @@ fun BottomSheetPlayer(
                 tintColor = TextBackgroundColor,
             )
 
-            // Audio/Video toggle at the top center
-            if ((!highPerfMode || wantsHiResBackdrop) && (mediaMetadata?.isVideoSong == true || mediaMetadata?.podcastVideoUrl.isNullOrEmpty() == false)) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
-                        .padding(top = 4.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .height(32.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(textButtonColor.copy(alpha = 0.15f))
-                            .padding(2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(50))
-                                .background(if (!videoMode) textButtonColor.copy(alpha = 0.3f) else Color.Transparent)
-                                .clickable { if (videoMode) playerConnection.toggleVideoMode() }
-                                .padding(horizontal = 16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Canción",
-                                color = if (!videoMode) TextBackgroundColor else textButtonColor.copy(alpha = 0.7f),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = if (!videoMode) FontWeight.Bold else FontWeight.Medium
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(50))
-                                .background(if (videoMode) textButtonColor.copy(alpha = 0.3f) else Color.Transparent)
-                                .clickable { if (!videoMode) playerConnection.toggleVideoMode() }
-                                .padding(horizontal = 16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "Video",
-                                color = if (videoMode) TextBackgroundColor else textButtonColor.copy(alpha = 0.7f),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = if (videoMode) FontWeight.Bold else FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-            }
+
         }
 
         AnimatedVisibility(
@@ -3322,10 +3318,9 @@ private fun PlayerActionChip(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(container)
-            // TV/car: visible focus ring observing the .clickable below (Me gusta / No me gusta / Agregar / Compartir).
             .tvFocusable(iad1tya.echo.music.ui.utils.rememberIsTvOrCar())
             .clickable(onClick = onClick)
-            .padding(start = 12.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),
+            .padding(start = 16.dp, end = 20.dp, top = 12.dp, bottom = 12.dp),
     ) {
         leading()
         Spacer(Modifier.width(6.dp))
@@ -3372,21 +3367,21 @@ private fun PlayerLikeDislikePill(
                 .background(if (liked) activeColor else Color.Transparent)
                 .tvFocusable(isTvOrCar)
                 .clickable(onClick = onToggleLike)
-                .padding(start = 14.dp, end = 11.dp, top = 9.dp, bottom = 9.dp),
+                .padding(start = 16.dp, end = 13.dp, top = 12.dp, bottom = 12.dp),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = if (liked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
                 contentDescription = likeContentDescription,
                 tint = if (liked) activeContentColor else activeColor,
-                modifier = Modifier.size(20.dp),
+                modifier = Modifier.size(24.dp),
             )
         }
         // Subtle divider between the two halves.
         Box(
             modifier = Modifier
                 .width(1.dp)
-                .height(20.dp)
+                .height(24.dp)
                 .background(activeColor.copy(alpha = 0.25f)),
         )
         // RIGHT half — DISLIKE (filled when disliked).
@@ -3395,7 +3390,7 @@ private fun PlayerLikeDislikePill(
                 .background(if (disliked) activeColor else Color.Transparent)
                 .tvFocusable(isTvOrCar)
                 .clickable(onClick = onToggleDislike)
-                .padding(start = 11.dp, end = 14.dp, top = 9.dp, bottom = 9.dp),
+                .padding(start = 13.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

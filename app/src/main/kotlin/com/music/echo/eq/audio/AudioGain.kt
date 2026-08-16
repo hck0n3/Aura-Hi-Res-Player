@@ -48,7 +48,7 @@ fun normalizationMultiplier(
  * over-drives the downstream true-peak limiter — too much makeup makes the limiter reduce gain heavily,
  * which sounds like harmonic saturation / a harsh, "boxy" voice, especially at max volume.
  *
- * Capped at [maxBoostDb] = **+3 dB**, NOT the historical +12.
+ * Capped at [maxBoostDb] = **+12 dB**.
  *
  * +12 was validated in the v0.0.9 setup against `TruePeakLimiterAudioProcessor`, whose `softLimit` is a
  * STATIC tanh knee — it saturates but has no time constant, so it physically cannot pump. That processor
@@ -61,12 +61,12 @@ fun normalizationMultiplier(
  *
  * At +3 dB a -1 dBFS master needs ~3 dB of reduction on its rarest peaks only. Raising this safely needs
  * PEAK data (`makeupDb = min(cap, -1 - truePeakDbFS)`), which requires a peak column on FormatEntity and a
- * measurement pass — until that exists, this cap is the honest limit.
+ * measurement pass — until that exists, we restore +12 dB to fix tracks sounding quieter than others.
  */
 fun loudnessMakeupDb(
     loudnessDb: Double?,
     enabled: Boolean,
-    maxBoostDb: Double = 3.0,
+    maxBoostDb: Double = 12.0,
 ): Double {
     if (!enabled || loudnessDb == null) return 0.0
     return (-loudnessDb).coerceIn(0.0, maxBoostDb)

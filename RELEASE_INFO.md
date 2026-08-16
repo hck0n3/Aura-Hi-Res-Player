@@ -1,16 +1,15 @@
-# Aura Hi-Res Player 0.6.208
+# Aura Hi-Res Player 0.6.210
 
-Rediseño del Inicio al estilo Apple Music, restauración del modo video manual y mayor fiabilidad en portadas de YouTube.
+Mejoras de visibilidad en el reproductor para pantallas de alta densidad y solución al volumen de pistas silenciosas.
 
 ---
 
 ## Novedades y Correcciones
 
-- **Inicio más Premium (Estilo Apple Music)**: Las tarjetas y carruseles del Inicio ahora tienen un tamaño mucho mayor y estético, y el carrusel hero de "Para ti" vuelve a estar siempre fijo en la parte superior.
-- **Modo Video Restaurado**: Se eliminó la restricción que impedía alternar manualmente a modo video si la pista actual era de audio; ahora puedes forzar la carga del video usando el botón en la interfaz de reproducción.
-- **Fiabilidad de Portadas de YouTube**: Se implementó una cadena de respaldos (fallbacks) automáticos para las miniaturas. Si la carátula de máxima resolución (maxresdefault) no existe, la app prueba automáticamente con versiones .webp o de menor resolución en vez de quedarse en gris.
-- **Configuración de YouTube Organizada**: Se agruparon las opciones relacionadas con YouTube en una sección desplegable dentro de Ajustes de Contenido para mayor limpieza.
-- **Simulador Tidal Activado por Defecto**: La simulación de audio Tidal ahora viene activada por defecto para nuevos usuarios, garantizando la mejor experiencia Hi-Fi desde el primer momento.
+- **Escalado del Reproductor**: Se ha incrementado el tamaño y el área táctil de los botones de acción del reproductor (Más, Agregar, Compartir, Mix) para facilitar su uso en dispositivos con pantallas de alta resolución.
+- **Normalización de Volumen**: Restaurado el límite de volumen máximo en pistas muy silenciosas para mejorar la experiencia de reproducción sin afectar la calidad de sonido.
+- **Carrusel "Para ti" Reparado**: Se solucionó un problema que impedía que el carrusel superior del apartado de Inicio se mostrara correctamente. Ahora las tarjetas se renderizan con el tamaño hero adecuado.
+- **Botón Canción/Video Reubicado**: El botón para alternar entre audio y video al estilo YouTube Music se ha movido debajo de la carátula, justo encima de los controles de la canción, atendiendo las sugerencias para una experiencia más natural.
 
 ## Cómo actualizar
 
