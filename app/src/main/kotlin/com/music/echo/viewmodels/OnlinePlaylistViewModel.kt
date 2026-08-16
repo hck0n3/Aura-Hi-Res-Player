@@ -41,6 +41,8 @@ class OnlinePlaylistViewModel @Inject constructor(
     private val database: MusicDatabase
 ) : ViewModel() {
     private val playlistId = savedStateHandle.get<String>("playlistId")!!
+    private val autoSave = savedStateHandle.get<Boolean>("autoSave") ?: false
+    private var hasAutoSaved = false
 
     val playlist = MutableStateFlow<PlaylistItem?>(null)
 
@@ -120,8 +122,29 @@ class OnlinePlaylistViewModel @Inject constructor(
                     relatedItems.value = playlistPage.related ?: emptyList()
                     continuation = playlistPage.songsContinuation
                     _isLoading.value = false
-
                     refreshStoredThumbnail(playlistPage.playlist)
+
+                    if (autoSave && !hasAutoSaved && _rawSongs.value.isNotEmpty()) {
+                        hasAutoSaved = true
+                        viewModelScope.launch(Dispatchers.IO) {
+                            val existing = database.playlistByBrowseId(playlistId).first()
+                            if (existing == null) {
+                                database.withTransaction {
+                                    val newPlaylist = iad1tya.echo.music.db.entities.PlaylistEntity(
+                                        name = playlistPage.playlist.title,
+                                        browseId = playlistPage.playlist.id,
+                                    )
+                                    database.insert(newPlaylist)
+                                    val playlistObj = iad1tya.echo.music.db.entities.Playlist(
+                                        playlist = newPlaylist,
+                                        songCount = 0,
+                                        songThumbnails = emptyList()
+                                    )
+                                    database.addSongToPlaylist(playlistObj, _rawSongs.value.map { it.id })
+                                }
+                            }
+                        }
+                    }
 
                     // Instant re-open: a fully-repaired list from earlier this session is the authority and
                     // needs no more network (the base fetch already gave us metadata/related). It was cached
