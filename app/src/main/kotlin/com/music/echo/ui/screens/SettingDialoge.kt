@@ -26,7 +26,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -183,7 +186,7 @@ private fun SettingDialogeBody(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (allowScroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+            .verticalScroll(rememberScrollState())
             .padding(vertical = vPad, horizontal = hPad),
         verticalArrangement = Arrangement.spacedBy(gap),
     ) {
@@ -267,10 +270,10 @@ private fun SettingDialogeBody(
                 }
             }
 
-            Material3SettingsGroup(
-                title = "Preferencias",
-                compact = true,
-                items = listOf(
+            var syncExpanded by rememberSaveable { mutableStateOf(false) }
+
+            val prefItems = buildList {
+                add(
                     Material3SettingsItem(
                         title = { Text("Usar la cuenta para explorar") },
                         icon = painterResource(R.drawable.add_circle),
@@ -289,55 +292,87 @@ private fun SettingDialogeBody(
                             com.music.innertube.YouTube.useLoginForBrowse = newVal
                             onUseLoginForBrowseChange(newVal)
                         },
-                    ),
+                    )
+                )
+                add(
                     Material3SettingsItem(
                         title = { Text("Sincronización con YouTube Music") },
                         icon = painterResource(R.drawable.cached),
                         trailingContent = {
-                            Switch(
-                                checked = ytmSync,
-                                onCheckedChange = onYtmSyncChange,
-                                modifier = Modifier.scale(0.8f),
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                Switch(
+                                    checked = ytmSync,
+                                    onCheckedChange = onYtmSyncChange,
+                                    modifier = Modifier.scale(0.8f),
+                                )
+                                IconButton(
+                                    onClick = { syncExpanded = !syncExpanded },
+                                    modifier = Modifier.size(28.dp),
+                                ) {
+                                    Icon(
+                                        painter = painterResource(
+                                            if (syncExpanded) R.drawable.expand_less else R.drawable.expand_more
+                                        ),
+                                        contentDescription = if (syncExpanded) "Contraer sincronización" else "Expandir sincronización",
+                                        tint = mutedColor,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            }
                         },
-                        onClick = { onYtmSyncChange(!ytmSync) },
-                    ),
-                    Material3SettingsItem(
-                        title = { Text("Sincronizar biblioteca ahora") },
-                        description = {
-                            Text(
-                                "Toda la biblioteca con tu cuenta. Sigue en segundo plano aunque cierres la app.",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        icon = painterResource(R.drawable.sync),
-                        onClick = {
-                            iad1tya.echo.music.utils.YtmSyncWorker.enqueue(
-                                context,
-                                iad1tya.echo.music.utils.YtmSyncWorker.TYPE_ALL,
-                            )
-                            Toast.makeText(
-                                context,
-                                "Sincronizando toda la biblioteca… (continúa en segundo plano)",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                            onDismissRequest()
-                        },
-                    ),
-                    Material3SettingsItem(
-                        title = { Text("Programar sincronización") },
-                        description = {
-                            Text(
-                                "Cada 3 días por defecto, o elige cuándo",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        },
-                        icon = painterResource(R.drawable.sync),
-                        onClick = { onNavigate("settings/ytm_sync") },
-                    ),
-                ),
+                        onClick = { syncExpanded = !syncExpanded },
+                    )
+                )
+                if (syncExpanded) {
+                    add(
+                        Material3SettingsItem(
+                            title = { Text("Sincronizar biblioteca ahora") },
+                            description = {
+                                Text(
+                                    "Toda la biblioteca con tu cuenta.",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            icon = painterResource(R.drawable.sync),
+                            onClick = {
+                                iad1tya.echo.music.utils.YtmSyncWorker.enqueue(
+                                    context,
+                                    iad1tya.echo.music.utils.YtmSyncWorker.TYPE_ALL,
+                                )
+                                Toast.makeText(
+                                    context,
+                                    "Sincronizando toda la biblioteca… (continúa en segundo plano)",
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                                onDismissRequest()
+                            },
+                        )
+                    )
+                    add(
+                        Material3SettingsItem(
+                            title = { Text("Programar sincronización") },
+                            description = {
+                                Text(
+                                    "Cada 3 días por defecto, o elige cuándo",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            icon = painterResource(R.drawable.sync),
+                            onClick = { onNavigate("settings/ytm_sync") },
+                        )
+                    )
+                }
+            }
+
+            Material3SettingsGroup(
+                title = "Preferencias",
+                compact = true,
+                items = prefItems,
             )
         } else {
             Material3SettingsGroup(

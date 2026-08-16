@@ -96,8 +96,10 @@ import iad1tya.echo.music.ui.component.Material3SettingsItem
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.constants.EqFftMeterEnabledKey
 import iad1tya.echo.music.constants.HighPerformanceModeKey
+import iad1tya.echo.music.constants.SafeVolumeEnabledKey
 import iad1tya.echo.music.constants.SpatialAudioEnabledKey
 import iad1tya.echo.music.constants.SpatialAudioProfileKey
+import iad1tya.echo.music.constants.TidalSimulationEnabledKey
 import iad1tya.echo.music.eq.audio.SpatialAudioProfile
 import iad1tya.echo.music.ui.newui.AuraDialogWindowEffects
 import iad1tya.echo.music.ui.newui.AuraFloatingSurface
@@ -815,6 +817,39 @@ private fun ColumnScope.EqMainContent(
     )
 
     SpatialAudioSection(skin = skin)
+
+    val (safeVolume, onSafeVolumeChange) = rememberPreference(SafeVolumeEnabledKey, defaultValue = true)
+    val (tidalSimulation, onTidalSimulationChange) = rememberPreference(TidalSimulationEnabledKey, defaultValue = true)
+
+    Material3SettingsGroup(
+        title = "Mejoras de Audio y Dinámica",
+        items = listOf(
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.volume_up),
+                title = { Text("Volumen Seguro") },
+                description = { Text("Previene saturación, normaliza volumen entre pistas y protege tu audición.") },
+                trailingContent = {
+                    Switch(
+                        checked = safeVolume,
+                        onCheckedChange = onSafeVolumeChange,
+                    )
+                },
+                onClick = { onSafeVolumeChange(!safeVolume) },
+            ),
+            Material3SettingsItem(
+                icon = painterResource(R.drawable.tune),
+                title = { Text("Firma de sonido Tidal") },
+                description = { Text("Simulación de audio de alta fidelidad con calibración de armónicos cálidos y escenario sonoro expansivo.") },
+                trailingContent = {
+                    Switch(
+                        checked = tidalSimulation,
+                        onCheckedChange = onTidalSimulationChange,
+                    )
+                },
+                onClick = { onTidalSimulationChange(!tidalSimulation) },
+            ),
+        ),
+    )
 
     // Preamp applies to both modes (graphic + parametric) so it stays visible always.
     PreampCard(

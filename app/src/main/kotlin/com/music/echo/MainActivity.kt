@@ -1312,14 +1312,15 @@ class MainActivity : ComponentActivity() {
                     rememberPreference(iad1tya.echo.music.constants.BatteryReliabilityOemKillPromptTsKey, 0L)
                 var showBatteryReliabilityDialog by remember { mutableStateOf(false) }
                 var batteryReliabilityOemEvidence by remember { mutableStateOf(false) }
-                // Whether a welcome/changelog dialog is due THIS launch (first run or a version bump). Used to
-                // defer the battery prompt to a later launch so it never stacks on welcome/onboarding — more
-                // robust than reading the instantaneous dialog flag (which a fast dismiss could race).
-                val welcomeWillShow = lastOpenedVersionCode < BuildConfig.VERSION_CODE
+                // Tutorials / Welcome only show on FIRST RUN EVER (lastOpenedVersionCode == -1), NEVER on app updates.
+                val welcomeWillShow = lastOpenedVersionCode == -1
 
                 LaunchedEffect(lastOpenedVersionCode) {
-                    if (lastOpenedVersionCode < BuildConfig.VERSION_CODE) {
+                    if (lastOpenedVersionCode == -1) {
                         showWelcomeDialog = true
+                    } else if (lastOpenedVersionCode < BuildConfig.VERSION_CODE) {
+                        // Silently advance the version code on update without interrupting the user.
+                        setLastOpenedVersionCode(BuildConfig.VERSION_CODE)
                     }
                 }
 

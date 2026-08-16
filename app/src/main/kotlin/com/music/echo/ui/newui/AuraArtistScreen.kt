@@ -201,13 +201,16 @@ fun AuraArtistScreen(
             !deviceThrottle && appInForeground
 
     var showLocal by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(libraryArtist, artistPage) {
-        // The classic rule, unchanged. A library row with a GENERATED id has no YouTube page of its
-        // own, but the artist usually exists on YouTube and the ViewModel resolves it by name — so the
-        // local view is only the fallback while that resolution has produced nothing. Otherwise the
-        // user would get his library's six albums instead of the full discography, with no way back.
+    LaunchedEffect(libraryArtist, artistPage, hasFailed) {
         val artist = libraryArtist?.artist
-        showLocal = artist != null && (artist.isLocal || (!artist.isYouTubeArtist && artistPage == null))
+        val isYtId = viewModel.artistId.startsWith("UC") || (artist?.isYouTubeArtist == true)
+        if (isYtId) {
+            // Online artist: only fall back to local if online fetch failed and we have local songs
+            showLocal = artistPage == null && hasFailed && allLibrarySongs.isNotEmpty()
+        } else {
+            // Pure local artist or non-YouTube ID: show local unless online page was resolved
+            showLocal = artist != null && (artist.isLocal || (artistPage == null && hasFailed))
+        }
     }
 
     val listState = rememberLazyListState()

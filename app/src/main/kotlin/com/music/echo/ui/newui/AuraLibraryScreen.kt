@@ -1,6 +1,7 @@
 package iad1tya.echo.music.ui.newui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -312,7 +313,8 @@ fun AuraLibraryScreen(navController: NavController) {
                             expanded = showImportMenu,
                             onDismissRequest = { showImportMenu = false },
                             shape = AuraShapes.Card,
-                            containerColor = AuraPalette.FrostFill,
+                            containerColor = AuraPalette.GroundRaised,
+                            border = BorderStroke(1.dp, AuraPalette.SurfaceLine),
                         ) {
                             DropdownMenuItem(
                                 text = {

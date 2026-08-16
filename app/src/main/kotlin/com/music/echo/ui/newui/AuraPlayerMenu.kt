@@ -472,6 +472,15 @@ fun AuraPlayerMenu(
                     },
                 )
                 AuraMenuRow(
+                    icon = AuraIcons.Volume,
+                    label = "Sonido",
+                    onClick = {
+                        playerBottomSheetState.collapseSoft()
+                        navController.navigate("settings/sound")
+                        onDismiss()
+                    },
+                )
+                AuraMenuRow(
                     icon = AuraIcons.Search,
                     label = stringResource(R.string.details),
                     onClick = {

@@ -89,15 +89,20 @@ fun exportedFileUriExists(context: Context, uriString: String): Boolean {
     val uri = uriString.toUri()
     return when (uri.scheme?.lowercase(Locale.US)) {
         "content" -> {
-            DocumentFile.fromSingleUri(context, uri)?.exists() == true ||
-                runCatching {
-                    context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { }
-                    true
-                }.getOrDefault(false)
+            runCatching {
+                val fd = context.contentResolver.openAssetFileDescriptor(uri, "r")
+                val len = fd?.use { it.length } ?: 0L
+                if (len > 0L) true
+                else if (len == android.content.res.AssetFileDescriptor.UNKNOWN_LENGTH) {
+                    DocumentFile.fromSingleUri(context, uri)?.let { it.exists() && it.length() > 0L } == true
+                } else false
+            }.getOrDefault(false)
         }
         "file" -> {
-            DocumentFile.fromSingleUri(context, uri)?.exists() == true ||
-                runCatching { java.io.File(uri.path ?: return false).exists() }.getOrDefault(false)
+            runCatching {
+                val f = java.io.File(uri.path ?: return false)
+                f.exists() && f.length() > 0L
+            }.getOrDefault(false)
         }
         else -> false
     }

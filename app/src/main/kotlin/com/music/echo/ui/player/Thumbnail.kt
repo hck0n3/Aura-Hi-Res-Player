@@ -2,8 +2,10 @@
 
 package iad1tya.echo.music.ui.player
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -11,8 +13,11 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
+import iad1tya.echo.music.extensions.SwipeGesture
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -117,7 +122,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
 import iad1tya.echo.music.applecanvas.AppleMusicCanvasProvider
-import iad1tya.echo.music.echomusiccanvas.echomusicCanvasProvider
 import iad1tya.echo.music.canvas.AppleMusicArtistBackgroundProvider
 import java.util.Locale
 
@@ -424,6 +428,19 @@ fun Thumbnail(
     // Also skip animateScrollToItem after a swipe — re-animating the grid onto the same index caused the
     // post-swipe cover flicker the owner reported.
     var suppressCoverSettle by remember { mutableStateOf(false) }
+    var lastMediaIndex by remember { mutableIntStateOf(playerConnection.player.currentMediaItemIndex) }
+    var lastMediaId by remember { mutableStateOf(mediaMetadata?.id) }
+    var transitionDirection by remember { mutableIntStateOf(1) }
+
+    LaunchedEffect(playerConnection.player.currentMediaItemIndex, mediaMetadata?.id) {
+        val newIndex = playerConnection.player.currentMediaItemIndex
+        val newId = mediaMetadata?.id
+        if (newId != lastMediaId) {
+            transitionDirection = if (newIndex >= lastMediaIndex) 1 else -1
+            lastMediaIndex = newIndex
+            lastMediaId = newId
+        }
+    }
 
     
     LaunchedEffect(itemScrollOffset) {
@@ -646,28 +663,33 @@ fun Thumbnail(
                     }
                     
                     
-                    val isScrollEnabled by remember(swipeThumbnail) {
-                        derivedStateOf { swipeThumbnail && isPlayerExpanded() }
-                    }
-                    
-                    LazyHorizontalGrid(
-                        state = thumbnailLazyGridState,
-                        rows = GridCells.Fixed(1),
-                        flingBehavior = rememberSnapFlingBehavior(thumbnailSnapLayoutInfoProvider),
-                        userScrollEnabled = isScrollEnabled,
-                        modifier = if (isLandscape) {
+                    AnimatedContent(
+                        targetState = Pair(playerConnection.player.currentMediaItem, transitionDirection),
+                        transitionSpec = {
+                            val forward = targetState.second >= 0
+                            val inOffset = if (forward) { w: Int -> (w * 0.85f).toInt() } else { w: Int -> (-w * 0.85f).toInt() }
+                            val outOffset = if (forward) { w: Int -> (-w * 0.85f).toInt() } else { w: Int -> (w * 0.85f).toInt() }
+                            (slideInHorizontally(animationSpec = androidx.compose.animation.core.tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing), initialOffsetX = inOffset) + fadeIn(androidx.compose.animation.core.tween(280)))
+                                .togetherWith(
+                                    slideOutHorizontally(animationSpec = androidx.compose.animation.core.tween(320, easing = androidx.compose.animation.core.FastOutSlowInEasing), targetOffsetX = outOffset) + fadeOut(androidx.compose.animation.core.tween(220))
+                                )
+                        },
+                        modifier = (if (isLandscape) {
                             Modifier.size(dimensions.thumbnailSize + (PlayerHorizontalPadding * 2))
                         } else {
                             Modifier.fillMaxSize()
-                        }
-                    ) {
-                        itemsIndexed(
-                            items = mediaItems,
-                            key = { index, item -> thumbnailItemKey(index, item) }
-                        ) { index, item ->
+                        }).SwipeGesture(
+                            enabled = isPlayerExpanded() && swipeThumbnail,
+                            onSwipeLeft = { if (!isListenTogetherGuest && canSkipNext) playerConnection.seekToNextOrStartRadio() },
+                            onSwipeRight = { if (!isListenTogetherGuest && canSkipPrevious) playerConnection.player.seekToPreviousMediaItem() },
+                        ),
+                        contentAlignment = Alignment.Center,
+                        label = "ThumbnailDirectionalSlide",
+                    ) { (item, _) ->
+                        if (item != null) {
                             ThumbnailItem(
                                 item = item,
-                                itemKey = thumbnailItemKey(index, item),
+                                itemKey = item.mediaId,
                                 dimensions = dimensions,
                                 hidePlayerThumbnail = hidePlayerThumbnail,
                                 cropAlbumArt = cropAlbumArt || appleMusicCoverStyle,
@@ -1069,15 +1091,11 @@ private fun ThumbnailItem(
                                     )?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }?.let { return@firstNotNullOfOrNull it }
                                 }
 
-                                echomusicCanvasProvider.getBySongArtist(
+                                TidalCanvasProvider.getBySongArtist(
                                     song = s,
-                                    artist = a
+                                    artist = a,
+                                    album = albumName
                                 )?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
-                                    ?: TidalCanvasProvider.getBySongArtist(
-                                        song = s,
-                                        artist = a,
-                                        album = albumName
-                                    )?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
                                     ?: AppleMusicCanvasProvider.getBySongArtist(
                                         song = s,
                                         artist = a,

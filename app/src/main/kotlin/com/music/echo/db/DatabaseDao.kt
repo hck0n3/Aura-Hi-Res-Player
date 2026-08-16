@@ -1187,13 +1187,16 @@ interface DatabaseDao {
     fun addSongToPlaylist(playlist: Playlist, songIds: List<String>) {
         var position = playlist.songCount
         songIds.forEach { id ->
-            insert(
-                PlaylistSongMap(
-                    songId = id,
-                    playlistId = playlist.id,
-                    position = position++
+            if (id.isNotBlank()) {
+                insert(SongEntity(id = id, title = id))
+                insert(
+                    PlaylistSongMap(
+                        songId = id,
+                        playlistId = playlist.id,
+                        position = position++
+                    )
                 )
-            )
+            }
         }
         update(playlist.playlist.copy(lastUpdateTime = java.time.LocalDateTime.now()))
     }

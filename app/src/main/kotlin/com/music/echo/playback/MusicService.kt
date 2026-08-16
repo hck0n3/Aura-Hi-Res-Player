@@ -747,7 +747,7 @@ class MusicService :
     @Volatile private var safeVolumeEnabledHint: Boolean = true
     @Volatile private var spatialEnabledHint: Boolean = false
     @Volatile private var spatialProfileNameHint: String = SpatialAudioProfile.WIDE_SURROUND.name
-    @Volatile private var tidalEnabledHint: Boolean = false
+    @Volatile private var tidalEnabledHint: Boolean = true
     // The offload request CURRENTLY PUBLISHED to the players (not merely the gate's latest verdict — an
     // approved enable can be waiting for a track boundary; see publishOffloadDecision). Read by
     // onPlaybackParametersChanged, which only re-publishes the speed requirement while offload is live.
@@ -2432,7 +2432,7 @@ class MusicService :
 
         scope.launch {
             dataStore.data
-                .map { it[iad1tya.echo.music.constants.TidalSimulationEnabledKey] ?: false }
+                .map { it[iad1tya.echo.music.constants.TidalSimulationEnabledKey] ?: true }
                 .distinctUntilChanged()
                 .collect { enabled ->
                     tidalEnabledHint = enabled
@@ -2535,7 +2535,7 @@ class MusicService :
             ) { active, unsaved -> (unsaved ?: active) != null }.distinctUntilChanged(),
             combine(
                 dataStore.data.map { it[SpatialAudioEnabledKey] ?: false }.distinctUntilChanged(),
-                dataStore.data.map { it[iad1tya.echo.music.constants.TidalSimulationEnabledKey] ?: false }.distinctUntilChanged()
+                dataStore.data.map { it[iad1tya.echo.music.constants.TidalSimulationEnabledKey] ?: true }.distinctUntilChanged()
             ) { spatial, tidal -> spatial || tidal },
         ) { offloadPref, (crossfadeKey, perfMode), safeVolume, eqActive, spatialOrTidal ->
             AudioOffloadGate.allowOffload(
@@ -2890,6 +2890,7 @@ class MusicService :
         playerNormProcessors[player] = normProcessor
         playerLimiterProcessors[player] = limiterProcessor
         applySpatialFromPrefs()
+        applyTidalFromPrefs()
 
         player.apply {
                 setOffloadEnabled(audioOffloadHint)
@@ -10631,7 +10632,7 @@ class MusicService :
                 // MUST be the SAME full gain (attenuation x makeup) the main path applies when this track
                 // becomes current — priming only the attenuate half would make a quiet track fade in lower
                 // than it plays a moment later, i.e. an audible jump at the swap. No fade timing/curve here.
-                if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult * makeup)
+                if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, safeVolumeAppliedGain(mult * makeup))
                 primedSyncGain = true
                 Timber.tag(TAG).d("Crossfade: pre-leveled incoming $incomingId from cache (loudnessDb=$loudnessDb)")
             }
@@ -10658,7 +10659,7 @@ class MusicService :
                         val makeup = dbToLinear(loudnessMakeupDb(loudnessDb, enabled = true))
                         playerNormProcessors[sec]?.instanceGain = mult
                         playerLimiterProcessors[sec]?.setInstanceMakeup(makeup, null)
-                        if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, mult * makeup)
+                        if (safeVolumeEnabledHint) playerEqProcessors[sec]?.applySafeVolume(true, safeVolumeAppliedGain(mult * makeup))
                         if (player === sec) {
                             lastAppliedGain = mult
                             lastAppliedMakeup = makeup

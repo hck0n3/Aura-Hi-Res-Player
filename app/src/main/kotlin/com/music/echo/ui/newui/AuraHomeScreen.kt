@@ -308,6 +308,11 @@ fun AuraHomeScreen(
         )
     }
 
+    val heroCarouselSongs = remember(quickPicks, aiRecommendedSongs) {
+        quickPicks?.takeIf { it.isNotEmpty() }
+            ?: aiRecommendedSongs?.takeIf { it.isNotEmpty() }
+    }
+
     // ── Shared item actions (the SAME lambdas the classic Home installs) ──────────────────────────
 
     val playSong: (Song) -> Unit = { song ->
@@ -642,21 +647,22 @@ fun AuraHomeScreen(
                 }
 
                 // Apple Music style: Hero carousel "Para ti" at the very top.
-                quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
+                if (!heroCarouselSongs.isNullOrEmpty()) {
                     item(key = "aura_quick_picks") {
                         val forYouTitle = stringResource(R.string.home_for_you)
-                        val distinctQuickPicks = remember(picks) { picks.distinctBy { it.id } }
+                        val distinctQuickPicks = remember(heroCarouselSongs) { heroCarouselSongs.distinctBy { it.id } }
+                        val carouselWidth = (LocalConfiguration.current.screenWidthDp.dp * 0.58f).coerceIn(220.dp, 340.dp)
                         Column(Modifier.animateItem()) {
                             Spacer(Modifier.height(AuraSpacing.SectionGap))
                             AuraSectionHeader(
                                 title = forYouTitle,
                                 label = stringResource(R.string.quick_picks),
                                 accent = AuraPalette.Teal,
-                                onPlayAll = { playAllSongs(forYouTitle, picks) },
+                                onPlayAll = { playAllSongs(forYouTitle, heroCarouselSongs) },
                             )
                             AuraQuickPicksCarousel(
                                 songs = distinctQuickPicks,
-                                itemWidth = (LocalConfiguration.current.screenWidthDp.dp * 0.85f).coerceIn(250.dp, 420.dp),
+                                itemWidth = carouselWidth,
                                 activeId = mediaMetadata?.id,
                                 isPlaying = isPlaying,
                                 onClick = playSong,

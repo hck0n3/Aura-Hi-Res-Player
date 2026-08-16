@@ -54,6 +54,19 @@ object SupportContact {
         }
     }
 
+    /**
+     * Opens the email client pre-filling the crash report to [EMAIL].
+     */
+    fun openCrashReport(context: Context, crashLog: String): Boolean {
+        return openWithAttachments(
+            context = context,
+            subject = "[Aura Crash] Report ${iad1tya.echo.music.BuildConfig.VERSION_NAME} (${iad1tya.echo.music.BuildConfig.VERSION_CODE})",
+            body = crashLog,
+            attachLogs = true,
+            screenshotUris = emptyList(),
+        )
+    }
+
     private fun openMailto(context: Context, subject: String, body: String): Boolean {
         // Gmail / Samsung Email / Outlook ignore EXTRA_TEXT on ACTION_SENDTO mailto. Suggestions
         // default to attachLogs=false and hit this path — the compose window opened empty. Prefer

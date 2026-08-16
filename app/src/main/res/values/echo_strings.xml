@@ -472,7 +472,7 @@
     <string name="export_directory">Export folder</string>
     <string name="export_music">Export music</string>
     <string name="exporting">Exporting</string>
-    <string name="action_exported">Exported</string>
+    <string name="action_exported">Exported MP3s</string>
     <string name="export_preparing">Preparing export…</string>
     <string name="export_processing_audio">Downloading audio…</string>
     <string name="export_processing_tags">Embedding metadata…</string>

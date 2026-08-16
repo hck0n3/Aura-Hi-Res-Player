@@ -616,7 +616,7 @@
     <string name="tap_to_recognize">Tap para reconocer</string>
     <string name="recognition_history">Historial de reconocimiento</string>
     <string name="enable_high_refresh_rate">Habilitar alta frecuencia de actualización</string>
-    <string name="global_haptics">Respuesta háptica</string>
+    <string name="global_haptics">Vibración</string>
     <string name="global_haptics_desc">Vibra al tocar y al desplazarte por toda la app</string>
     <string name="song_title_column">Columna de título de la canción</string>
     <string name="recognition">Reconocimiento</string>
@@ -772,7 +772,7 @@
     <string name="export_directory">Carpeta de exportación</string>
     <string name="export_music">Exportar música</string>
     <string name="exporting">Exportando</string>
-    <string name="action_exported">Exportado</string>
+    <string name="action_exported">MP3 exportados</string>
     <string name="export_preparing">Preparando exportación…</string>
     <string name="export_processing_audio">Descargando audio…</string>
     <string name="export_processing_tags">Insertando metadatos…</string>

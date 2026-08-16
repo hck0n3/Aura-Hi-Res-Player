@@ -71,6 +71,7 @@ class CrashActivity : ComponentActivity() {
                     crashLog = crashLog,
                     onClose = { finishAffinity() },
                     onShare = { shareCrashLog(crashLog) },
+                    onEmail = { iad1tya.echo.music.utils.SupportContact.openCrashReport(this@CrashActivity, crashLog) },
                     onCopy = { copyToClipboard(crashLog) }
                 )
             }
@@ -134,6 +135,7 @@ fun CrashScreen(
     crashLog: String,
     onClose: () -> Unit,
     onShare: () -> Unit,
+    onEmail: () -> Unit,
     onCopy: () -> Unit
 ) {
     val context = LocalContext.current
@@ -167,18 +169,35 @@ fun CrashScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onShare,
-                icon = {
-                    Icon(
-                        painter = painterResource(R.drawable.share),
-                        contentDescription = null
-                    )
-                },
-                text = { Text(stringResource(R.string.crash_share_logs)) },
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-            )
+            androidx.compose.foundation.layout.Row(
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                ExtendedFloatingActionButton(
+                    onClick = onEmail,
+                    icon = {
+                        Icon(
+                            painter = painterResource(R.drawable.bug_report),
+                            contentDescription = null
+                        )
+                    },
+                    text = { Text("Enviar por correo") },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+                ExtendedFloatingActionButton(
+                    onClick = onShare,
+                    icon = {
+                        Icon(
+                            painter = painterResource(R.drawable.share),
+                            contentDescription = null
+                        )
+                    },
+                    text = { Text(stringResource(R.string.crash_share_logs)) },
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
+            }
         },
         containerColor = MaterialTheme.colorScheme.surface
     ) { paddingValues ->

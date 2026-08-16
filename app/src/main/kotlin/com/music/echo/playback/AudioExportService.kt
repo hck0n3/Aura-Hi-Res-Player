@@ -33,6 +33,8 @@ import iad1tya.echo.music.constants.ExportedSongIdsKey
 import iad1tya.echo.music.constants.ExportedVideoIdsKey
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.LyricsEntity
+import iad1tya.echo.music.models.MediaMetadata
+import androidx.room.withTransaction
 import iad1tya.echo.music.reco.GenreCache
 import iad1tya.echo.music.utils.YTPlayerUtils
 import iad1tya.echo.music.utils.dataStore
@@ -447,6 +449,20 @@ class AudioExportService : Service() {
             }
             updateExportProgress(songId, 100, getString(R.string.export_writing_file))
 
+            runCatching {
+                database.withTransaction {
+                    if (database.getSongById(songId) == null) {
+                        database.insert(
+                            iad1tya.echo.music.db.entities.SongEntity(
+                                id = songId,
+                                title = songTitle.ifBlank { songId },
+                                duration = 0,
+                            )
+                        )
+                    }
+                }
+            }
+
             addExportedVideoId(songId)
             persistExportedFileUri(songId, outputFile.uri.toString())
 
@@ -678,6 +694,23 @@ class AudioExportService : Service() {
                         arrayOf("audio/mpeg"),
                         null,
                     )
+                }
+            }
+
+            runCatching {
+                database.withTransaction {
+                    if (database.getSongById(songId) == null) {
+                        database.insert(
+                            MediaMetadata(
+                                id = songId,
+                                title = songTitle.ifBlank { songId },
+                                artists = listOf(MediaMetadata.Artist(id = null, name = songArtist.ifBlank { "Unknown" })),
+                                album = if (songAlbum.isNotBlank()) MediaMetadata.Album(id = "", title = songAlbum) else null,
+                                duration = (playbackData.videoDetails?.lengthSeconds?.toIntOrNull() ?: 0),
+                                thumbnailUrl = artworkUrl,
+                            )
+                        )
+                    }
                 }
             }
 

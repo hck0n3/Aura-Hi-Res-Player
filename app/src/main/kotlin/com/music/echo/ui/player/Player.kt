@@ -270,7 +270,6 @@ import iad1tya.echo.music.extensions.metadata
 import iad1tya.echo.music.ui.player.CanvasArtworkPlaybackCache
 import iad1tya.echo.music.ui.player.normalizeCanvasArtistName
 import iad1tya.echo.music.ui.player.normalizeCanvasSongTitle
-import iad1tya.echo.music.echomusiccanvas.echomusicCanvasProvider
 import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -726,8 +725,6 @@ fun BottomSheetPlayer(
                         ?: AppleMusicCanvasProvider.getByAlbumArtist(album = requestedAlbum, artist = a, storefront = storefront)
                             ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
                 } else null)
-                ?: echomusicCanvasProvider.getBySongArtist(s, a)
-                ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
                 ?: TidalCanvasProvider.getBySongArtist(s, a, requestedAlbum)
                 ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
                 ?: AppleMusicCanvasProvider.getBySongArtist(s, a, requestedAlbum, storefront)
