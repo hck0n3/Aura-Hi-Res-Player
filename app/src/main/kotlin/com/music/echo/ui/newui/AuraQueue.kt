@@ -386,45 +386,6 @@ fun AuraQueue(
                 onToggleLyrics = onToggleLyrics,
                 showCommentButton = showCommentButton,
                 onComments = { showCommentSheet = true },
-                shareEnabled = shareableLink,
-                onShare = {
-                    coroutineScope.launch {
-                        mediaMetadata?.let { meta ->
-                            if (isLocalTrack) {
-                                shareLocalAudio(context, meta.id)
-                                return@launch
-                            }
-                            if (isExported) {
-                                val uri = lookupExportedFileUri(context, meta.id)
-                                if (uri != null &&
-                                    shareContentUri(
-                                        context,
-                                        uri,
-                                        if (isExportedVideo) "video/mp4" else "audio/mpeg",
-                                    )
-                                ) {
-                                    return@launch
-                                }
-                            }
-                            val intent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, ShareLinks.song(meta.id))
-                            }
-                            context.startActivity(Intent.createChooser(intent, null))
-                        }
-                    }
-                },
-                onEqualizer = {
-                    // Collapse the PLAYER (not this queue sheet — AuraQueueBar is already the queue's
-                    // collapsed content): same as the button did in AuraPlayer.kt before the move,
-                    // matching AuraPlayerMenu.kt's own equalizer row.
-                    playerBottomSheetState.collapseSoft()
-                    navController.navigate("settings/equalizer") { launchSingleTop = true }
-                },
-                showVideoButton = hasVideo,
-                videoModeActive = videoMode,
-                onToggleVideo = { playerConnection.toggleVideoMode() },
                 onMore = onMore,
                 contentColor = textBackgroundColor,
                 activeContainerColor = textButtonColor,
@@ -1199,12 +1160,6 @@ private fun AuraQueueBar(
     onToggleLyrics: () -> Unit,
     showCommentButton: Boolean,
     onComments: () -> Unit,
-    shareEnabled: Boolean,
-    onShare: () -> Unit,
-    onEqualizer: () -> Unit,
-    showVideoButton: Boolean,
-    videoModeActive: Boolean,
-    onToggleVideo: () -> Unit,
     onMore: () -> Unit,
     contentColor: Color,
     activeContainerColor: Color,
@@ -1281,46 +1236,8 @@ private fun AuraQueueBar(
             }
         }
 
-        // Compartir / Ecualizador / Vídeo — relocated from the player's quick-access row (owner
-        // request: "que los botones... solo sea una fila de cuatro y los otros me los pases en la
-        // última fila de abajo"). Same actions AuraPlayer.kt called before the move.
-        AuraBarButton(
-            contentDescription = stringResource(R.string.share),
-            active = false,
-            enabled = shareEnabled,
-            onClick = onShare,
-            contentColor = contentColor,
-            activeContainerColor = activeContainerColor,
-            activeContentColor = activeContentColor,
-        ) { tint -> AuraIconGlyph(AuraIcons.Share, null, size = 21.dp, tint = tint) }
-
-        AuraBarButton(
-            contentDescription = stringResource(R.string.equalizer),
-            active = false,
-            onClick = onEqualizer,
-            contentColor = contentColor,
-            activeContainerColor = activeContainerColor,
-            activeContentColor = activeContentColor,
-        ) { tint -> AuraIconGlyph(AuraIcons.Equalizer, null, size = 21.dp, tint = tint) }
-
-        if (showVideoButton) {
-            AuraBarButton(
-                contentDescription = stringResource(if (videoModeActive) R.string.music else R.string.video),
-                active = videoModeActive,
-                onClick = onToggleVideo,
-                contentColor = contentColor,
-                activeContainerColor = activeContainerColor,
-                activeContentColor = activeContentColor,
-            ) { tint ->
-                // Alternate glyph so the control reads as music↔video, not "video only".
-                AuraIconGlyph(
-                    if (videoModeActive) AuraIcons.Music else AuraIcons.Video,
-                    null,
-                    size = 21.dp,
-                    tint = tint,
-                )
-            }
-        }
+        // Compartir / Ecualizador / Vídeo — removed from the bottom queue bar based on owner
+        // request ("solo sea una fila de cuatro").
 
         // ALEATORIO / REPETIR stay on the transport row only (no duplicates here).
         //

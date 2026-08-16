@@ -412,6 +412,21 @@ private fun SettingDialogeBody(
                     onClick = { onNavigate("settings") },
                 ),
                 Material3SettingsItem(
+                    title = { Text("Compartir Aura Hi-Res") },
+                    icon = painterResource(R.drawable.share),
+                    onClick = {
+                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(android.content.Intent.EXTRA_SUBJECT, "Aura Hi-Res Player")
+                            putExtra(
+                                android.content.Intent.EXTRA_TEXT,
+                                "Prueba Aura Hi-Res Player, el reproductor de música con la mejor calidad de audio:\n\nhttps://github.com/hck0n3/Aura-Hi-Res-Player/releases/latest"
+                            )
+                        }
+                        context.startActivity(android.content.Intent.createChooser(shareIntent, "Compartir Aura Hi-Res"))
+                    },
+                ),
+                Material3SettingsItem(
                     title = { Text("Acerca de") },
                     icon = painterResource(R.drawable.info),
                     trailingContent = {

@@ -5340,7 +5340,9 @@ class MusicService :
         mediaItem: MediaItem?,
         reason: Int,
     ) {
+        val previousMediaId = currentPlayingMediaId
         currentPlayingMediaId = mediaItem?.mediaId
+        val trackChanged = previousMediaId != mediaItem?.mediaId
         mediaItem?.mediaId?.let { id ->
             if (id != lastNormalizedId) lastNormalizedId = null
             if (normalizationEnabledHint || safeVolumeEnabledHint) {
@@ -5432,7 +5434,7 @@ class MusicService :
             // always honour: it is a fresh, deliberate user action so clear the flag first.
             // SEEK within the same queue = might be the internal seekTo from exitVideoMode → respect
             // userExplicitlyExitedVideo so the toggle is not overridden.
-            mediaItem != null &&
+            mediaItem != null && trackChanged &&
             (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED ||
                 (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK && !userExplicitlyExitedVideo)) &&
             (player.currentMetadata?.isVideoSong == true || exportedMuxedVideoUri(mediaItem.mediaId) != null) &&

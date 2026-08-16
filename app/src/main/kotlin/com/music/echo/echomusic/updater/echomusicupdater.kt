@@ -553,6 +553,20 @@ fun UpdateScreen(navController: NavHostController) {
                                         textAlign = TextAlign.Center,
                                         fontWeight = FontWeight.Bold
                                     )
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                    androidx.compose.material3.TextButton(
+                                        onClick = {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/hck0n3/Aura-Hi-Res-Player/releases/latest"))
+                                            ContextCompat.startActivity(context, intent, null)
+                                        }
+                                    ) {
+                                        Text(
+                                            text = "Descarga directa",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+                                        )
+                                    }
                                 }
                             }
 

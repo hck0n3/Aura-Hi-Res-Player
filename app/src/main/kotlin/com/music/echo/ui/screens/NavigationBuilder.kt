@@ -285,11 +285,15 @@ fun NavGraphBuilder.navigationBuilder(
     }
 
     composable(
-        route = "online_playlist/{playlistId}",
+        route = "online_playlist/{playlistId}?autoSave={autoSave}",
         arguments = listOf(
             navArgument("playlistId") {
                 type = NavType.StringType
             },
+            navArgument("autoSave") {
+                type = NavType.BoolType
+                defaultValue = false
+            }
         ),
     ) {
         OnlinePlaylistScreenHost(navController, scrollBehavior)

@@ -71,6 +71,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -1965,6 +1966,16 @@ fun BottomSheetPlayer(
                     }) {
                         Icon(painterResource(R.drawable.graphic_eq), null, tint = textButtonColor, modifier = Modifier.size(24.dp))
                     }
+                    if ((!highPerfMode || wantsHiResBackdrop) && (mediaMetadata?.isVideoSong == true || mediaMetadata?.podcastVideoUrl.isNullOrEmpty() == false)) {
+                        PlayerActionChip(
+                            label = if (videoMode) "Canción" else "Video",
+                            tint = textButtonColor,
+                            container = chipBg,
+                            onClick = { playerConnection.toggleVideoMode() },
+                        ) {
+                            Icon(painterResource(if (videoMode) R.drawable.music_note else R.drawable.videocam), null, tint = textButtonColor, modifier = Modifier.size(24.dp))
+                        }
+                    }
                     PlayerActionChip(
                         label = "Más",
                         tint = textButtonColor,
@@ -1981,7 +1992,7 @@ fun BottomSheetPlayer(
                             }
                         },
                     ) {
-                        Icon(painterResource(R.drawable.add), null, tint = textButtonColor, modifier = Modifier.size(24.dp))
+                        Icon(painterResource(R.drawable.more_vert), null, tint = textButtonColor, modifier = Modifier.size(24.dp))
                     }
                 }
             }
@@ -2295,26 +2306,6 @@ fun BottomSheetPlayer(
                                 .fillMaxWidth()
                                 .padding(horizontal = PlayerHorizontalPadding),
                         ) {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                             Box(modifier = Modifier.weight(1f)) {
                                 ResizableIconButton(
                                     icon = R.drawable.apple_skip_previous,
@@ -2401,19 +2392,6 @@ fun BottomSheetPlayer(
                                     onClick = playerConnection::seekToNext,
                                 )
                             }
-
-
-
-
-
-
-
-
-
-
-
-
-
                         }
 
                         if (showPlayerVolumeControl(hidePlayerSlider)) {
@@ -2637,7 +2615,6 @@ fun BottomSheetPlayer(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black)
                         // TV/car: any D-pad key re-shows the controls (and, with no auto-hide on TV, keeps them
                         // up). Returns false so the key still performs its normal focus navigation.
                         .onPreviewKeyEvent {
@@ -2740,25 +2717,10 @@ fun BottomSheetPlayer(
                         }
                     }
                 }
-              // No `!isWideLayout` here: with it, the setting was a no-op on exactly the devices it is offered
-              // to (a foldable IS wide), i.e. a translated, user-visible toggle that did nothing — the same
-              // placebo shape this release exists to remove. The opt-in is the gate; it defaults OFF, so the
-              // "interface disappears when I rotate" complaint stays fixed unless the user asks for it.
               } else if (canvasArtwork != null && immersiveCanvasOnRotate) {
-                // Rotated + canvas (Apple-Music animated background) → show it FULLSCREEN (the background
-                // canvas already fills the screen behind) with auto-hiding controls (tap toggles them).
-                //
-                // REGISTRY #48: this branch renders ONLY a transport Row that auto-hides after 3.5s — no cover,
-                // title, progress, queue or lyrics — and it used to intercept EVERY landscape rotation whenever a
-                // canvas existed (artist background video defaults ON), so rotating simply ate the entire UI. It
-                // is now (a) OPT-IN via [ImmersiveCanvasOnRotateKey] (default false) so the interface stays put
-                // "sin importar en qué ángulo giro", and (b) never taken on a wide screen, which has ample room
-                // for the real split layout below. The VIDEO branch above keeps its fullscreen behaviour.
                 var lsCanvasControls by remember { mutableStateOf(true) }
-                // Keep the root-pinned CastButton in step with the tap-to-hide controls (clean view).
                 LaunchedEffect(lsCanvasControls) { immersiveControlsVisible = lsCanvasControls }
                 DisposableEffect(Unit) { onDispose { immersiveControlsVisible = true } }
-                // TV/car: don't auto-hide (a remote can't tap them back); touch keeps the 3.5 s auto-hide.
                 LaunchedEffect(lsCanvasControls, isPlaying, isTvOrCar) {
                     if (lsCanvasControls && !isTvOrCar) { delay(3500); lsCanvasControls = false }
                 }
@@ -2771,7 +2733,6 @@ fun BottomSheetPlayer(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        // TV/car: any D-pad key re-shows the controls. Returns false so navigation still runs.
                         .onPreviewKeyEvent {
                             if (isTvOrCar && it.type == KeyEventType.KeyDown) lsCanvasControls = true
                             false
@@ -2829,15 +2790,6 @@ fun BottomSheetPlayer(
                 val verticalPaddingDp = with(density) { verticalPadding.toDp() }
                 val verticalWindowInsets = WindowInsets(left = 0.dp, top = verticalPaddingDp, right = 0.dp, bottom = verticalPaddingDp)
 
-                // The collapsed queue handle is drawn OVER this pane on exactly the same condition as in
-                // portrait (`!isFullScreen && !onImmersiveVideo` — see the Queue's AnimatedVisibility at the
-                // end of this sheet), and its height is SHEET-DERIVED: collapsedBound = QueuePeekHeight (64dp)
-                // + the bottom system inset + 1dp. A hardcoded 24.dp was therefore always short, leaving the
-                // bottom of the wide/landscape layout sitting UNDER the handle. Pad by the sheet's own bound
-                // like the portrait branch does. The vertical inset is ALREADY applied by
-                // `verticalWindowInsets` above, so subtract it to avoid double-counting, and never drop below
-                // the original 24.dp. When the sheet is not drawn this stays exactly at 24.dp, so no permanent
-                // dead space is added to the fullscreen / immersive-video cases.
                 val wideBottomPadding by animateDpAsState(
                     targetValue =
                         if (isFullScreen || onImmersiveVideo) 24.dp
@@ -2858,13 +2810,7 @@ fun BottomSheetPlayer(
                     val isExpandedProvider = remember(state) { { state.isExpanded } }
 
                     if (isWideLayout && !showInlineLyrics) {
-                        // Spotify-style WIDE player: live queue on the LEFT, and a BALANCED now-playing pane on the
-                        // RIGHT — cover on top, controls centered below it — instead of a huge cover beside a thin
-                        // controls column jammed against the screen edge. Only on wide screens; lyrics/phones fall
-                        // through to the side-by-side layout below.
                         LandscapeQueuePane(
-                            // Match the player's own text treatment (white over blur/gradient) so the queue is
-                            // readable in every theme now that the rows are flat/transparent.
                             contentColor = TextBackgroundColor,
                             castHandler = castHandler,
                             isCasting = isCasting,
@@ -2880,8 +2826,6 @@ fun BottomSheetPlayer(
                             modifier = Modifier
                                 .weight(1.7f)
                                 .fillMaxHeight()
-                                // TV/car: group the now-playing pane so D-pad directional search moves cleanly
-                                // between this pane and the queue pane (free traversal in every direction).
                                 .focusGroup()
                                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top))
                         ) {
@@ -2916,7 +2860,6 @@ fun BottomSheetPlayer(
                             modifier = Modifier
                                 .weight(1f)
                                 .nestedScroll(state.preUpPostDownNestedScrollConnection)
-                                // Swipe the artwork left/right to change song (landscape).
                                 .SwipeGesture(
                                     enabled = isFullScreen,
                                     onSwipeRight = { playerConnection.seekToPrevious() },
@@ -2968,9 +2911,6 @@ fun BottomSheetPlayer(
 
             else -> {
                 val videoUrlPt by playerConnection.videoUrl.collectAsState()
-                // Smooth crossfade between the immersive video layout and the normal song layout when video
-                // mode toggles. Safe re: the video surface — the video is only ever rendered here (premium)
-                // / in the landscape branch, never by Thumbnail, so no two TextureViews fight during the fade.
                 Crossfade(
                     targetState = videoMode && !videoUrlPt.isNullOrEmpty(),
                     animationSpec = tween(350),
@@ -2978,27 +2918,15 @@ fun BottomSheetPlayer(
                     label = "videoModeTransition",
                 ) { immersive ->
                 if (immersive) {
-                    // PORTRAIT + video → PREMIUM immersive video: ambient blurred-cover backdrop, the video
-                    // edge-to-edge (full width, centered, correct aspect via PlayerVideoSurface), and the
-                    // normal controls OVERLAID and AUTO-HIDING (tap toggles them). Back exits video.
-                    // Controls toggle ONLY by tapping the video (no timed auto-hide): tap once to hide them
-                    // for a clean view, tap again to bring them back. Back exits video.
                     var ptControls by remember { mutableStateOf(true) }
-                    // Keep the root-pinned CastButton in step with the tap-to-hide controls (clean view).
                     LaunchedEffect(ptControls) { immersiveControlsVisible = ptControls }
                     DisposableEffect(Unit) { onDispose { immersiveControlsVisible = true } }
-                    // In Picture-in-Picture render a CLEAN view: keep the title/artist over the video, but hide
-                    // the bottom controls and the toggle — playback controls come from the system PiP actions.
                     val inPip = LocalIsInPipMode.current
-                    // NOTE: no BackHandler here — the Android back gesture must NOT exit video; it should just
-                    // minimize the player (keeping video mode on), per user request.
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .pointerInput(Unit) { detectTapGestures { ptControls = !ptControls } },
                     ) {
-                        // Ambient backdrop: blurred + darkened cover art (cheap → smooth on low-end; NO live
-                        // video-frame sampling). Mirrors the BLUR player-background pattern.
                         mediaMetadata?.thumbnailUrl?.let { thumb ->
                             AsyncImage(
                                 model = ImageRequest.Builder(context)
@@ -3018,11 +2946,7 @@ fun BottomSheetPlayer(
                                 .matchParentSize()
                                 .background(Color.Black.copy(alpha = 0.55f)),
                         )
-                        // Title (top) + video (centered) + controls (bottom) in a Column so the video is
-                        // truly CENTERED in the space between the top title and the bottom controls.
                         Column(modifier = Modifier.fillMaxSize()) {
-                        // Title + artist ABOVE the video — shown only while the controls are visible (or in
-                        // PiP). Tapping to hide the controls hides the title too → clean full-screen video.
                         if (inPip || ptControls) mediaMetadata?.let { mm ->
                             Column(
                                 horizontalAlignment = if (inPip) Alignment.Start else Alignment.CenterHorizontally,
@@ -3030,9 +2954,6 @@ fun BottomSheetPlayer(
                                     .fillMaxWidth()
                                     .then(if (inPip) Modifier.background(Color.Black.copy(alpha = 0.35f)) else Modifier)
                                     .windowInsetsPadding(WindowInsets.systemBars)
-                                    // 56dp side padding (non-PiP) keeps long marquee titles clear of the
-                                    // root-pinned cast button at the top-right; symmetric so the title
-                                    // stays visually centered.
                                     .padding(horizontal = if (inPip) 10.dp else 56.dp, vertical = if (inPip) 6.dp else 10.dp),
                             ) {
                                 Text(
@@ -3060,23 +2981,16 @@ fun BottomSheetPlayer(
                                 }
                             }
                         }
-                        // Video band CENTERED in the remaining space (between the top title and the bottom
-                        // controls). The inner Box wraps the band so the toggle pins to the band's corner.
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth(),
-                            // When the controls (and title) are visible they take more room at the bottom than
-                            // the title does at the top, so the region centre sits high on screen — push the
-                            // video DOWN to look screen-centred. When everything is hidden, just centre it.
                             contentAlignment = if (ptControls && !inPip) BiasAlignment(0f, 0.28f) else Alignment.Center,
                         ) {
                             Box(
                                 modifier = Modifier.fillMaxWidth(),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                // In PiP the video is rendered by the top-level PiP overlay (MainActivity) so
-                                // the floating window is just the video — don't attach a 2nd TextureView here.
                                 if (!inPip) {
                                     PlayerVideoSurface(
                                         playerConnection = playerConnection,
@@ -3085,9 +2999,6 @@ fun BottomSheetPlayer(
                                 }
                             }
                         }
-                        // Tap-toggled controls (title, scrubbable seekbar, transport, chips, video toggle).
-                        // NO dark bar behind them — they sit over the dark ambient so the video stays fully
-                        // visible; their colors are forced white-on-dark (immersiveVideo = true).
                         androidx.compose.animation.AnimatedVisibility(
                             visible = ptControls && !inPip,
                             enter = fadeIn(),
@@ -3098,9 +3009,6 @@ fun BottomSheetPlayer(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    // Absorb taps that land in the controls band (and its empty gaps) so a
-                                    // near-miss on a button doesn't fall through to the parent and hide the
-                                    // controls — only taps on the video/ambient area toggle them.
                                     .pointerInput(Unit) { detectTapGestures { } }
                                     .windowInsetsPadding(WindowInsets.systemBars)
                                     .padding(horizontal = 8.dp, vertical = 12.dp),
@@ -3122,17 +3030,6 @@ fun BottomSheetPlayer(
                         .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
                         .padding(bottom = bottomPadding)
                         .animateContentSize()
-                        // YT-Music parity: swiping UP anywhere on the player body (artwork + controls)
-                        // drags the queue sheet open, mirroring BottomSheet.kt's own gesture math
-                        // (dispatchRawDelta while dragging + performFling on release, same ±250 velocity
-                        // threshold). Only clearly-vertical UPWARD drags are claimed: the touch-slop
-                        // callback consumes EXCLUSIVELY when overSlop < 0, so
-                        //  - downward drags stay unconsumed and the parent player BottomSheet's own
-                        //    detectVerticalDragGestures still collapses the player,
-                        //  - horizontal artwork swipes (prev/next SwipeGesture) win their own axis slop,
-                        //  - lyrics scroll / seekbar / chip-row scroll sit DEEPER in the tree, so they
-                        //    consume first and this ancestor detector is cancelled.
-                        // Event-driven only (no polling/animation while idle) — heat/battery safe.
                         .pointerInput(queueSheetState, state) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
@@ -3159,9 +3056,6 @@ fun BottomSheetPlayer(
                         contentAlignment = Alignment.TopCenter,
                         modifier = Modifier
                             .weight(1f)
-                            // Swipe the artwork left/right to change song. Placed here (deepest cover
-                            // container) and consuming horizontal drags so it wins over the bottom
-                            // sheet's vertical collapse gesture instead of minimizing the player.
                             .SwipeGesture(
                                 enabled = isFullScreen,
                                 onSwipeRight = { playerConnection.seekToPrevious() },
@@ -3194,52 +3088,6 @@ fun BottomSheetPlayer(
                         }
                     }
 
-                    // Audio/Video toggle below the album art
-                    if ((!highPerfMode || wantsHiResBackdrop) && (mediaMetadata?.isVideoSong == true || mediaMetadata?.podcastVideoUrl.isNullOrEmpty() == false)) {
-                        Row(
-                            modifier = Modifier
-                                .padding(vertical = 12.dp)
-                                .height(32.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(textButtonColor.copy(alpha = 0.15f))
-                                .padding(2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(50))
-                                    .background(if (!videoMode) textButtonColor.copy(alpha = 0.3f) else Color.Transparent)
-                                    .clickable { if (videoMode) playerConnection.toggleVideoMode() }
-                                    .padding(horizontal = 16.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Canción",
-                                    color = if (!videoMode) TextBackgroundColor else textButtonColor.copy(alpha = 0.7f),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = if (!videoMode) FontWeight.Bold else FontWeight.Medium
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(50))
-                                    .background(if (videoMode) textButtonColor.copy(alpha = 0.3f) else Color.Transparent)
-                                    .clickable { if (!videoMode) playerConnection.toggleVideoMode() }
-                                    .padding(horizontal = 16.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Video",
-                                    color = if (videoMode) TextBackgroundColor else textButtonColor.copy(alpha = 0.7f),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = if (videoMode) FontWeight.Bold else FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-
                     mediaMetadata?.let {
                         controlsContent(it, false)
                     }
@@ -3251,9 +3099,6 @@ fun BottomSheetPlayer(
             }
         }
 
-        // CAST: pinned top-right in every layout except inline lyrics (owner: hide Cast while lyrics
-        // own that corner). Also hidden in PiP, when the queue sheet is expanded, and when immersive
-        // tap-to-hide has cleared the chrome. FOSS: CastButton is a no-op stub.
         if (!LocalIsInPipMode.current &&
             !queueSheetState.isExpanded &&
             immersiveControlsVisible &&
@@ -3267,13 +3112,9 @@ fun BottomSheetPlayer(
                     .size(24.dp),
                 tintColor = TextBackgroundColor,
             )
-
-
         }
 
         AnimatedVisibility(
-            // Hide the collapsed queue bar while immersive video is up — it would otherwise overlap the
-            // video's own bottom transport controls.
             visible = !isFullScreen && !onImmersiveVideo,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = shrinkVertically(shrinkTowards = Alignment.Top) + slideOutVertically(targetOffsetY = { it }) + fadeOut()
@@ -3296,7 +3137,6 @@ fun BottomSheetPlayer(
             showInlineLyrics = showInlineLyrics,
             playerBackground = playerBackground,
             onToggleLyrics = {
-                // Lyrics aren't available while watching the video.
                 if (!videoMode) showInlineLyrics = !showInlineLyrics
             },
             )
@@ -3316,11 +3156,12 @@ private fun PlayerActionChip(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
+            .defaultMinSize(minHeight = 48.dp)
             .clip(RoundedCornerShape(50))
             .background(container)
             .tvFocusable(iad1tya.echo.music.ui.utils.rememberIsTvOrCar())
             .clickable(onClick = onClick)
-            .padding(start = 16.dp, end = 20.dp, top = 12.dp, bottom = 12.dp),
+            .padding(start = 16.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
     ) {
         leading()
         Spacer(Modifier.width(6.dp))

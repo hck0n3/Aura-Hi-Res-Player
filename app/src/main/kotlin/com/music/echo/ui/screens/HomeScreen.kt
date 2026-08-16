@@ -1507,10 +1507,10 @@ fun HomeScreen(
                                     )
                                 }
 
-                                if (perfOn) item(key = "quick_picks_list_light") {
+                                val distinctQuickPicks = quickPicks.distinctBy { it.id }
+                                if (perfOn || distinctQuickPicks.size < 3) item(key = "quick_picks_list_light") {
                                     // Perf mode: same "Para ti" recommendations, but a plain LazyRow of cover
                                     // cards — no masked hero carousel / gradient / snapping. Still tappable to play.
-                                    val distinctQuickPicks = quickPicks.distinctBy { it.id }
                                     val isTvLight = iad1tya.echo.music.ui.utils.rememberIsTvOrCar()
                                     LazyRow(
                                         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -1540,7 +1540,6 @@ fun HomeScreen(
                                         }
                                     }
                                 } else item(key = "quick_picks_list") {
-                                    val distinctQuickPicks = quickPicks.distinctBy { it.id }
                                     // Re-key on item-count: quickPicksDisplay re-emits a re-filtered list 2-3x after
                                     // first paint; without this the pageCount changes under a persisted rememberCarouselState
                                     // and the experimental HorizontalCenteredHeroCarousel lays out BLANK until scrolled

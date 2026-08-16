@@ -2427,7 +2427,7 @@ class MainActivity : ComponentActivity() {
                 browseId.startsWith("UC") || browseId.startsWith("MPLA") -> navController.navigate("artist/$browseId")
                 browseId.startsWith("VL") ->
                     browseId.removePrefix("VL").takeIf { it.isNotBlank() }
-                        ?.let { navController.navigate("online_playlist/$it") }
+                        ?.let { navController.navigate("online_playlist/$it?autoSave=true") }
                 else -> navController.navigate("browse/$browseId")
             }
         }
@@ -2470,7 +2470,7 @@ class MainActivity : ComponentActivity() {
                         }.onFailure { reportException(it) }
                     }
                 } else {
-                    navController.navigate("online_playlist/$playlistId")
+                    navController.navigate("online_playlist/$playlistId?autoSave=true")
                 }
             }
 

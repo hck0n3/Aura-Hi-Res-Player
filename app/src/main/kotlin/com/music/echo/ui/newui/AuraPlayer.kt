@@ -78,6 +78,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -920,12 +921,16 @@ private fun AuraPlayerShape(
                         tint = if (isFullScreen) AuraPalette.Teal else AuraPalette.OnGround.copy(alpha = 0.6f),
                         modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
                     )
-                    // Lyrics menu stays in the header; the player menu's door is the bottom-bar Más.
-                    AuraIconButton(
-                        icon = AuraIcons.More,
-                        contentDescription = "Menú de la letra",
-                        onClick = {
-                            val meta = mediaMetadata ?: return@AuraIconButton
+                }
+                
+                // The player menu's door (Más opciones) is now always in the header.
+                // If lyrics are open, it shows the lyrics menu instead.
+                AuraIconButton(
+                    icon = AuraIcons.More,
+                    contentDescription = if (showInlineLyrics) "Menú de la letra" else "Más opciones",
+                    onClick = {
+                        val meta = mediaMetadata ?: return@AuraIconButton
+                        if (showInlineLyrics) {
                             menuState.show {
                                 iad1tya.echo.music.ui.menu.LyricsMenu(
                                     lyricsProvider = { currentLyrics },
@@ -939,12 +944,24 @@ private fun AuraPlayerShape(
                                     },
                                 )
                             }
-                        },
-                        size = 22.dp,
-                        tint = AuraPalette.OnGround.copy(alpha = 0.6f),
-                        modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
-                    )
-                }
+                        } else {
+                            menuState.show {
+                                PlayerMenuHost(
+                                    mediaMetadata = meta,
+                                    navController = navController,
+                                    playerBottomSheetState = state,
+                                    onShowDetailsDialog = {
+                                        meta.id.let { id -> bottomSheetPageState.show { ShowMediaInfo(id) } }
+                                    },
+                                    onDismiss = menuState::dismiss,
+                                )
+                            }
+                        }
+                    },
+                    size = 22.dp,
+                    tint = AuraPalette.OnGround.copy(alpha = 0.6f),
+                    modifier = Modifier.tvFocusable(isTvOrCar, CircleShape),
+                )
             }
         }
 
@@ -1237,9 +1254,41 @@ private fun AuraPlayerShape(
                     // techInfo.chips is already empty when "mostrar códec" is off (see the read site
                     // above). The crossfade chip is NOT codec data — the classic player shows it
                     // independently of that switch — so it keeps its own condition.
-                    if (techInfo.chips.isNotEmpty() || isCrossfading) {
+                    val hasVideo = meta.isVideoSong || !meta.podcastVideoUrl.isNullOrEmpty()
+                    if (techInfo.chips.isNotEmpty() || isCrossfading || hasVideo) {
                         Spacer(Modifier.height(if (dense) 6.dp else 10.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (hasVideo) {
+                                // "MusicVideoToggleChip" replacement
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (videoMode) AuraPalette.Teal else AuraPalette.OnGround.copy(alpha = 0.12f))
+                                        .clickable { playerConnection.toggleVideoMode() }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        AuraIconGlyph(
+                                            icon = if (videoMode) AuraIcons.Music else AuraIcons.Video,
+                                            contentDescription = null,
+                                            size = 14.dp,
+                                            tint = if (videoMode) Color.White else AuraPalette.OnGroundFaint
+                                        )
+                                        Text(
+                                            text = stringResource(if (videoMode) R.string.music else R.string.video).uppercase(),
+                                            style = AuraType.Timecode.copy(fontWeight = FontWeight.SemiBold),
+                                            color = if (videoMode) Color.White else AuraPalette.OnGroundFaint
+                                        )
+                                    }
+                                }
+                            }
                             techInfo.chips.forEach { chip ->
                                 AuraTechnicalText(
                                     text = chip.text,

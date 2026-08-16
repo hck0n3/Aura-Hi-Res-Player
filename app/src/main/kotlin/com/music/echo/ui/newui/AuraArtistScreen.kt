@@ -662,6 +662,8 @@ fun AuraArtistScreen(
                         -1
                     }
 
+                    var libraryPreviewAdded = false
+
                     if (onlineArtistSections.isEmpty() && showLibrarySection) {
                         auraArtistLibraryPreviewItems(
                             songs = filteredLibrarySongsYt,
@@ -678,6 +680,7 @@ fun AuraArtistScreen(
                             menuState = menuState,
                             haptic = haptic,
                         )
+                        libraryPreviewAdded = true
                     }
 
                     if (artistPage == null && !showLocal) {
@@ -689,7 +692,7 @@ fun AuraArtistScreen(
                     }
 
                     onlineArtistSections.forEachIndexed { sectionIndex, section ->
-                        if (sectionIndex == libraryInsertIndex) {
+                        if (sectionIndex == libraryInsertIndex && !libraryPreviewAdded) {
                             auraArtistLibraryPreviewItems(
                                 songs = filteredLibrarySongsYt,
                                 allSongs = filteredLibrarySongsYt,
@@ -705,6 +708,7 @@ fun AuraArtistScreen(
                                 menuState = menuState,
                                 haptic = haptic,
                             )
+                            libraryPreviewAdded = true
                         }
                         val sectionItems = section.items.distinctBy { it.id }
                         if (sectionItems.isEmpty()) return@forEachIndexed
@@ -914,7 +918,7 @@ fun AuraArtistScreen(
                             }
                         }
                     }
-                    if (onlineArtistSections.isNotEmpty() && libraryInsertIndex >= onlineArtistSections.size) {
+                    if (onlineArtistSections.isNotEmpty() && libraryInsertIndex >= onlineArtistSections.size && !libraryPreviewAdded) {
                         auraArtistLibraryPreviewItems(
                             songs = filteredLibrarySongsYt,
                             allSongs = filteredLibrarySongsYt,
@@ -930,6 +934,7 @@ fun AuraArtistScreen(
                             menuState = menuState,
                             haptic = haptic,
                         )
+                        libraryPreviewAdded = true
                     }
                 }
             }

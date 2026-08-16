@@ -268,7 +268,7 @@ fun LibraryScreen(navController: NavController) {
             onDone = { finalUrl ->
                 val listId = Regex("[?&]list=([a-zA-Z0-9_-]+)").find(finalUrl)?.groupValues?.get(1)
                 if (listId != null) {
-                    navController.navigate("online_playlist/$listId")
+                    navController.navigate("online_playlist/$listId?autoSave=true")
                 } else {
                     android.widget.Toast.makeText(
                         context,

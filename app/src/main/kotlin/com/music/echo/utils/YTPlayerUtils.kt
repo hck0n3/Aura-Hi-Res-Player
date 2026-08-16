@@ -1281,8 +1281,8 @@ object YTPlayerUtils {
                 } else {
                     Timber.tag(logTag).d("Stream validation failed for client: ${currentClient.clientName}")
 
-                    
-                    if (currentClient.useWebPoTokens) {
+                    val needsNTransformFallback = currentClient.useWebPoTokens || streamUrl?.let { Regex("[?&]n=").containsMatchIn(it) } == true
+                    if (needsNTransformFallback) {
                         var nTransformWorked = false
 
                         
