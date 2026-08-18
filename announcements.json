@@ -1,6 +1,14 @@
 {
-  "updatedAt": "2026-08-16T20:41:36Z",
+  "updatedAt": "2026-08-18T14:00:27Z",
   "items": [
+    {
+      "id": "aviso-20260818-140027",
+      "date": "2026-08-18",
+      "publishedAt": "2026-08-18T14:00:27Z",
+      "title": "Aviso de Mantenimiento 🛠️",
+      "body": "Aviso de Mantenimiento 🛠️\n\nEn este momento estamos realizando tareas de mantenimiento en nuestros servidores. La reproducción de música en línea se encuentra temporalmente inactiva.\n\nLo que sí puedes hacer:\n\nEscuchar toda tu música descargada.\n\nReproducir las canciones que ya tienes en caché.\n\nYa estamos trabajando para restablecer el servicio online lo antes posible. ¡Agradecemos tu paciencia!",
+      "priority": "urgent"
+    },
     {
       "id": "aviso-20260816-204136",
       "date": "2026-08-16",
