@@ -32,6 +32,8 @@ object CipherDeobfuscator {
     private var cipherWebView: CipherWebView? = null
     private var currentPlayerHash: String? = null
 
+    // Circuit breaker removed by user request
+
     // The RemotePlayerConfig.configEpoch the current [cipherWebView] was built against. When the
     // epoch moves (a self-healing config was fetched and applied), the WebView is rebuilt on the
     // next use so the published fix takes effect WITHOUT an app restart.
@@ -91,7 +93,9 @@ object CipherDeobfuscator {
     suspend fun deobfuscateStreamUrl(signatureCipher: String, videoId: String): String? = deobfuscateMutex.withLock {
         try {
             deobfuscateInternal(signatureCipher, videoId, isRetry = false)
-                ?.also { rendererRecoveryPolicy.onSuccess() }
+                ?.also {
+                    rendererRecoveryPolicy.onSuccess()
+                }
         } catch (e: CancellationException) {
             throw e
         } catch (e: CipherTimeoutException) {
@@ -105,8 +109,11 @@ object CipherDeobfuscator {
             try {
                 PlayerJsFetcher.invalidateCache()
                 closeWebView()
-                deobfuscateInternal(signatureCipher, videoId, isRetry = true)
-                    ?.also { rendererRecoveryPolicy.onSuccess() }
+                val retryResult = deobfuscateInternal(signatureCipher, videoId, isRetry = true)
+                if (retryResult != null) {
+                    rendererRecoveryPolicy.onSuccess()
+                }
+                retryResult
             } catch (retryE: CancellationException) {
                 throw retryE
             } catch (retryE: CipherTimeoutException) {
@@ -329,8 +336,12 @@ object CipherDeobfuscator {
 
         val sigInfo = analysis.sigInfo
         if (sigInfo == null) {
-            Timber.tag(TAG).e("Could not extract signature function info from player JS")
-            return null
+            // No longer a hard failure: CipherWebView's discoverAndInit() runs a runtime
+            // brute-force scan (executing candidate functions in the real JS engine and
+            // validating their output shape) that can find and validate the signature function
+            // even when static regex extraction finds nothing — the same resilience technique
+            // already used here for the n-function. We still create the WebView and let it try.
+            Timber.tag(TAG).w("No static sig function info for player JS (will try brute-force in WebView)")
         }
 
         val nFuncInfo = analysis.nFuncInfo
@@ -339,7 +350,7 @@ object CipherDeobfuscator {
         }
 
         Timber.tag(TAG).d("Creating CipherWebView...")
-        Timber.tag(TAG).d("  sig: ${sigInfo.name} (constantArg=${sigInfo.constantArg}, hardcoded=${sigInfo.isHardcoded})")
+        Timber.tag(TAG).d("  sig: ${sigInfo?.name} (constantArg=${sigInfo?.constantArg}, hardcoded=${sigInfo?.isHardcoded})")
         Timber.tag(TAG).d("  nFunc: ${nFuncInfo?.name}[${nFuncInfo?.arrayIndex}] (hardcoded=${nFuncInfo?.isHardcoded})")
 
         // Create WebView
@@ -358,6 +369,13 @@ object CipherDeobfuscator {
         cipherWebView = webView
         currentPlayerHash = hash
         builtConfigEpoch = builtEpoch
+
+        if (!webView.sigFunctionAvailable && !webView.nFunctionAvailable) {
+            // Neither static extraction nor runtime brute-force found anything usable — this
+            // WebView is dead weight, treat it as a real cipher failure so the circuit breaker
+            // can engage and callers fall through to non-cipher clients quickly.
+            Timber.tag(TAG).e("CipherWebView usable for neither sig nor n-transform")
+        }
         return webView
     }
 
