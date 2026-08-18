@@ -28,8 +28,17 @@ def update_config():
     config_path = os.path.join(os.path.dirname(__file__), '..', 'player_configs.json')
     with open(config_path, 'r', encoding='utf-8') as f:
         configs = json.load(f)
-        
-    if player_hash in configs:
+
+    # player_configs.json is a BARE JSON ARRAY of {"hash": ..., ...} objects — this is the schema
+    # RemotePlayerConfig.parseConfigs() on the Kotlin side actually reads (a bare array, or an object
+    # with a "configs" array; either way each entry needs its own "hash" field). It is NOT a
+    # hash-keyed object. Treating it as one previously crashed here with a TypeError on every run
+    # that found a genuinely new hash — the only case this script exists for — so the workflow never
+    # once completed the "Commit and Push" step; every entry currently in the file was added by hand.
+    if not isinstance(configs, list):
+        raise Exception("player_configs.json is not a JSON array — refusing to guess a shape")
+
+    if any(entry.get("hash") == player_hash for entry in configs):
         print("Hash already exists in player_configs.json. No update needed.")
         return
 
@@ -78,25 +87,34 @@ def update_config():
             
     print(f"sig_expr: {sig_expr}")
     
+    # Only the fields the app actually reads for the "expression" form (see RemotePlayerConfig.kt's
+    # schema doc) — the legacy name/arg fields are omitted rather than written as null, matching every
+    # existing entry in the file, so this new line looks like the rest instead of standing out as a
+    # different shape.
     new_config = {
+        "hash": player_hash,
+        "signatureTimestamp": sts,
         "sigFuncName": "_expr_sig",
-        "sigConstantArg": None,
-        "sigConstantArgs": None,
-        "sigPreprocessFunc": None,
-        "sigPreprocessArgs": None,
         "sigJsExpression": sig_expr,
         "nFuncName": "_expr_n",
-        "nArrayIndex": None,
-        "nConstantArgs": None,
         "nJsExpression": n_expr,
-        "signatureTimestamp": sts
     }
-    
-    configs[player_hash] = new_config
-    
+
+    configs.append(new_config)
+
+    # Match the file's existing style byte-for-byte: `[`, one compact single-line object per entry
+    # (2-space indent, comma-separated, no trailing comma on the last one), `]`. A plain
+    # json.dump(configs, f, indent=...) would reformat EVERY existing line (each currently compact
+    # object would explode into one line per key), turning a 1-entry self-heal into a 395-line diff
+    # that buries the actual change and fights any future manual edit to this file.
     with open(config_path, 'w', encoding='utf-8') as f:
-        json.dump(configs, f, indent=4)
-        
+        f.write('[\n')
+        for i, entry in enumerate(configs):
+            line = json.dumps(entry, separators=(',', ':'))
+            comma = ',' if i < len(configs) - 1 else ''
+            f.write(f'  {line}{comma}\n')
+        f.write(']\n')
+
     print(f"Successfully updated player_configs.json with hash {player_hash}")
 
 if __name__ == '__main__':

@@ -23,6 +23,7 @@ import com.music.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.music.innertube.models.response.PlayerResponse
 import iad1tya.echo.music.constants.AudioQuality
 import iad1tya.echo.music.utils.cipher.CipherDeobfuscator
+import iad1tya.echo.music.utils.webplayer.EmbeddedPlayerUrlResolver
 import iad1tya.echo.music.utils.YTPlayerUtils.MAIN_CLIENT
 import iad1tya.echo.music.utils.YTPlayerUtils.STREAM_FALLBACK_CLIENTS
 import iad1tya.echo.music.utils.YTPlayerUtils.validateStatus
@@ -73,6 +74,7 @@ object YTPlayerUtils {
         )
     }
     private const val TAG = "YTPlayerUtils"
+
     private var hasShownLosslessToast = false
     private var hasShownSaavnToast = false
 
@@ -225,9 +227,15 @@ object YTPlayerUtils {
 
     private val STREAM_FALLBACK_CLIENTS: Array<YouTubeClient> = arrayOf(
         TVHTML5,
+        // WEB_REMIX moved up (was 4th): it is the ONLY client here that both skips for a guest
+        // (loginRequired=false) AND carries a poToken (useWebPoTokens=true) — every other client in
+        // this list sends neither a cookie nor a poToken, so on a device YouTube is bot-flagging, they
+        // fail identically to MAIN_CLIENT and just burn the resolve's time/attempt budget before
+        // reaching the one client actually equipped to pass the check. TVHTML5 stays first: it's
+        // loginRequired, so for a guest it `continue`s with no network call at all — free to keep ahead.
+        WEB_REMIX,
         TVHTML5_SIMPLY_EMBEDDED_PLAYER,
         ANDROID_VR_1_61_48,
-        WEB_REMIX,
         ANDROID_CREATOR,
         IPADOS,
         ANDROID_VR_NO_AUTH,
@@ -244,6 +252,14 @@ object YTPlayerUtils {
         val streamUrl: String,
         val streamExpiresInSeconds: Int,
         val isSaavnStream: Boolean = false,
+        // Set ONLY when streamUrl came from EmbeddedPlayerUrlResolver's last-resort fallback: the
+        // exact request headers YouTube's own embedded player sent for this URL. googlevideo URLs
+        // can 403 without the right per-client User-Agent (see MusicService.videoOkHttpClient), and
+        // since we don't control which client YouTube's web player used internally, replaying its
+        // real headers is the defensive choice. Read once at the resolving call site in
+        // MusicService.createDataSourceFactory() — NOT persisted to songUrlCache/Room, so a later
+        // re-open that serves the cached URL without re-resolving loses the header replay.
+        val fallbackRequestHeaders: Map<String, String>? = null,
     )
 
     /**
@@ -796,7 +812,7 @@ object YTPlayerUtils {
             BotDetectionMitigator.rotateGuestSession()
             val retryResult = boundedResolve()
             retryResult.onSuccess { BotDetectionMitigator.notifyPlaybackSuccess() }
-            return retryResult
+            return finishWithEmbeddedFallback(videoId, retryResult)
         }
 
         // SIGNED IN and the failure is auth-shaped: retry this ONE song anonymously.
@@ -841,7 +857,71 @@ object YTPlayerUtils {
         }
 
         firstAttempt.onSuccess { BotDetectionMitigator.notifyPlaybackSuccess() }
-        return firstAttempt
+        return finishWithEmbeddedFallback(videoId, firstAttempt)
+    }
+
+    /**
+     * Called exactly ONCE per [playerResponseForPlaybackImpl] call, only at its true last-resort
+     * exit point (never inside [resolvePlaybackData]/[boundedResolve], which can run up to 3 times
+     * per song — hooking there would fire the fallback up to 3x, stacking ~10s each). A success
+     * here is behaviorally identical to a normal cascade success from the caller's point of view;
+     * a null (fallback also failed/timed out/backed off) preserves today's exact failure, just
+     * ~10s later.
+     */
+    private suspend fun finishWithEmbeddedFallback(videoId: String, result: Result<PlaybackData>): Result<PlaybackData> {
+        if (result.isSuccess) return result
+        val resolved = EmbeddedPlayerUrlResolver.tryResolve(videoId) ?: return result
+        PlaybackLogManager.log(
+            PlaybackLogLevel.INFO,
+            "Embedded-player fallback succeeded",
+            "Resolved a stream via YouTube's own embedded player after the normal cascade failed",
+        )
+        BotDetectionMitigator.notifyPlaybackSuccess()
+        return Result.success(playbackDataFromEmbeddedFallback(resolved))
+    }
+
+    private fun playbackDataFromEmbeddedFallback(resolved: EmbeddedPlayerUrlResolver.ResolvedStream): PlaybackData {
+        val itag = runCatching {
+            android.net.Uri.parse(resolved.streamUrl).getQueryParameter("itag")?.toIntOrNull()
+        }.getOrNull() ?: 251
+        val mimeType = when (itag) {
+            140, 141 -> "audio/mp4; codecs=\"mp4a.40.2\""
+            else -> "audio/webm; codecs=\"opus\""
+        }
+        val format = PlayerResponse.StreamingData.Format(
+            itag = itag,
+            url = resolved.streamUrl,
+            mimeType = mimeType,
+            bitrate = 0,
+            width = null,
+            height = null,
+            contentLength = null,
+            quality = "medium",
+            fps = null,
+            qualityLabel = null,
+            averageBitrate = null,
+            audioQuality = null,
+            approxDurationMs = null,
+            audioSampleRate = null,
+            audioChannels = null,
+            loudnessDb = null,
+            lastModified = null,
+            signatureCipher = null,
+            cipher = null,
+            audioTrack = null,
+        )
+        return PlaybackData(
+            audioConfig = null,
+            videoDetails = null,
+            playbackTracking = null,
+            format = format,
+            streamUrl = resolved.streamUrl,
+            // googlevideo URLs are typically valid for hours; conservative estimate since the
+            // embedded player doesn't expose the real expiry the way a /player response does.
+            streamExpiresInSeconds = 6 * 60 * 60,
+            isSaavnStream = false,
+            fallbackRequestHeaders = resolved.requestHeaders,
+        )
     }
 
     private suspend fun resolvePlaybackData(
@@ -1134,6 +1214,18 @@ object YTPlayerUtils {
                 Timber.tag(logTag).d("Fetching player response for fallback client: ${client.clientName}")
 
                 val clientPoToken = if (client.useWebPoTokens) poToken?.playerRequestPoToken else null
+                if (client.useWebPoTokens && clientPoToken == null) {
+                    // This client type REQUIRES a poToken to avoid the bot check — sending it without
+                    // one is a predictable LOGIN_REQUIRED, indistinguishable in the shared log from "we
+                    // sent a token and YouTube rejected it anyway" (a much more serious, server-side
+                    // signal). Without this line both looked like the same bare "Client failed".
+                    Timber.tag(logTag).w("Sending ${client.clientName} WITHOUT a poToken (generation unavailable/failed)")
+                    PlaybackLogManager.log(
+                        PlaybackLogLevel.WARNING,
+                        "No poToken",
+                        "${client.clientName} request sent with no poToken"
+                    )
+                }
 
                 // Await the async sts only for clients that send it (null otherwise — identical request,
                 // since InnerTube already discarded it for !useSignatureTimestamp clients).
@@ -1179,7 +1271,17 @@ object YTPlayerUtils {
                     )
 
                 if (format == null) {
-                    Timber.tag(logTag).d("No suitable format found for client: $resolvedClientName")
+                    // playabilityStatus OK does not guarantee a usable format: guest/restricted
+                    // sessions can return OK with an adaptiveFormats list that has nothing audio
+                    // playable in it. Without this, that case looked identical in the shared log to
+                    // "this client was never tried" — undistinguishable from a real bot-block.
+                    val fmtCount = responseToUse.streamingData?.adaptiveFormats?.size ?: 0
+                    Timber.tag(logTag).w("No suitable format found for client: $resolvedClientName despite OK status (adaptiveFormats=$fmtCount)")
+                    PlaybackLogManager.log(
+                        PlaybackLogLevel.WARNING,
+                        "No usable format",
+                        "$resolvedClientName OK but adaptiveFormats=$fmtCount had none usable"
+                    )
                     continue
                 }
 
@@ -1189,7 +1291,21 @@ object YTPlayerUtils {
                 streamUrl = findUrlOrNull(format, videoId, responseToUse, skipNewPipe = wasOriginallyAgeRestricted)
                 timing?.let { it.urlMs += SystemClock.elapsedRealtime() - urlStartMs }
                 if (streamUrl == null) {
-                    Timber.tag(logTag).d("Stream URL not found for format")
+                    // Distinguishes, without logging the URL/cipher itself: "format had nothing to
+                    // work with" (hasUrl=false hasCipher=false — an OK response that omitted stream
+                    // data) from "we had a cipher and deobfuscation genuinely failed" (hasCipher=true).
+                    // These look identical as a bare "Stream URL not found" and were the open question
+                    // this whole resolve chain could not previously answer from the shared log alone.
+                    val hasUrl = !format.url.isNullOrEmpty()
+                    val hasCipher = !format.signatureCipher.isNullOrEmpty() || !format.cipher.isNullOrEmpty()
+                    Timber.tag(logTag).w(
+                        "Stream URL not found: client=$resolvedClientName itag=${format.itag} hasUrl=$hasUrl hasCipher=$hasCipher"
+                    )
+                    PlaybackLogManager.log(
+                        PlaybackLogLevel.WARNING,
+                        "No stream URL",
+                        "$resolvedClientName itag=${format.itag} hasUrl=$hasUrl hasCipher=$hasCipher"
+                    )
                     continue
                 }
 
