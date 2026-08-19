@@ -67,9 +67,19 @@ def update_config():
     sts = int(sts_match.group(1)) if sts_match else 0
     print(f"signatureTimestamp: {sts}")
     
-    # Extract n function wrapper (VM-dispatch URL param trick)
-    # Looking for: .get("n"))&&(b=new g.cY
-    n_match = re.search(r'\.get\("n"\)\)\s*&&\s*\([a-zA-Z0-9$]+\s*=\s*new\s+g\.([a-zA-Z0-9$]+)', player_js)
+    # Extract n function wrapper (URL-param-object trick): the app never calls YouTube's real
+    # n-transform function directly (its name/args change every build) — it instead constructs the
+    # SAME url-param-parsing class YouTube's own n-function uses internally, feeds it a fake URL with
+    # our n value, and reads "n" back out already-transformed. Only the CLASS NAME needs finding here.
+    #
+    # 2026-08-19: verified live that YouTube stopped inlining this as `&&(b=new g.cY` (a boolean-AND
+    # idiom) and now calls it from a standalone n-function's own body instead, e.g.
+    # `I=function(t){try{let f=(new g.EG(t,!0)).get("n");...`. Try the CURRENT standalone-function shape
+    # first (bare `new g.CLASS(ARG,!0)).get("n")`, no `&&(` prefix required), then fall back to the
+    # older boolean-AND shape in case YouTube reverts — whichever the live player.js actually contains.
+    n_match = re.search(r'new\s+g\.([a-zA-Z0-9$]+)\([^,)]+,\s*!0\)\)\.get\(\s*["\']n["\']\s*\)', player_js)
+    if not n_match:
+        n_match = re.search(r'\.get\("n"\)\)\s*&&\s*\([a-zA-Z0-9$]+\s*=\s*new\s+g\.([a-zA-Z0-9$]+)', player_js)
     if not n_match:
         raise Exception("Could not find n-function URL wrapper class")
     n_class = n_match.group(1)

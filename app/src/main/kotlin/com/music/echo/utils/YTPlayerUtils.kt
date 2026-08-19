@@ -1466,7 +1466,7 @@ object YTPlayerUtils {
                 }
 
                 val headStartMs = SystemClock.elapsedRealtime()
-                val headOk = validateStatus(streamUrl!!)
+                val headOk = validateStatus(streamUrl!!, currentClient)
                 timing?.let {
                     it.headMs += SystemClock.elapsedRealtime() - headStartMs
                     it.headCount++
@@ -1498,7 +1498,7 @@ object YTPlayerUtils {
                             if (nTransformed != streamUrl) {
                                 Timber.tag(logTag).d("CipherDeobfuscator n-transform applied, re-validating...")
                                 val retryHeadStartMs = SystemClock.elapsedRealtime()
-                                val retryHeadOk = validateStatus(nTransformed)
+                                val retryHeadOk = validateStatus(nTransformed, currentClient)
                                 timing?.let {
                                     it.headMs += SystemClock.elapsedRealtime() - retryHeadStartMs
                                     it.headCount++
@@ -1770,13 +1770,31 @@ object YTPlayerUtils {
             ?: emptyList()
     }
 
-    private fun validateStatus(url: String): Boolean {
+    private fun validateStatus(url: String, client: YouTubeClient? = null): Boolean {
         Timber.tag(logTag).d("Validating stream URL status")
         try {
+            // 2026-08-19, ninth postmortem: this HEAD check always sent the WEB user-agent and NEVER
+            // sent Origin/Referer, regardless of which client's URL was being validated — the exact
+            // gap already fixed for the real ExoPlayer fetch (createCacheDataSource) in 0.6.219/220, but
+            // never mirrored here. A non-WEB client's URL (IOS, TVHTML5, ANDROID) validated with the
+            // wrong User-Agent, or a WEB-family client's URL (WEB_REMIX) validated without Origin/Referer,
+            // 403s on this HEAD exactly like it would on the real fetch — and that failure was DEBUG-level
+            // and silent, so the client was quietly abandoned and the resolver fell through to WEB_CREATOR,
+            // the one client this whole HEAD gate never runs for (see the isLastClient skip above). If a
+            // client's real CDN access is fine and only this validation-only fetch was misconfigured, this
+            // fixes it. Fall back to WEB's User-Agent only when no client is known (privately-owned/last-
+            // client callers that already skip validation never reach here with client == null).
+            val agent = client?.userAgent ?: YouTubeClient.USER_AGENT_WEB
+            val isWeb = client == null || client.userAgent == YouTubeClient.USER_AGENT_WEB
             val requestBuilder = okhttp3.Request.Builder()
                 .head()
                 .url(url)
-                .header("User-Agent", YouTubeClient.USER_AGENT_WEB)
+                .header("User-Agent", agent)
+            if (isWeb) {
+                requestBuilder
+                    .header("Origin", YouTubeClient.ORIGIN_YOUTUBE_MUSIC)
+                    .header("Referer", YouTubeClient.REFERER_YOUTUBE_MUSIC)
+            }
 
             // Do NOT attach YouTube.cookie here. The main resolver client (ANDROID_VR) is loginSupported=false
             // and the real ExoPlayer byte fetch (OkHttpDataSource) sends NO cookie, so this validation HEAD
@@ -1791,6 +1809,13 @@ object YTPlayerUtils {
             validateHttpClient.newCall(requestBuilder.build()).execute().use { response ->
                 val isSuccessful = response.isSuccessful
                 Timber.tag(logTag).d("Stream URL validation result: ${if (isSuccessful) "Success" else "Failed"} (${response.code})")
+                if (!isSuccessful) {
+                    PlaybackLogManager.log(
+                        PlaybackLogLevel.WARNING,
+                        "HEAD validation failed",
+                        "client=${client?.clientName ?: "?"} code=${response.code} agent=${if (isWeb) "web" else "client"}"
+                    )
+                }
                 return isSuccessful
             }
         } catch (e: Exception) {
