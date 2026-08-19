@@ -1157,6 +1157,13 @@ object YTPlayerUtils {
         // Carries the most recent real playability reason seen while iterating clients, so an
         // all-clients-exhausted dead-end can surface WHY (region-locked, members-only, …) to the user.
         var lastPlayabilityReason: String? = null
+        // True only at the three points below that actually trust streamUrl (privately-owned track,
+        // HEAD-validated, or n-transform retry that re-validated). Without this, a last-client attempt
+        // whose hand-applied n-transform later fails validation still leaves streamUrl/format/
+        // streamPlayerResponse non-null from that failed try, so the null-checks after the loop pass
+        // and a broken URL gets returned as if it were a success — silently skipping the embedded-player
+        // last-resort fallback in finishWithEmbeddedFallback, which only runs on a genuine failure Result.
+        var validatedUrl = false
         var retryMainPlayerResponse: PlayerResponse? = if (usedAgeRestrictedClient != null) mainPlayerResponse else null
 
 
@@ -1337,6 +1344,14 @@ object YTPlayerUtils {
 
                 
                 val needsNTransform = currentClient.useWebPoTokens || streamUrl?.let { Regex("[?&]n=").containsMatchIn(it) } == true
+                // Whether THIS attempt actually rewrote the n= value using a hardcoded/AST-derived
+                // formula (as opposed to trusting the URL YouTube's own response handed us). This
+                // matters below: a static formula can be wrong for a given player hash in ways no
+                // amount of "it compiles / doesn't throw" checking catches (see 2026-08-19 postmortem —
+                // g.lY looked correct in isolated testing but a real device proved the untouched URL was
+                // the one that actually played). Any URL we've hand-modified must be validated before
+                // being trusted; a URL we left as YouTube gave it to us is not our formula's fault if wrong.
+                var nTransformApplied = false
                 if (needsNTransform) {
                     var ejsTransformed = false
                     try {
@@ -1347,6 +1362,7 @@ object YTPlayerUtils {
                         if (transformed != streamUrl) {
                             streamUrl = transformed
                             ejsTransformed = true
+                            nTransformApplied = true
                             Timber.tag(logTag).d("N-transform applied successfully")
                         }
                     } catch (e: Exception) {
@@ -1356,12 +1372,10 @@ object YTPlayerUtils {
                     // the AST-based EJS solver silently returns the ORIGINAL url when it can't find an
                     // n-function for the current player.js (logged as "found 0 n function possibilities" /
                     // "EJS n-solver not available") — an untransformed n= param gets a hard 403 from the CDN.
-                    // For the LAST fallback client this is fatal: the code below skips HEAD-validation for
-                    // it entirely (clientIndex == STREAM_FALLBACK_CLIENTS.size - 1), so a broken URL from
-                    // there was never caught or retried. CipherDeobfuscator has its OWN, independently
-                    // maintained hardcoded config per player hash (see FunctionNameExtractor's
-                    // KNOWN_PLAYER_CONFIGS) — give it an immediate second attempt right here, BEFORE the
-                    // skip-validation branch can trust a still-broken url.
+                    // CipherDeobfuscator has its OWN, independently maintained hardcoded config per player
+                    // hash (see FunctionNameExtractor's KNOWN_PLAYER_CONFIGS) — give it an immediate second
+                    // attempt right here. Whether this is actually safe to trust blind (last client, no
+                    // HEAD check) is decided below via nTransformApplied, not assumed here.
                     if (!ejsTransformed) {
                         try {
                             val ntrFallbackStartMs = SystemClock.elapsedRealtime()
@@ -1369,6 +1383,7 @@ object YTPlayerUtils {
                             timing?.let { it.ntrMs += SystemClock.elapsedRealtime() - ntrFallbackStartMs }
                             if (transformed != streamUrl) {
                                 streamUrl = transformed
+                                nTransformApplied = true
                                 Timber.tag(logTag).d("CipherDeobfuscator n-transform applied (EJS solver had no fix for this player hash)")
                             }
                         } catch (e: Exception) {
@@ -1400,8 +1415,8 @@ object YTPlayerUtils {
                 
                 val isPrivatelyOwned = streamPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
 
-                if (clientIndex == STREAM_FALLBACK_CLIENTS.size - 1 || isPrivatelyOwned) {
-                    
+                if ((clientIndex == STREAM_FALLBACK_CLIENTS.size - 1 && !nTransformApplied) || isPrivatelyOwned) {
+
                     if (isPrivatelyOwned) {
                         Timber.tag(logTag).d("Skipping validation for privately owned track: ${currentClient.clientName}")
                         println("[PLAYBACK_DEBUG] Using stream without validation for PRIVATELY_OWNED_TRACK")
@@ -1415,6 +1430,7 @@ object YTPlayerUtils {
                     // that none did) instead of leaving the owner to guess the cascade.
                     Timber.tag(TAG).i("Playback: client=${currentClient.clientName}, videoId=$videoId, private=$isPrivatelyOwned")
                     timing?.winner = currentClient.clientName
+                    validatedUrl = true
                     break
                 }
 
@@ -1434,6 +1450,7 @@ object YTPlayerUtils {
 
                     Timber.tag(TAG).i("Playback: client=${currentClient.clientName}, videoId=$videoId")
                     timing?.winner = currentClient.clientName
+                    validatedUrl = true
                     break
                 } else {
                     Timber.tag(logTag).d("Stream validation failed for client: ${currentClient.clientName}")
@@ -1468,6 +1485,7 @@ object YTPlayerUtils {
 
                         if (nTransformWorked) {
                             timing?.winner = currentClient.clientName
+                            validatedUrl = true
                             break
                         }
                     }
@@ -1485,6 +1503,16 @@ object YTPlayerUtils {
                 
                 Timber.tag(logTag).d("Player response status not OK: ${streamPlayerResponse?.playabilityStatus?.status}, reason: ${streamPlayerResponse?.playabilityStatus?.reason}")
             }
+        }
+
+        // A hand-applied n-transform on the last client that never passed HEAD validation must not be
+        // handed to ExoPlayer as if it were trustworthy — that is exactly what produced silent 403s
+        // (IO_BAD_HTTP_STATUS 2004) discovered only during real playback, days after publish. Clearing
+        // streamUrl here routes into the existing "no stream url" dead-end below, which the caller
+        // (finishWithEmbeddedFallback) treats as a genuine failure and retries via
+        // EmbeddedPlayerUrlResolver instead of returning a URL nobody ever confirmed works.
+        if (!validatedUrl) {
+            streamUrl = null
         }
 
         if (streamPlayerResponse == null) {
