@@ -1,12 +1,12 @@
-# Aura Hi-Res Player 0.6.216
+# Aura Hi-Res Player 0.6.217
 
-Arreglo real del error 403 — esta vez ataca la causa raíz, no el síntoma.
+Se revierte al comportamiento real de 0.6.213 — la única versión confirmada funcionando en pruebas reales repetidas.
 
 ---
 
 ## Novedades y Correcciones
 
-- **Reproducción de canciones nuevas, arreglo definitivo**: se descubrió que el último cliente de respaldo confía en su enlace SIN revisarlo (por velocidad). Las dos versiones anteriores (0.6.214 y 0.6.215) modificaban ese enlace con una fórmula, pero como nunca se revisaba, un error en esa fórmula llegaba directo al teléfono sin que nadie lo detectara — causando el error del servidor (`IO_BAD_HTTP_STATUS`, código 2004) que varios usuarios reportaron. Ahora, si la app modifica ese enlace, lo revisa antes de confiar en él; si la revisión falla, usa un método de respaldo adicional en vez de entregar un enlace roto.
+- **Reproducción de canciones nuevas, vuelta a lo comprobado**: las versiones 0.6.214, 0.6.215 y 0.6.216 modificaban el enlace de audio del último método de conexión con una fórmula propia, y cada una de esas fórmulas resultó estar mal en pruebas reales — rompiendo lo que la 0.6.213 hacía bien. Esta versión deja ese enlace exactamente como YouTube lo entrega, sin tocarlo, igual que la 0.6.213.
 
 ## Cómo actualizar
 

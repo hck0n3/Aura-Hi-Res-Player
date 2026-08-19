@@ -1343,7 +1343,18 @@ object YTPlayerUtils {
                 val isPrivatelyOwnedTrack = streamPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
 
                 
-                val needsNTransform = currentClient.useWebPoTokens || streamUrl?.let { Regex("[?&]n=").containsMatchIn(it) } == true
+                // 2026-08-19, second postmortem: v0.6.213 (the last version confirmed working on a
+                // real device, repeatedly, across multiple controlled A/B tests against every version
+                // since) NEVER attempted an n-transform on the LAST fallback client — it just trusted
+                // whatever URL that client's response carried. 0.6.214/215/216 all started rewriting
+                // that URL's n= with a static formula (first g.cY, then the "corrected" g.lY) and every
+                // single one of them broke playback that 0.6.213 got right. The validation-gate added
+                // in 0.6.216 (below) proved the rewritten URL never validates for this client — meaning
+                // the transform itself is wrong, not just unvalidated. Since real-device evidence beats
+                // static analysis, the last client goes back to being left untouched, exactly like the
+                // one version that is actually proven to work.
+                val isLastClient = clientIndex == STREAM_FALLBACK_CLIENTS.size - 1
+                val needsNTransform = !isLastClient && (currentClient.useWebPoTokens || streamUrl?.let { Regex("[?&]n=").containsMatchIn(it) } == true)
                 // Whether THIS attempt actually rewrote the n= value using a hardcoded/AST-derived
                 // formula (as opposed to trusting the URL YouTube's own response handed us). This
                 // matters below: a static formula can be wrong for a given player hash in ways no
