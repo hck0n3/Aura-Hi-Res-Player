@@ -230,8 +230,8 @@ android {
         // Public version reset to a fresh stable 0.0.1 for the Aura Hi-Res Player relaunch.
         // versionCode stays monotonic (never below the last shipped 673) so the in-app updater and
         // sideload-install-over-existing keep working; only the user-facing versionName resets.
-        versionCode = 949
-        versionName = "0.6.229"
+        versionCode = 950
+        versionName = "0.6.230"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -381,15 +381,24 @@ android {
         release {
             // 2026-08-19: R8 was disabled for one diagnostic build (0.6.228) to test whether shrinking/
             // obfuscation explained why only a debug build kept resolving streams. The owner confirmed
-            // 0.6.228 (R8 off, otherwise a normal signed release) STILL failed — ruling R8 out. The real
-            // difference turned out to be applicationId (iad1tya.echo.music appears to have been
-            // rate-limited/blocked server-side after this investigation's own high-volume testing);
-            // see the applicationId comment above. R8 stays ON for the real release.
+            // 0.6.228 (R8 off, otherwise a normal signed release) STILL failed — ruling R8 out. R8 stays
+            // ON for the real release.
             isMinifyEnabled = true
             isShrinkResources = true
             isCrunchPngs = false
             isDebuggable = false
-            signingConfig = signingConfigs.getByName("release")
+            // 2026-08-19, sixteenth postmortem: renaming applicationId to iad1tya.aura.music (a package
+            // NEVER used before, zero history) STILL failed identically — ruling out "the old package
+            // name got flagged" too. Every variable that changes between a debug build (still working,
+            // confirmed on-device, same day) and every release build tried (all failing) has now been
+            // eliminated except one: the signing certificate. Every failing build was signed with the
+            // release keystore ("JR MUSIC PRO"); the one build that keeps working is signed with the
+            // generic, shared-by-millions-of-developers Android debug keystore. TEMPORARILY signing this
+            // release build with the debug keystore isolates that one remaining variable — if THIS
+            // build resolves streams, the release certificate itself is what's flagged, not the app.
+            // REVERT to signingConfigs.getByName("release") once this is answered — never ship the real
+            // release signed with the debug key.
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

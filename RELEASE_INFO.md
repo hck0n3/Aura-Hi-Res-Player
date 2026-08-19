@@ -1,15 +1,14 @@
-# Aura Hi-Res Player 0.6.229
+# Aura Hi-Res Player 0.6.230
 
-⚠️ Cambio de identidad de la app: nuevo paquete, instalación aparte, no es una actualización de la anterior.
+⚠️ Prueba diagnóstica: firmada con una clave distinta a propósito. Vas a necesitar desinstalar la 0.6.229 antes de instalar esta.
 
 ---
 
 ## Novedades y Correcciones
 
-- **Reproducción de canciones — cambio de identidad**: con la 0.6.228 (ofuscación apagada) confirmado que R8 no era la causa, la única variable que quedaba sin probar era el identificador del paquete (`iad1tya.echo.music`) — visible para Google en cada solicitud, distinto de tu beta de prueba (`iad1tya.echo.music.debug`), que nunca dejó de funcionar. Se renombró a `iad1tya.aura.music`. Esto instala como una app APARTE junto a la que ya tienes — no la reemplaza ni la actualiza automáticamente.
-- **Menos "disfraces" por canción**: además del cambio de paquete, se recortó la lista de 11 clientes de YouTube que la app probaba en cascada por cada canción fallida a solo 6 — se quitaron los 3 que nunca funcionaron en ningún log de esta investigación (siempre fallaban igual) más 2 duplicados redundantes. Menos "disfraces" simultáneos = menos parecido a un patrón automatizado.
-- **Firebase desactivado temporalmente**: Analytics/Crashlytics no van a reportar datos con este paquete nuevo hasta que se registre en la consola de Firebase — eso no lo puedo hacer yo, necesita tu acceso.
+- **Última variable que quedaba por probar**: la 0.6.229 (paquete nuevo `iad1tya.aura.music`, nunca usado antes) también falló — eso descartó que el bloqueo fuera por el nombre del paquete. Con código, compilación, ofuscación y nombre de paquete ya descartados uno por uno, solo queda una diferencia real entre tu beta que sí funciona y todas las que no: el certificado con el que se firma. Tu beta funcional usa la clave de depuración genérica de Android (la misma que usan millones de desarrolladores); todo lo que he publicado usa tu certificado único de release. Esta versión es exactamente igual a una release normal, pero firmada con esa clave de depuración en vez de la tuya — para comprobar de una vez si el bloqueo está pegado al certificado, no al nombre de la app.
+- Si esta SÍ reproduce, ya sabemos con certeza cuál es la causa real, aunque la solución definitiva (cambiar de certificado) sea otra decisión grande que hay que tomar con calma. Si esta TAMBIÉN falla, se descarta y quedan muy pocas variables más por revisar.
 
 ## Cómo actualizar
 
-- Esta NO llega por el actualizador de la app vieja — hay que instalarla por separado, como una app nueva.
+- Esta va firmada distinto a la 0.6.229 — Android te va a pedir desinstalar esa primero antes de poder instalar esta.
