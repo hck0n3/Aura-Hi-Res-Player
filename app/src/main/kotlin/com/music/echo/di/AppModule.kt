@@ -18,9 +18,12 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import timber.log.Timber
 import javax.inject.Singleton
 
 @Module
@@ -31,7 +34,23 @@ object AppModule {
     @Singleton
     @ApplicationScope
     fun provideApplicationScope(): CoroutineScope {
-        return CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val handler = CoroutineExceptionHandler { _, exception ->
+            // Global exception handler for uncaught exceptions in the application scope
+            // Logs without crashing the app; prevents "IllegalStateException" on main thread from async callbacks
+            when (exception) {
+                is CancellationException -> {
+                    // Expected during shutdown — silent
+                }
+                is IllegalStateException -> {
+                    // Common from media3 callbacks on invalid lifecycle state — log but don't crash
+                    Timber.e(exception, "IllegalState in app scope (likely lifecycle race): ${exception.message}")
+                }
+                else -> {
+                    Timber.e(exception, "Uncaught exception in application scope: ${exception.javaClass.simpleName}")
+                }
+            }
+        }
+        return CoroutineScope(SupervisorJob() + Dispatchers.Default + handler)
     }
 
     @Singleton

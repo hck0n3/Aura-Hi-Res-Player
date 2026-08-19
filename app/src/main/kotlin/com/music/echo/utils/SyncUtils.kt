@@ -36,7 +36,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,6 +49,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.time.LocalDateTime
@@ -133,6 +138,14 @@ class SyncUtils @Inject constructor(
         private const val SQL_IN_CHUNK = 900
         // Max artist cover photos to fetch per sync run (bounded so it never hammers the network/API).
         private const val MAX_ARTIST_IMAGE_FETCH = 250
+        // Both artist-sync network loops below (channelId backfill + missing-cover fetch) used to run
+        // fully SERIAL — one artist, wait for the response, next artist — which is what made "your
+        // artists" sit blank for a long stretch on an account following many artists (reported by the
+        // owner: "cuesta que los artistas carguen su portada"). Bounded concurrency instead of either
+        // extreme: unbounded parallel requests risk looking like automated traffic to YouTube's bot
+        // detection (the exact failure mode this app spent all day fighting elsewhere), so this stays a
+        // small, fixed-size batch rather than firing everything at once.
+        private const val ARTIST_NETWORK_LOOKUP_CONCURRENCY = 5
         private val LastLikedSyncTimeKey = longPreferencesKey("last_liked_sync_time")
     }
 
@@ -1117,26 +1130,48 @@ class SyncUtils @Inject constructor(
 
                     // Decide new/changed in memory against one pre-loaded snapshot (no N+1 `artist(id)`
                     // reads), then write in batched transactions so "your artists" fills a block at a time
-                    // instead of flickering per row. The per-artist getChannelId() network call is kept
-                    // (only fires for UC-prefixed artists that lack a channelId).
+                    // instead of flickering per row.
                     val now = LocalDateTime.now()
                     val existingArtists = loadExistingArtists(remoteArtists.map { it.id })
+
+                    // Resolve missing channelIds CONCURRENTLY (bounded), not one getChannelId() network
+                    // round-trip per artist serially inside the loop below — that N+1 pattern gated the
+                    // WHOLE batched insert/update at the end of this function on every single lookup
+                    // finishing. thumbnailUrl comes from the SAME already-fetched library page below, not
+                    // from this lookup, so covers were sitting ready in memory but stuck waiting behind
+                    // it — reported by the owner as "cuesta que los artistas carguen su portada".
+                    val resolvedChannelIds: Map<String, String> = coroutineScope {
+                        val lookupSemaphore = Semaphore(ARTIST_NETWORK_LOOKUP_CONCURRENCY)
+                        remoteArtists
+                            .filter { it.channelId == null && it.id.startsWith("UC") }
+                            .map { artist ->
+                                async {
+                                    lookupSemaphore.withPermit {
+                                        val channelId = try {
+                                            YouTube.getChannelId(artist.id).takeIf { it.isNotEmpty() }
+                                        } catch (e: Exception) {
+                                            // Never swallow coroutine cancellation: doing so let the sync
+                                            // loop keep running after its job was cancelled, blasting
+                                            // through every song and flooding logs / pegging the CPU
+                                            // (made playback fail right after a restore).
+                                            if (e is CancellationException) throw e
+                                            null
+                                        }
+                                        artist.id to channelId
+                                    }
+                                }
+                            }
+                            .awaitAll()
+                            .mapNotNull { (id, channelId) -> channelId?.let { id to it } }
+                            .toMap()
+                    }
+
                     val artistsToInsert = ArrayList<ArtistEntity>()
                     val artistsToUpdate = ArrayList<ArtistEntity>()
                     remoteArtists.forEach { artist ->
                         try {
                             val dbArtist = existingArtists[artist.id]
-                            val channelId = artist.channelId ?: if (artist.id.startsWith("UC")) {
-                                try {
-                                    YouTube.getChannelId(artist.id).takeIf { it.isNotEmpty() }
-                                } catch (e: Exception) {
-                            // Never swallow coroutine cancellation: doing so let the sync loop keep
-                            // running after its job was cancelled, blasting through every song and
-                            // flooding logs / pegging the CPU (made playback fail right after a restore).
-                            if (e is CancellationException) throw e
-                                    null
-                                }
-                            } else null
+                            val channelId = artist.channelId ?: resolvedChannelIds[artist.id]
 
                             if (dbArtist == null) {
                                 artistsToInsert.add(
@@ -1252,20 +1287,36 @@ class SyncUtils @Inject constructor(
         val missing = runCatching { database.bookmarkedArtistsMissingImage(MAX_ARTIST_IMAGE_FETCH) }
             .getOrNull().orEmpty()
         if (missing.isEmpty()) return@withContext
+        // Was a plain serial `for` loop — one full artist-page fetch, THEN a 150ms sleep, THEN the
+        // next artist — so an account with many followed-but-imageless artists (common: artists that
+        // only entered the library via a synced song, per the class doc above) could sit blank for a
+        // long stretch. Same bounded-concurrency treatment as the channelId backfill above, and for
+        // the same reason: full unbounded parallelism risks looking like automated traffic to
+        // YouTube's bot detection, so this stays a small fixed-size batch rather than one at a time OR
+        // all at once.
         var filled = 0
-        for (a in missing) {
-            if (a.isLocal || a.id.isBlank()) continue
-            try {
-                val thumb = YouTube.artist(a.id).getOrNull()?.artist?.thumbnail
-                if (!thumb.isNullOrBlank() && thumb != a.thumbnailUrl) {
-                    database.update(a.copy(thumbnailUrl = thumb))
-                    filled++
+        coroutineScope {
+            val fetchSemaphore = Semaphore(ARTIST_NETWORK_LOOKUP_CONCURRENCY)
+            missing.filterNot { it.isLocal || it.id.isBlank() }
+                .map { a ->
+                    async {
+                        fetchSemaphore.withPermit {
+                            try {
+                                val thumb = YouTube.artist(a.id).getOrNull()?.artist?.thumbnail
+                                if (!thumb.isNullOrBlank() && thumb != a.thumbnailUrl) {
+                                    database.update(a.copy(thumbnailUrl = thumb))
+                                    true
+                                } else false
+                            } catch (e: Exception) {
+                                if (e is CancellationException) throw e
+                                Timber.e(e, "Failed to fetch artist image: ${a.id}")
+                                false
+                            }
+                        }
+                    }
                 }
-                delay(150) // gentle throttle to avoid rate limits
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                Timber.e(e, "Failed to fetch artist image: ${a.id}")
-            }
+                .awaitAll()
+                .let { results -> filled = results.count { it } }
         }
         Timber.d("Filled $filled missing artist images (of ${missing.size} checked)")
     }

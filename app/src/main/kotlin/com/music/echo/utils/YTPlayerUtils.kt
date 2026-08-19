@@ -1042,6 +1042,22 @@ object YTPlayerUtils {
             // region-locked / members-only / deleted-but-listed songs still get EVERY fallback client
             // instead of dead-ending on the very first client.
             val main = run {
+                // SKIP MAIN_CLIENT for a logged-in session (owner, 2026-08-18: "cada vez que cambio de
+                // canción... le cuesta empezar" — confirmed in their own playback log, EVERY song paid a
+                // ~700ms-1s dead round trip here). ANDROID_VR has loginSupported=false (YouTubeClient.kt)
+                // and — per the recovery-path comment above — "carries no cookie/poToken" even when the
+                // account is signed in, so being logged in buys it NOTHING: it behaves exactly as a guest
+                // request, and YouTube has been answering that shape with a hard LOGIN_REQUIRED bot-check
+                // 100% of the time in every log captured this session. A null `main` here is NOT a new
+                // failure mode — line ~1128 already falls through to STREAM_FALLBACK_CLIENTS from index 0
+                // for a null/failed main response, which is exactly what a real MAIN_CLIENT attempt would
+                // have produced anyway, just without the network round trip. Guests are unaffected (the
+                // client still gets its normal shot as MAIN_CLIENT); video mode is unaffected (VIDEO_CLIENT
+                // is untouched).
+                if (!preferVideo && isLoggedIn) {
+                    PlaybackLogManager.log(PlaybackLogLevel.DEBUG, "Skipping ${MAIN_CLIENT.clientName} (Main) — logged in, always LOGIN_REQUIRED")
+                    return@run null
+                }
                 // Await the async sts only when this client sends it (VIDEO_CLIENT/TVHTML5 does;
                 // MAIN_CLIENT/ANDROID_VR never) — the wait (if any) lands in sts=, the call in player=.
                 val mainClient = if (preferVideo) VIDEO_CLIENT else MAIN_CLIENT

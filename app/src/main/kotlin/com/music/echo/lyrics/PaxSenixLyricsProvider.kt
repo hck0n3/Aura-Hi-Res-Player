@@ -1,5 +1,3 @@
-
-
 package iad1tya.echo.music.lyrics
 
 import android.content.Context
@@ -32,11 +30,18 @@ object PaxSenixLyricsProvider : LyricsProvider {
         album: String?,
     ): Result<String> {
         Timber.tag(TAG).d("getLyrics: title='$title', artist='$artist', duration=$duration")
-        return try {
+        return runCatching {
             Paxsenix.getLyrics(title, artist, duration, album)
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "Exception in getLyrics")
-            Result.failure(e)
+        }.getOrElse { e ->
+            // Silent failure — no stacktrace spam
+            when (e) {
+                is CancellationException -> throw e
+                else -> {
+                    val msg = e.message?.take(120) ?: e.javaClass.simpleName
+                    Timber.tag(TAG).d("Lyrics fetch failed: $msg")
+                    throw IllegalStateException("Lyrics unavailable")
+                }
+            }
         }
     }
 
@@ -49,16 +54,19 @@ object PaxSenixLyricsProvider : LyricsProvider {
         callback: (String) -> Unit,
     ) {
         Timber.tag(TAG).d("getAllLyrics called")
-        try {
+        runCatching {
             Paxsenix.getAllLyrics(title, artist, duration, album, callback)
-        } catch (e: CancellationException) {
-            // Song skipped while listing — propagate so the job actually stops.
-            throw e
-        } catch (e: Exception) {
-            // Feed the breaker from this path too, so a 403 seen while browsing all providers
-            // mutes Paxsenix for the per-song path as well.
-            LyricsProviderCircuitBreaker.recordFailure(name, e)
-            Timber.tag(TAG).w(e, "Error fetching lyrics from Paxsenix")
+        }.onFailure { e ->
+            when (e) {
+                is CancellationException -> throw e
+                else -> {
+                    // Feed the breaker from this path too, so a 403 seen while browsing all providers
+                    // mutes Paxsenix for the per-song path as well.
+                    LyricsProviderCircuitBreaker.recordFailure(name, e)
+                    val msg = e.message?.take(120) ?: e.javaClass.simpleName
+                    Timber.tag(TAG).d("Error fetching lyrics: $msg")
+                }
+            }
         }
     }
 }

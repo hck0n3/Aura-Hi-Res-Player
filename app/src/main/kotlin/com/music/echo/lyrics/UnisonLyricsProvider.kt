@@ -5,6 +5,8 @@ import com.music.unison.Unison
 import iad1tya.echo.music.constants.UnisonLyricsEnabledKey
 import iad1tya.echo.music.utils.dataStore
 import iad1tya.echo.music.utils.get
+import timber.log.Timber
+import kotlin.coroutines.cancellation.CancellationException
 
 object UnisonLyricsProvider : LyricsProvider {
     override val name: String = "Unison"
@@ -18,13 +20,26 @@ object UnisonLyricsProvider : LyricsProvider {
         artist: String,
         duration: Int,
         album: String?,
-    ): Result<String> = Unison.getLyrics(
-        videoId = id,
-        title = title,
-        artist = artist,
-        album = album,
-        durationSeconds = duration
-    ).map { convertIfTTML(it) }
+    ): Result<String> {
+        return runCatching {
+            Unison.getLyrics(
+                videoId = id,
+                title = title,
+                artist = artist,
+                album = album,
+                durationSeconds = duration
+            ).map { convertIfTTML(it) }
+        }.getOrElse { e ->
+            when (e) {
+                is CancellationException -> throw e
+                else -> {
+                    val msg = e.message?.take(120) ?: e.javaClass.simpleName
+                    Timber.tag(name).d("Lyrics fetch failed: $msg")
+                    throw IllegalStateException("Lyrics unavailable")
+                }
+            }
+        }
+    }
 
     override suspend fun getAllLyrics(
         id: String,
@@ -34,14 +49,25 @@ object UnisonLyricsProvider : LyricsProvider {
         album: String?,
         callback: (String) -> Unit,
     ) {
-        Unison.getAllLyrics(
-            videoId = id,
-            title = title,
-            artist = artist,
-            album = album,
-            durationSeconds = duration,
-            callback = { callback(convertIfTTML(it)) }
-        )
+        runCatching {
+            Unison.getAllLyrics(
+                videoId = id,
+                title = title,
+                artist = artist,
+                album = album,
+                durationSeconds = duration,
+                callback = { callback(convertIfTTML(it)) }
+            )
+        }.onFailure { e ->
+            when (e) {
+                is CancellationException -> throw e
+                else -> {
+                    LyricsProviderCircuitBreaker.recordFailure(name, e)
+                    val msg = e.message?.take(120) ?: e.javaClass.simpleName
+                    Timber.tag(name).d("Error fetching lyrics: $msg")
+                }
+            }
+        }
     }
 
     private fun convertIfTTML(content: String): String {

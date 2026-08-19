@@ -406,7 +406,7 @@ fun AuraQueue(
 
         val mutableQueueWindows = remember { mutableStateListOf<Timeline.Window>() }
         val queueLength = remember(queueWindows) {
-            queueWindows.sumOf { it.mediaItem.metadata!!.duration }
+            queueWindows.sumOf { it.mediaItem.metadata?.duration ?: 0 }
         }
 
         val coroutineScope = rememberCoroutineScope()
@@ -923,15 +923,17 @@ fun AuraQueue(
 
                                                 val row: @Composable () -> Unit = {
                                                     AuraRow(
-                                                        title = window.mediaItem.metadata!!.title,
-                                                        subtitle = window.mediaItem.metadata!!.artists
-                                                            .joinToString { it.name },
+                                                        title = window.mediaItem.metadata?.title
+                                                            ?: window.mediaItem.mediaMetadata.title?.toString().orEmpty(),
+                                                        subtitle = window.mediaItem.metadata?.artists
+                                                            ?.joinToString { it.name }
+                                                            ?: window.mediaItem.mediaMetadata.artist?.toString().orEmpty(),
                                                         highlighted = isActive,
                                                         dimmed = entry.radio && !isActive,
                                                         leading = dragHandle,
                                                         artwork = {
                                                             AuraCover(
-                                                                url = window.mediaItem.metadata!!.thumbnailUrl,
+                                                                url = window.mediaItem.metadata?.thumbnailUrl,
                                                                 seed = window.mediaItem.mediaId,
                                                                 size = 40.dp,
                                                             )
@@ -955,10 +957,11 @@ fun AuraQueue(
                                                                         contentDescription = stringResource(R.string.more_options),
                                                                         size = 20.dp,
                                                                         tint = AuraPalette.OnGroundMuted,
-                                                                        onClick = {
+                                                                        onClick = onClick@{
+                                                                            val meta = window.mediaItem.metadata ?: return@onClick
                                                                             menuState.show {
                                                                                 QueueMenu(
-                                                                                    mediaMetadata = window.mediaItem.metadata!!,
+                                                                                    mediaMetadata = meta,
                                                                                     navController = navController,
                                                                                     playerBottomSheetState = playerBottomSheetState,
                                                                                     onShowDetailsDialog = {

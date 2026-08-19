@@ -24,6 +24,7 @@ import android.media.AudioManager
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.LoudnessEnhancer
 import android.net.ConnectivityManager
+import coil3.imageLoader
 import android.os.Binder
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -235,6 +236,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.runBlocking
@@ -348,6 +351,27 @@ class MusicService :
     // SupervisorJob: an uncaught exception in any child (retry, crossfade, widget, collectors) must NOT
     // cancel the whole service scope. Matches the app's applicationScope convention.
     private var scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    /**
+     * Coroutine launch that catches and logs a crashing exception instead of letting it escape.
+     * Available for call sites that want that safety net; existing scope.launch call sites are
+     * unaffected (the top-level SupervisorJob + AppModule's CoroutineExceptionHandler already
+     * stop an uncaught exception from taking down the service).
+     */
+    private fun CoroutineScope.safeLaunch(
+        context: kotlin.coroutines.CoroutineContext = kotlin.coroutines.EmptyCoroutineContext,
+        block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit,
+    ): kotlinx.coroutines.Job = launch(context) {
+        try {
+            block()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Expected during shutdown/scope cancellation — re-throw to properly cancel children
+            throw e
+        } catch (e: Exception) {
+            Timber.tag(TAG).e(e, "Coroutine crashed: ${e.javaClass.simpleName}")
+            reportException(e)
+        }
+    }
 
     private val binder = MusicBinder()
 
@@ -2958,7 +2982,16 @@ class MusicService :
 
             AudioManager.AUDIOFOCUS_LOSS -> {
                 hasAudioFocus = false
-                wasPlayingBeforeAudioFocusLoss = player.isPlaying
+                // `|| wasPlayingBeforeAudioFocusLoss`, NOT a plain overwrite: a burst of notification
+                // sounds fires LOSS_TRANSIENT/GAIN pairs back to back, and the GAIN handler's resume
+                // runs after a 300ms delay (below). If a SECOND loss lands inside that window, the
+                // player is still paused from the first one — `player.isPlaying` reads false — and an
+                // overwrite here would stomp the true "should resume" intent with false, permanently
+                // losing it (the pending resume coroutine checks the now-false flag and also no-ops).
+                // Reported as "several notifications land and playback never resumes." OR-ing keeps
+                // the flag sticky across a whole interruption chain; it still only clears on an actual
+                // resume (below) or drops to false correctly when truly not playing beforehand.
+                wasPlayingBeforeAudioFocusLoss = player.isPlaying || wasPlayingBeforeAudioFocusLoss
                 if (player.isPlaying) {
                     player.pause()
                 }
@@ -2968,7 +3001,8 @@ class MusicService :
 
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                 hasAudioFocus = false
-                wasPlayingBeforeAudioFocusLoss = player.isPlaying
+                // See the AUDIOFOCUS_LOSS branch above for why this is OR'd, not overwritten.
+                wasPlayingBeforeAudioFocusLoss = player.isPlaying || wasPlayingBeforeAudioFocusLoss
                 if (player.isPlaying) {
                     player.pause()
                 }
@@ -2977,7 +3011,8 @@ class MusicService :
 
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                 hasAudioFocus = false
-                wasPlayingBeforeAudioFocusLoss = player.isPlaying
+                // See the AUDIOFOCUS_LOSS branch above for why this is OR'd, not overwritten.
+                wasPlayingBeforeAudioFocusLoss = player.isPlaying || wasPlayingBeforeAudioFocusLoss
                 if (player.isPlaying) {
                     player.volume = if (isMuted.value) 0f else (playerVolume.value * 0.2f)
                 }
@@ -4053,11 +4088,20 @@ class MusicService :
             }.getOrDefault(false)
 
             // Mood (if active) first, then radio, then related. If a transient hiccup left us empty, wait
-            // briefly and try once more — so a momentary network blip at the exact end-of-queue moment never
-            // permanently stops the music.
+            // briefly and try again — so a momentary network blip / rate-limit window at the exact
+            // end-of-queue moment never permanently stops the music. THREE attempts, not two: a single
+            // 2.5s retry was observed (owner diagnostic) to still land inside a longer-than-transient
+            // failure window, so the exported-playlist context fell all the way to the replay
+            // last-resort instead of ever reaching real radio — even though the seed video id was
+            // valid and playable moments earlier. The extra 5s attempt costs nothing on the common case
+            // (mood/radio/related already succeeded and this block never runs).
             var appended = tryMood() || tryContextRadio() || tryRadio() || tryRelated()
             if (!appended) {
                 kotlinx.coroutines.delay(2500)
+                appended = tryMood() || tryContextRadio() || tryRadio() || tryRelated()
+            }
+            if (!appended) {
+                kotlinx.coroutines.delay(5000)
                 appended = tryMood() || tryContextRadio() || tryRadio() || tryRelated()
             }
             // Autoplay chips: the seed just landed (appendSeed ran) → refresh the queue-footer
@@ -4067,7 +4111,16 @@ class MusicService :
             if (!appended && (resumeAfterSeed || advanceIntoRadioRequested) &&
                 !player.isPlaying && player.mediaItemCount > 0
             ) {
-                Timber.tag(TAG).w("Radio seed yielded nothing; replaying current queue so playback never stops")
+                // Named WHY, not just THAT: "yielded nothing" alone was indistinguishable between "no
+                // YouTube identity for this track" (seedVideoId null — expected for some local/http
+                // items) and "had a valid seed but every source rejected/errored 3 times" (a real,
+                // investigable failure — this is what silently produced the exported-playlist
+                // "infinite loop" complaint, since replaying a short curated list reads as a loop).
+                Timber.tag(TAG).w(
+                    "Radio seed yielded nothing after 3 attempts (seed=${seedVideoId ?: "none"}, " +
+                        "poolSize=${radioSeedPool.size}, mood=${activeMoodParams != null}); " +
+                        "replaying current queue so playback never stops"
+                )
                 resumeAfterSeed = false
                 advanceIntoRadioRequested = false
                 player.seekTo(0, 0)
@@ -7651,17 +7704,32 @@ class MusicService :
      */
     private fun exportedMuxedVideoUri(songId: String): String? {
         if (songId.isBlank()) return null
-        val videoIds = dataStore.get(ExportedVideoIdsKey, "")
-            .split(',')
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-        if (songId !in videoIds) return null
+        if (songId !in exportedVideoIds()) return null
         val raw = runBlocking(Dispatchers.IO) {
             dataStore.data.first()[ExportedFileUrisKey].orEmpty()
         }
         val uri = parseExportedFileUriMap(raw)[songId] ?: return null
         return uri.takeIf { exportedFileUriExists(this, it) }
     }
+
+    private fun exportedVideoIds(): List<String> =
+        dataStore.get(ExportedVideoIdsKey, "")
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+    /**
+     * True when [songId] is LISTED as an exported video but [exportedMuxedVideoUri] came back null —
+     * i.e. its file mapping was never saved, or the file was since moved/deleted. Distinguishing this
+     * from "never was an exported video" matters: [applyVideoToCurrent] used to treat both cases the
+     * same and fall through to an ONLINE YouTube video resolve for an id whose whole reason for being
+     * in "Vídeos exportados" is that it is a private/offline export — that resolve would either fail
+     * outright or, worse, succeed against an audio-only stream that the muxed-video playback path then
+     * fails to read as a container (owner-reported CONTAINER_3003 / "video no encontrado"). Callers use
+     * this to short-circuit with an honest "file missing" outcome instead of a confusing network retry.
+     */
+    private fun isRegisteredExportedVideoMissingFile(songId: String): Boolean =
+        songId.isNotBlank() && songId in exportedVideoIds() && exportedMuxedVideoUri(songId) == null
 
     private fun currentEqPreampDb(): Double {
         val prefsPreamp = getSharedPreferences("echo_eq_prefs", Context.MODE_PRIVATE)
@@ -7739,6 +7807,17 @@ class MusicService :
                 return
             }
             swapToVideo(id, exportedVideo, isMuxed = true)
+            return
+        }
+        // This id IS an exported video (listed), just missing its file — do NOT fall through to an
+        // online YouTube video resolve for it (see isRegisteredExportedVideoMissingFile doc): that
+        // produced a confusing container-parse failure instead of an honest "file missing" outcome.
+        if (isRegisteredExportedVideoMissingFile(id)) {
+            Timber.tag(TAG).w("Exported video file missing/moved for $id — not attempting online resolve")
+            if (armModeWhenReady || _videoMode.value) {
+                Toast.makeText(this, "Video no encontrado — puede que se haya movido o eliminado", Toast.LENGTH_SHORT).show()
+            }
+            disarmVideoModeKeepAudio()
             return
         }
         // A direct/local track with no video stream (e.g. an audio-only podcast reached while sticky video
@@ -7880,9 +7959,16 @@ class MusicService :
 
         val pos = player.currentPosition
         // Tag forces MediaItem inequality when URI is unchanged (muxed export already playing as audio).
+        // For muxed swaps this used to be a bare string, which made MediaItem.metadata (tag as? MediaMetadata)
+        // return null downstream — the queue list, mini player and QueueMenu all read that accessor for
+        // title/artist/thumbnail/duration, so they went blank/crashed. Force inequality via a nonce on the
+        // REAL metadata object instead, so every real field stays intact.
         val videoItem = item.buildUpon()
             .setUri(url)
-            .setTag(if (isMuxed) "muxed-video-$id" else item.localConfiguration?.tag)
+            .setTag(
+                if (isMuxed) item.metadata?.copy(videoSwapNonce = System.nanoTime()) ?: item.localConfiguration?.tag
+                else item.localConfiguration?.tag
+            )
             .build()
         player.replaceMediaItem(idx, videoItem)
         // Video swap: seek keyframe-aligned (CLOSEST_SYNC) so the first video frame decodes sooner — an EXACT
@@ -7979,7 +8065,10 @@ class MusicService :
             if (origUri != exportedNext) {
                 player.replaceMediaItem(
                     nextIdx,
-                    item.buildUpon().setUri(exportedNext).setTag("muxed-video-$nextId").build(),
+                    item.buildUpon()
+                        .setUri(exportedNext)
+                        .setTag(item.metadata?.copy(videoSwapNonce = System.nanoTime()) ?: item.localConfiguration?.tag)
+                        .build(),
                 )
             }
             return
@@ -8500,7 +8589,16 @@ class MusicService :
                 // restart / app update. Off the main thread; never blocks this resolve.
                 persistSongUrlCache()
 
-                return@Factory dataSpec.withUri(streamUrl.toUri())
+                // Embedded-player fallback URLs (see EmbeddedPlayerUrlResolver) carry the exact
+                // request headers YouTube's own embedded player sent — replay them defensively,
+                // since googlevideo URLs can 403 without the right per-client User-Agent (see
+                // videoOkHttpClient below) and we don't control which client generated this URL.
+                val fallbackHeaders = nonNullPlayback.fallbackRequestHeaders
+                return@Factory if (!fallbackHeaders.isNullOrEmpty()) {
+                    dataSpec.buildUpon().setUri(streamUrl.toUri()).setHttpRequestHeaders(fallbackHeaders).build()
+                } else {
+                    dataSpec.withUri(streamUrl.toUri())
+                }
             }
         }
     }
@@ -9475,6 +9573,19 @@ class MusicService :
     }
 
     /**
+     * Safely execute a block that may throw CancellationException, ensuring cleanup runs.
+     * Use for critical resource cleanup that must complete even if the scope is cancelled.
+     */
+    private suspend fun <T> withCancellationSafe(block: suspend () -> T): T {
+        return try {
+            block()
+        } catch (e: CancellationException) {
+            // Run cleanup in NonCancellable context to ensure it completes
+            withContext(NonCancellable) { block() }
+        }
+    }
+
+    /**
      * The media process's answer to memory pressure.
      *
      * Until now this service had none: `Application.onTrimMemory` trimmed Coil's image cache (same
@@ -9502,6 +9613,17 @@ class MusicService :
                 level == android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE
             if (!pressure) return
             clearShuffleCaches()
+
+            // Explicitly clear Coil's memory + disk cache to relieve memory pressure.
+            // Safe to call from service (same process as Application).
+            try {
+                val loader = this.imageLoader
+                loader.memoryCache?.clear()
+                scope.launch(Dispatchers.IO) { loader.diskCache?.clear() }
+            } catch (e: Exception) {
+                Timber.tag(TAG).d("Coil cache clear skipped: ${e.message}")
+            }
+
             // The offer is a courtesy; under REAL pressure it is not worth a byte. Only at the levels
             // that mean the process is next in line, because dropping it retires a prompt the user may
             // be looking at.
@@ -9583,12 +9705,16 @@ class MusicService :
         teardownInstantVideoSwap("service destroyed")
 
         // Release crossfade players (incl. any preloaded incoming one) so they don't leak.
-        crossfadeJob?.cancel()
-        crossfadeTriggerJob?.cancel()
-        crossfadePreloadJob?.cancel()
-        crossfadeReadyJob?.cancel()
-        crossfadeTailArmJob?.cancel()
-        tailQuietRecheckJob?.cancel()
+        // Use withCancellationSafe to ensure cleanup completes even if scope is cancelled.
+        runBlocking {
+            withCancellationSafe { crossfadeJob?.cancel() }
+            withCancellationSafe { crossfadeTriggerJob?.cancel() }
+            withCancellationSafe { crossfadePreloadJob?.cancel() }
+            withCancellationSafe { crossfadeReadyJob?.cancel() }
+            withCancellationSafe { crossfadeTailArmJob?.cancel() }
+            withCancellationSafe { tailQuietRecheckJob?.cancel() }
+        }
+
         secondaryPlayer?.let {
             playerNormProcessors.remove(it)
             playerLimiterProcessors.remove(it)
@@ -10559,11 +10685,14 @@ class MusicService :
         // runs on this same Main thread, so no mutation can interleave mid-copy.
         secondaryTimelineVersion = timelineVersion
         val incomingId = items.getOrNull(targetIndex)?.mediaId
-        // PER-SONG INTRO MEMORY: start the incoming player right at its learned first audible frame — the
-        // crossfade rise lands on real music instead of dead intro silence. No hint → 0 (exact old
-        // behavior). The seek happens while this player is still muted and unstarted: inaudible.
-        val leadSkipMs = incomingId?.let { leadSilenceHintMs[it] } ?: 0L
-        sec.seekTo(targetIndex, leadSkipMs)
+        // PER-SONG INTRO MEMORY — APPLICATION DISABLED (owner, 2026-08-18): "La Isla Bonita" measured
+        // ~4s of sub-threshold intro and every later crossfade into it silently skipped straight to 0:04,
+        // which read as the song randomly jumping ahead. The -42dBFS detector can't tell true dead air
+        // from a quiet-but-real intro, and a wrong measurement then applies on EVERY future play, not just
+        // once — too high a cost for a background polish feature. leadSilenceHintMs is still LEARNED below
+        // (harmless, unread) so this can be re-enabled behind a toggle later without rebuilding the
+        // detector; only the seek that SPENT the hint is removed. Always start incoming audio at 0.
+        sec.seekTo(targetIndex, 0L)
         sec.volume = 0f
         sec.repeatMode = player.repeatMode
         sec.shuffleModeEnabled = player.shuffleModeEnabled
@@ -10996,14 +11125,15 @@ class MusicService :
         // Flip to false to disable the whole feature at runtime: every hook becomes a no-op and the
         // audio pipeline / normal swapToVideo path are byte-identical to the pre-feature behaviour.
         //
-        // GATED OFF for the public release: instant dual-player swap gated off pending on-device audio
-        // verification (review flagged a possible mid-song level jump + LoadControl starvation). With this
-        // false, scheduleInstantVideoPrepare / maybePrepareInstantVideoSwap / tryInstantVideoSwap all early-
-        // return, so NO speculative pre-player is ever created (no wasted buffering) and toggleVideoMode
-        // falls to the byte-identical swapToVideo path. The safe connection warm-up
-        // (maybeWarmVideoConnection) is independent of this flag and stays ACTIVE.
+        // ENABLED for on-device verification (owner request, 2026-08-18): was gated off pending
+        // real-device audio checks — review flagged a possible mid-song level jump on swap + LoadControl
+        // starvation from the second ExoPlayer competing for buffer/network with the running one. Turned
+        // on specifically so the owner can verify those two things while actively beta-testing; flip back
+        // to false immediately if either shows up (toggleVideoMode then falls back to the byte-identical
+        // swapToVideo path, zero other behavior change). The safe connection warm-up
+        // (maybeWarmVideoConnection) is independent of this flag and stays ACTIVE either way.
         @Volatile
-        var INSTANT_VIDEO_SWAP_ENABLED = false
+        var INSTANT_VIDEO_SWAP_ENABLED = true
         // Delay before pre-preparing after a track transition / video exit, so the speculative player never
         // competes with the running track's own startup buffering. 1200 ms is enough once the URL is warm
         // without waiting a full 2.5 s of dead air before the speculative path can help.

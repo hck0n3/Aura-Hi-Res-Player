@@ -1580,7 +1580,6 @@ private fun BandEqCard(
     val line = if (skin.enabled) skin.line else Color.Transparent
     // True only after a VERTICAL fader move — used to freeze page scroll, not to lock band pan.
     var bandDragActive by remember { mutableStateOf(false) }
-    val bandScrollState = rememberScrollState()
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         BoxWithConstraints(
             modifier = Modifier
@@ -1590,11 +1589,16 @@ private fun BandEqCard(
                 .then(if (skin.enabled) Modifier.border(1.dp, line, MaterialTheme.shapes.extraLarge) else Modifier)
                 .padding(vertical = 16.dp),
         ) {
-            // #49(b) — the band row used to be a fixed-width `horizontalScroll` Row: every band was a hard
-            // 46dp Column, so the whole row had a CONSTANT ~502dp intrinsic width and the EQ still scrolled
-            // sideways on a screen with room to spare. When the pane is at least as wide as that intrinsic
-            // width, drop the scroll and let every band take an equal `weight(1f)` share instead, so the
-            // sliders spread across the space. BELOW it nothing changes — same 46dp bands, same scrolling.
+            // #49(b)/(owner request, 2026-08-18): the band row used to fall back to a `horizontalScroll`
+            // Row (every band a hard 46dp Column) whenever the pane was narrower than the ~502dp all 10
+            // bands need at that fixed width — i.e. on essentially every phone. That scroll container was
+            // the actual cause of TWO complaints at once: not all bands were visible without swiping, AND
+            // dragging a fader vertically also panned the row horizontally, because a real-world drag is
+            // never perfectly vertical and `horizontalScroll` claims any horizontal delta in the gesture
+            // regardless of who else wants it. Always giving each band an equal `weight(1f)` share — never
+            // falling back to the scrolling narrow-column layout — fixes both: all BAND_COUNT sliders are
+            // always on-screen (narrower on a phone, wider on a tablet), and with no horizontalScroll on
+            // this Row there is nothing left to compete with a vertical fader drag.
             //
             // The count is ALWAYS EqConstants.BAND_COUNT (never a literal), so this follows the engine.
             val bandCount = EqConstants.BAND_COUNT
@@ -1602,20 +1606,13 @@ private fun BandEqCard(
                 (BAND_SLIDER_MIN_WIDTH * bandCount) +
                     (BAND_SLIDER_SPACING * (bandCount - 1)) +
                     (BAND_ROW_HORIZONTAL_PADDING * 2)
-            val canExpand = maxWidth >= intrinsicRowWidth
             // Taller travel on a big screen: 200dp of throw on a 900dp-wide pane reads as a squashed strip.
             // Scales off the SAME measured width, and is clamped so it can only ever grow modestly (#50 —
             // the complaint is that things get too big, so this never runs away).
             val travel = BAND_SLIDER_TRAVEL * eqVerticalScale(maxWidth, intrinsicRowWidth)
             Row(
                 modifier = Modifier
-                    .then(
-                        if (canExpand) Modifier.fillMaxWidth()
-                        // Keep horizontal scroll enabled while a finger is down: locking it on
-                        // pointer-down made a pressed left/right swipe unable to pan the bands.
-                        // Vertical fader moves still freeze PAGE scroll via onDragActiveChange.
-                        else Modifier.horizontalScroll(bandScrollState),
-                    )
+                    .fillMaxWidth()
                     .padding(horizontal = BAND_ROW_HORIZONTAL_PADDING),
                 horizontalArrangement = Arrangement.spacedBy(BAND_SLIDER_SPACING),
             ) {
@@ -1632,7 +1629,7 @@ private fun BandEqCard(
                             bandDragActive = active
                             onDragActiveChange(active)
                         },
-                        modifier = if (canExpand) Modifier.weight(1f) else Modifier.width(BAND_SLIDER_MIN_WIDTH),
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
@@ -2204,7 +2201,11 @@ private fun EqBandSlider(
         Box(
             modifier = Modifier
                 .height(travel)
-                .width(BAND_SLIDER_MIN_WIDTH)
+                // fillMaxWidth, not a fixed BAND_SLIDER_MIN_WIDTH: the parent Column now gets an equal
+                // `weight(1f)` share of the row (all BAND_COUNT bands always on-screen — see the row's own
+                // comment), so the actual draggable control must follow that allotted width instead of a
+                // constant 46dp, or every band beyond a handful would overlap/clip on a phone-width row.
+                .fillMaxWidth()
                 .clip(RectangleShape)
                 .nestedScroll(blockParentScroll),
             contentAlignment = Alignment.Center,

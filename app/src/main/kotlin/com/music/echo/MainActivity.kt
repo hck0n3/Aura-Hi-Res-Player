@@ -386,7 +386,7 @@ class MainActivity : ComponentActivity() {
                 // never be reused, so release its listeners before dropping it.
                 existing?.dispose()
                 try {
-                    playerConnection = PlayerConnection(this@MainActivity, service, database, lifecycleScope)
+                    playerConnection = PlayerConnection(this@MainActivity, service, database, lifecycleScope, this@MainActivity.lifecycle)
                     Timber.tag("MainActivity").d("PlayerConnection created successfully")
                     // #27: binding on a cold start = the app is in the foreground → genuine engagement, so drop
                     // the cold-restore PLAY veto and let external controls (BT/AA/notification/watch) work.
@@ -399,7 +399,7 @@ class MainActivity : ComponentActivity() {
                     lifecycleScope.launch {
                         delay(500)
                         try {
-                            playerConnection = PlayerConnection(this@MainActivity, service, database, lifecycleScope)
+                            playerConnection = PlayerConnection(this@MainActivity, service, database, lifecycleScope, this@MainActivity.lifecycle)
                             listenTogetherManager.setPlayerConnection(playerConnection)
                         } catch (e2: Exception) {
                             Timber.tag("MainActivity").e(e2, "Failed to create PlayerConnection on retry")

@@ -31,6 +31,9 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleEventObserver
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerConnection(
@@ -38,7 +41,8 @@ class PlayerConnection(
     binder: MusicBinder,
     val database: MusicDatabase,
     scope: CoroutineScope,
-) : Player.Listener {
+    private val lifecycle: Lifecycle,
+) : Player.Listener, DefaultLifecycleObserver {
     private companion object {
         private const val TAG = "PlayerConnection"
         private const val PLAYER_INIT_TIMEOUT_MS = 5000L 
@@ -71,6 +75,9 @@ class PlayerConnection(
     private val playWhenReady: MutableStateFlow<Boolean>
     val isPlaying: kotlinx.coroutines.flow.StateFlow<Boolean>
     
+    private val isLifecycleValid: Boolean
+        get() = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+
     init {
         Timber.tag(TAG).d("PlayerConnection init: playerReady=${playerReadinessFlow.value}")
         
@@ -103,6 +110,9 @@ class PlayerConnection(
                 }
             }
         }
+        
+        // Register as lifecycle observer
+        lifecycle.addObserver(this)
         
         Timber.tag(TAG).d("PlayerConnection state flows initialized successfully")
     }
@@ -673,11 +683,25 @@ class PlayerConnection(
 
     fun dispose() {
         try {
+            lifecycle.removeObserver(this)
             attachedPlayer?.removeListener(this)
             attachedPlayer = null
             Timber.tag(TAG).d("PlayerConnection disposed successfully")
         } catch (e: Exception) {
             Timber.tag(TAG).e(e, "Error during PlayerConnection disposal")
         }
+    }
+
+    override fun onStart(owner: androidx.lifecycle.LifecycleOwner) {
+        Timber.tag(TAG).d("PlayerConnection lifecycle: STARTED")
+    }
+
+    override fun onStop(owner: androidx.lifecycle.LifecycleOwner) {
+        Timber.tag(TAG).d("PlayerConnection lifecycle: STOPPED")
+    }
+
+    override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) {
+        Timber.tag(TAG).d("PlayerConnection lifecycle: DESTROYED")
+        dispose()
     }
 }

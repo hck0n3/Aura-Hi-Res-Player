@@ -30,6 +30,12 @@ data class MediaMetadata(
     val libraryAddToken: String? = null,
     val libraryRemoveToken: String? = null,
     val suggestedBy: String? = null,
+    /**
+     * Purely structural — never read for display. Set to a fresh value when a MediaItem's tag needs to
+     * change to force data-class inequality (so media3 treats a video/audio URI swap as a distinct
+     * MediaItem and rebuilds its source) while keeping every real field intact for the UI.
+     */
+    val videoSwapNonce: Long? = null,
 ) : Serializable {
     val isVideoSong: Boolean
         get() = musicVideoType != null && musicVideoType != MUSIC_VIDEO_TYPE_ATV

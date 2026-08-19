@@ -273,9 +273,18 @@ fun LocalSongScreen(
                     },
                 )
 
+                // Secondary key added: grouping by album alone left songs within the SAME album in
+                // whatever arbitrary order they happened to be in beforehand (no track-number field
+                // exists on SongEntity to sort by, so title is the closest available stand-in — still
+                // deterministic and readable, unlike the previous "whatever order" within a group).
                 LocalSongSortType.ALBUM -> filteredSongs.sortedWith(
-                    compareBy(collator) { song -> song.song.albumName.orEmpty() },
+                    compareBy<Song, String>(collator) { song -> song.song.albumName.orEmpty() }
+                        .thenBy(collator) { song -> song.song.title },
                 )
+
+                LocalSongSortType.DURATION -> filteredSongs.sortedBy { song -> song.song.duration }
+
+                LocalSongSortType.PLAY_TIME -> filteredSongs.sortedBy { song -> song.song.totalPlayTime }
             }
 
             if (sortDescending) sortedSongs.asReversed() else sortedSongs
@@ -692,6 +701,8 @@ private fun LocalSongControlsCard(
                     LocalSongSortType.NAME -> R.string.sort_by_name
                     LocalSongSortType.ARTIST -> R.string.sort_by_artist
                     LocalSongSortType.ALBUM -> R.string.sort_by_album
+                    LocalSongSortType.DURATION -> R.string.sort_by_length
+                    LocalSongSortType.PLAY_TIME -> R.string.sort_by_play_time
                 }
             },
         )
@@ -1390,4 +1401,10 @@ private enum class LocalSongSortType {
     NAME,
     ARTIST,
     ALBUM,
+    DURATION,
+    // No stored play-COUNT field exists on SongEntity (only totalPlayTime, cumulative ms listened) —
+    // a real "times played" counter would need a new DB column/migration. This ranks by listened
+    // time as the closest available proxy, same field iad1tya.echo.music.constants.SongSortType.PLAY_TIME
+    // already uses for every other library list in the app.
+    PLAY_TIME,
 }

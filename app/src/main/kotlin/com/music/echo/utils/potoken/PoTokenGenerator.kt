@@ -3,12 +3,11 @@ package iad1tya.echo.music.utils.potoken
 import android.webkit.CookieManager
 import iad1tya.echo.music.utils.cipher.CipherDeobfuscator
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 
 class PoTokenGenerator {
@@ -45,19 +44,27 @@ class PoTokenGenerator {
             return null
         }
 
-        return try {
-            Timber.tag(TAG).d("Calling runBlocking to generate poToken (timeout=${POTOKEN_TIMEOUT_MS}ms)...")
+        val result = runCatching {
             runBlocking {
-                withTimeout(POTOKEN_TIMEOUT_MS) {
+                withTimeoutOrNull(POTOKEN_TIMEOUT_MS) {
                     getWebClientPoToken(videoId, sessionId, forceRecreate = false)
                 }
             }
-        } catch (e: TimeoutCancellationException) {
-            // The WebView's sandboxed process can be culled by the OS (storage pressure, low
-            // memory, etc.) which leaves the PoToken WebView call hung indefinitely. Cap it so
-            // playerResponseForPlayback can fall through to non-PoToken fallback clients (e.g.
-            // ANDROID_VR) instead of blocking the entire playback path.
-            Timber.tag(TAG).w("poToken generation timed out after ${POTOKEN_TIMEOUT_MS}ms; proceeding without PoToken")
+        }.getOrElse { e ->
+            if (e is BadWebViewException) {
+                Timber.tag(TAG).e(e, "Could not obtain poToken because WebView is broken")
+                webViewBadImpl = true
+            } else {
+                Timber.tag(TAG).e(e, "poToken generation exception: ${e.javaClass.simpleName}: ${e.message}")
+            }
+            null
+        }
+
+        if (result == null) {
+            // Either the call above threw (handled above) or withTimeoutOrNull hit POTOKEN_TIMEOUT_MS
+            // without the block ever completing. Either way the WebView may be wedged: tear it down so
+            // the NEXT call starts from a clean slate instead of blocking on a dead renderer again.
+            Timber.tag(TAG).w("poToken unavailable after ${POTOKEN_TIMEOUT_MS}ms; proceeding without PoToken")
             runBlocking {
                 webPoTokenGenLock.withLock {
                     try {
@@ -65,25 +72,15 @@ class PoTokenGenerator {
                             webPoTokenGenerator?.close()
                         }
                     } catch (closeEx: Exception) {
-                        Timber.tag(TAG).e(closeEx, "Exception closing PoTokenWebView during timeout cleanup")
+                        Timber.tag(TAG).e(closeEx, "Exception closing PoTokenWebView during cleanup")
                     }
                     webPoTokenGenerator = null
                     webPoTokenStreamingPot = null
                     webPoTokenSessionId = null
                 }
             }
-            null
-        } catch (e: Exception) {
-            Timber.tag(TAG).e(e, "poToken generation exception: ${e.javaClass.simpleName}: ${e.message}")
-            when (e) {
-                is BadWebViewException -> {
-                    Timber.tag(TAG).e(e, "Could not obtain poToken because WebView is broken")
-                    webViewBadImpl = true
-                    null
-                }
-                else -> throw e // includes PoTokenException
-            }
         }
+        return result
     }
 
     /**
@@ -95,7 +92,7 @@ class PoTokenGenerator {
         if (!webViewSupported || webViewBadImpl) return
         runCatching {
             runBlocking {
-                withTimeout(POTOKEN_TIMEOUT_MS) {
+                withTimeoutOrNull(POTOKEN_TIMEOUT_MS) {
                     webPoTokenGenLock.withLock {
                         val needsCreate = webPoTokenGenerator == null ||
                             webPoTokenGenerator!!.isExpired ||
@@ -115,6 +112,12 @@ class PoTokenGenerator {
                             } catch (t: Throwable) {
                                 runCatching { newGenerator.close() }
                                 throw t
+                            }
+
+                            // Handle nullable result from generatePoToken
+                            newStreamingPot ?: run {
+                                runCatching { newGenerator.close() }
+                                throw PoTokenException("Prewarm streaming poToken generation returned null")
                             }
 
                             webPoTokenGenerator = newGenerator
@@ -178,6 +181,12 @@ class PoTokenGenerator {
                         throw t
                     }
 
+                    // Handle nullable result from generatePoToken
+                    newStreamingPot ?: run {
+                        runCatching { newGenerator.close() }
+                        throw PoTokenException("Streaming poToken generation returned null")
+                    }
+
                     webPoTokenGenerator = newGenerator
                     webPoTokenStreamingPot = newStreamingPot
                     webPoTokenSessionId = sessionId
@@ -202,6 +211,9 @@ class PoTokenGenerator {
                 return getWebClientPoToken(videoId = videoId, sessionId = sessionId, forceRecreate = true)
             }
         }
+
+        // Handle nullable result from generatePoToken
+        playerPot ?: throw PoTokenException("Player poToken generation returned null")
 
         Timber.tag(TAG).d("poToken generated successfully: session=${streamingPot.take(20)}..., video=${playerPot.take(20)}...")
 

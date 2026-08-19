@@ -127,10 +127,13 @@ class CoilBitmapLoader(
                     .build()
                 when (val result = context.imageLoader.execute(request)) {
                     is SuccessResult -> result.image.toBitmap().copyIfNeeded()
-                    is ErrorResult -> null
+                    is ErrorResult -> {
+                        Timber.tag("CoilBitmapLoader").d("Coil error: ${result.throwable?.message?.take(100)}")
+                        null
+                    }
                 }
             }.getOrElse {
-                Timber.tag("CoilBitmapLoader").w(it, "Coil artwork load failed")
+                Timber.tag("CoilBitmapLoader").d("Coil execution failed: ${it.message?.take(100)}")
                 null
             }
             if (coilResult != null) return@future coilResult
@@ -158,8 +161,14 @@ class CoilBitmapLoader(
                             }
                         }
                         "content", "file", "android.resource" ->
-                            context.contentResolver.openInputStream(uri)
-                                ?.use { BitmapFactory.decodeStream(it) }?.copyIfNeeded()
+                            runCatching {
+                                context.contentResolver.openInputStream(uri)
+                                    ?.use { BitmapFactory.decodeStream(it) }?.copyIfNeeded()
+                            }.getOrElse { e ->
+                                // Silent failure for orphan/invalid URIs (e.g., localaudioart:content://...)
+                                Timber.tag("CoilBitmapLoader").d("ContentResolver failed for $uri: ${e.message?.take(100)}")
+                                null
+                            }
                         else -> null
                     }
                 }

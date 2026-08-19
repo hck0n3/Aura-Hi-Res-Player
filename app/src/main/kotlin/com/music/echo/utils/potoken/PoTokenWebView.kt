@@ -1,6 +1,8 @@
 package iad1tya.echo.music.utils.potoken
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
 import android.webkit.ConsoleMessage
@@ -21,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.OkHttpClient
@@ -136,6 +139,21 @@ class PoTokenWebView private constructor(
     private fun loadHtmlAndObtainBotguard() {
         Timber.tag(TAG).d("loadHtmlAndObtainBotguard() called")
 
+        // Quick network check before starting the heavy BotGuard flow
+        val cm = webView.context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val hasNetwork = runCatching {
+            val network = cm.activeNetwork ?: return@runCatching false
+            val caps = cm.getNetworkCapabilities(network) ?: return@runCatching false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        }.getOrElse { false }
+
+        if (!hasNetwork) {
+            Timber.tag(TAG).d("PoTokenWebView init skipped: no network connectivity")
+            onInitializationErrorCloseAndCancel(PoTokenException("No network connectivity"))
+            return
+        }
+
         scope.launch(exceptionHandler) {
             val html = withContext(Dispatchers.IO) {
                 webView.context.assets.open("po_token.html").bufferedReader().use { it.readText() }
@@ -156,7 +174,10 @@ class PoTokenWebView private constructor(
         Timber.tag(TAG).d("downloadAndRunBotguard() called")
 
         makeBotguardServiceRequest(
-            "https://www.youtube.com/api/jnn/v1/Create",
+            // Direct RPC endpoint (bgutils-js GOOG_BASE_URL), not the youtube.com-proxied
+            // "api/jnn/v1" path — both are valid per bgutils-js source, but the direct path is
+            // what the library's own README examples and other working implementations use.
+            "https://jnn-pa.googleapis.com/\$rpc/google.internal.waa.v1.Waa/Create",
             "[ \"$REQUEST_KEY\" ]",
         ) { responseBody ->
             val parsedChallengeData = parseChallengeData(responseBody)
@@ -198,7 +219,7 @@ class PoTokenWebView private constructor(
         // SECURITY: botguardResponse is auth material; log only its length, never the value.
         Timber.tag(TAG).d("botguardResponse received (len=${botguardResponse.length})")
         makeBotguardServiceRequest(
-            "https://www.youtube.com/api/jnn/v1/GenerateIT",
+            "https://jnn-pa.googleapis.com/\$rpc/google.internal.waa.v1.Waa/GenerateIT",
             "[ \"$REQUEST_KEY\", \"$botguardResponse\" ]",
         ) { responseBody ->
             // SECURITY: this response body contains the integrity token; log only its length.
@@ -251,28 +272,20 @@ class PoTokenWebView private constructor(
     //endregion
 
     //region Obtaining poTokens
-    suspend fun generatePoToken(identifier: String): String {
+    suspend fun generatePoToken(identifier: String): String? {
         if (isDead || closed) {
-            throw PoTokenException("PoToken WebView is dead/closed")
+            Timber.tag(TAG).d("PoToken generation skipped: WebView dead/closed")
+            return null
         }
-        return try {
-            withTimeout(GENERATE_TIMEOUT_MS) {
-                generatePoTokenInternal(identifier)
-            }
-        } catch (e: TimeoutCancellationException) {
-            // A wedged renderer never calls back; mark dead so the generator recreates it next
-            // time instead of blocking the playback path indefinitely. The pending continuation is
-            // removed by its invokeOnCancellation handler (keyed by reqId).
+        return withTimeoutOrNull(GENERATE_TIMEOUT_MS) {
+            generatePoTokenInternal(identifier)
+        }?.let { result ->
+            result
+        } ?: run {
+            // Timeout or cancellation — mark dead so the generator recreates it next time
             isDead = true
-            // NEVER log `identifier` here. On the streaming path it IS the session id — dataSyncId when
-            // logged in, visitorData otherwise — and this line is at ERROR, which AppLogger PERSISTS to
-            // the file the user shares from Ajustes ▸ Registros. A credential in a log a customer emails
-            // is a real leak, and the timeout fires exactly on the slow devices whose owners send logs.
-            // (The sibling truncations elsewhere in this flow are safe only because they sit at DEBUG,
-            // which never reaches disk; at INFO+ the rule is no value at all.) The length still tells us
-            // which token wedged — a videoId is 11 chars, a session id is long — without exposing it.
-            Timber.tag(TAG).e("generatePoToken timed out after ${GENERATE_TIMEOUT_MS}ms (idLen=${identifier.length})")
-            throw PoTokenException("poToken generation timed out")
+            Timber.tag(TAG).d("generatePoToken timed out or cancelled (idLen=${identifier.length})")
+            null
         }
     }
 
@@ -378,15 +391,28 @@ class PoTokenWebView private constructor(
                     "x-user-agent" to "grpc-web-javascript/0.1",
                 ).toHeaders())
                 .url(url)
-            val response = withContext(Dispatchers.IO) {
-                httpClient.newCall(requestBuilder.build()).execute()
+            val response = withTimeoutOrNull(15_000L) {
+                withContext(Dispatchers.IO) {
+                    httpClient.newCall(requestBuilder.build()).execute()
+                }
             }
+            if (response == null) {
+                onInitializationErrorCloseAndCancel(PoTokenException("BotGuard request timeout"))
+                return@launch
+            }
+
             val httpCode = response.code
             if (httpCode != 200) {
                 onInitializationErrorCloseAndCancel(PoTokenException("Invalid response code: $httpCode"))
             } else {
-                val body = withContext(Dispatchers.IO) {
-                    response.body!!.string()
+                val body = withTimeoutOrNull(10_000L) {
+                    withContext(Dispatchers.IO) {
+                        response.body!!.string()
+                    }
+                }
+                if (body == null) {
+                    onInitializationErrorCloseAndCancel(PoTokenException("Response read timeout"))
+                    return@launch
                 }
                 handleResponseBody(body)
             }
