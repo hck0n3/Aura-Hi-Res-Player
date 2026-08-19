@@ -119,15 +119,7 @@ object AppLogger {
             appendLine()
         }
 
-        // 2026-08-19, tenth postmortem: a single failed song's own resolve trace (11 clients × 2-4
-        // lines each: "Trying fallback", "Player response OK"/"Client failed", "No stream URL"/"HEAD
-        // validation failed", plus RESOLVE_TIMING) already runs 25-35 lines. With the old limit of 80,
-        // a SECOND failing song in the same session pushed the first song's per-client detail out of
-        // the export entirely — every feedback log the owner sent only ever showed the tail end of the
-        // LAST song tried, never the full cascade, no matter how many songs actually failed. Raised to
-        // stay under MAX_LOG_ENTRIES (500) with margin, so a full session's worth of resolve traces
-        // survives into the exported diagnostic instead of only the most recent fragment.
-        val playback = PlaybackLogManager.formatRecent(400)
+        val playback = PlaybackLogManager.formatRecent(80)
         if (playback.isNotBlank()) {
             appendLine("--- PLAYBACK LOG (recent, in-memory) ---")
             append(playback)

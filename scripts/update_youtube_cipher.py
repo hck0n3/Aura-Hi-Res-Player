@@ -4,27 +4,13 @@ import urllib.request
 import os
 import sys
 
-# A bare "Mozilla/5.0" (the previous value here) is what triggered this: verified live on 2026-08-19
-# that YouTube serves that exact User-Agent a ~2KB "your browser is out of date" stub with NO jsUrl at
-# all, instead of the real ~450KB homepage — so the regex below was never wrong, the fetch just never
-# had a player URL to find. A realistic desktop Chrome UA gets the real page every time.
-BROWSER_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-)
-
 def get_player_url():
     print("Fetching YouTube Music homepage...")
-    req = urllib.request.Request("https://music.youtube.com/", headers={'User-Agent': BROWSER_USER_AGENT})
+    req = urllib.request.Request("https://music.youtube.com/", headers={'User-Agent': 'Mozilla/5.0'})
     html = urllib.request.urlopen(req).read().decode('utf-8')
     match = re.search(r'jsUrl["\']\s*:\s*["\']([^"\']+/player/[a-f0-9]{8}/[^"\']+)["\']', html)
     if not match:
-        # Diagnostics for next time, instead of a bare "not found": this is exactly what was missing
-        # when this broke silently every 6 hours with nothing to debug from but the one-line error.
-        raise Exception(
-            f"Could not find player URL in music.youtube.com "
-            f"(got {len(html)} bytes, starts with: {html[:200]!r})"
-        )
+        raise Exception("Could not find player URL in music.youtube.com")
     url = match.group(1)
     if url.startswith('/'):
         url = 'https://music.youtube.com' + url
@@ -57,7 +43,7 @@ def update_config():
         return
 
     print(f"Downloading {player_url}...")
-    req = urllib.request.Request(player_url, headers={'User-Agent': BROWSER_USER_AGENT})
+    req = urllib.request.Request(player_url, headers={'User-Agent': 'Mozilla/5.0'})
     player_js = urllib.request.urlopen(req).read().decode('utf-8')
     
     print("Extracting parameters...")
@@ -67,19 +53,9 @@ def update_config():
     sts = int(sts_match.group(1)) if sts_match else 0
     print(f"signatureTimestamp: {sts}")
     
-    # Extract n function wrapper (URL-param-object trick): the app never calls YouTube's real
-    # n-transform function directly (its name/args change every build) — it instead constructs the
-    # SAME url-param-parsing class YouTube's own n-function uses internally, feeds it a fake URL with
-    # our n value, and reads "n" back out already-transformed. Only the CLASS NAME needs finding here.
-    #
-    # 2026-08-19: verified live that YouTube stopped inlining this as `&&(b=new g.cY` (a boolean-AND
-    # idiom) and now calls it from a standalone n-function's own body instead, e.g.
-    # `I=function(t){try{let f=(new g.EG(t,!0)).get("n");...`. Try the CURRENT standalone-function shape
-    # first (bare `new g.CLASS(ARG,!0)).get("n")`, no `&&(` prefix required), then fall back to the
-    # older boolean-AND shape in case YouTube reverts — whichever the live player.js actually contains.
-    n_match = re.search(r'new\s+g\.([a-zA-Z0-9$]+)\([^,)]+,\s*!0\)\)\.get\(\s*["\']n["\']\s*\)', player_js)
-    if not n_match:
-        n_match = re.search(r'\.get\("n"\)\)\s*&&\s*\([a-zA-Z0-9$]+\s*=\s*new\s+g\.([a-zA-Z0-9$]+)', player_js)
+    # Extract n function wrapper (VM-dispatch URL param trick)
+    # Looking for: .get("n"))&&(b=new g.cY
+    n_match = re.search(r'\.get\("n"\)\)\s*&&\s*\([a-zA-Z0-9$]+\s*=\s*new\s+g\.([a-zA-Z0-9$]+)', player_js)
     if not n_match:
         raise Exception("Could not find n-function URL wrapper class")
     n_class = n_match.group(1)

@@ -60,16 +60,10 @@ object FunctionNameExtractor {
      * - N-transform: GU(6, 6010, n) with 87-element self-referential array
      */
     private val KNOWN_PLAYER_CONFIGS = mapOf(
-        // player_ias 3891b194: the sigFuncName/sigConstantArgs below (pB/JQ) were audited on 2026-08-19
-        // against the REAL downloaded player.js and are CONFIRMED WRONG — `pB` is a CSS style-setter
-        // (`P.style.setProperty`) and `JQ` computes `P.width*P.height`; neither is a cipher function.
-        // The n-transform class WAS fixed the same way: grepped the real file for the `.get("n")` idiom
-        // and found the actual function (`uz4=function(P){try{let a=(new g.lY(P,!0)).get("n");...}`),
-        // confirming the URL-wrapper class is `g.lY`, not the previously hardcoded `g.cY` (which does
-        // not exist anywhere in the file — that entry's "verified empirically" claim was false).
-        // sigFuncName/sigConstantArgs are LEFT AS-IS (still wrong) pending a real re-derivation — signature
-        // ciphers need multi-step static/dynamic analysis this pass didn't have time for; do not trust
-        // them. If streaming still fails after this fix, the sig path is the next suspect.
+        // player_ias 3891b194 (2026-08-18, rotated from c74cbcd6 within ~1h): sig=pB(20,268,JQ(74,8344,sig));
+        // n=g.cY URL round-trip trick. Same verification method as c74cbcd6 below: executed the live
+        // player.js in a real JS engine, confirmed output is a character-subset of the input (81 from
+        // an 83-char probe) and the n transform changes its test value. sts from the file's own field.
         "3891b194" to HardcodedPlayerConfig(
             sigFuncName = "pB",
             sigConstantArg = 20,
@@ -79,7 +73,7 @@ object FunctionNameExtractor {
             nFuncName = "_expr_n",
             nArrayIndex = null,
             nConstantArgs = null,
-            nJsExpression = "(function(n){try{var u=new g.lY('https://x.googlevideo.com/videoplayback?n='+n,true);var t=u.get('n');return(t&&t!==n)?t:n;}catch(e){return n;}})(INPUT)",
+            nJsExpression = "(function(n){try{var u=new g.cY('https://x.googlevideo.com/videoplayback?n='+n,true);var t=u.get('n');return(t&&t!==n)?t:n;}catch(e){return n;}})(INPUT)",
             signatureTimestamp = 20681
         ),
         // player_ias c74cbcd6 (2026-08-18): sig=BW(27,6907,TZ(9,4260,sig)) preprocess-wrapper form;

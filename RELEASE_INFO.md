@@ -1,12 +1,12 @@
-# Aura Hi-Res Player 0.6.226
+# Aura Hi-Res Player 0.6.227
 
-Restaurado el código exacto de la 0.6.213 — la última versión que confirmaste que sí reproduce, hoy mismo, en tu teléfono.
+La 0.6.226 no alcanzó — esta vez es TODO el código igual a la 0.6.213, sin excepción.
 
 ---
 
 ## Novedades y Correcciones
 
-- **Reproducción de canciones**: confirmaste que la beta de ayer (0.6.213, publicada como a las 6:41pm) sigue reproduciendo música hoy con tu misma cuenta, en WiFi y en datos — mientras que todas las versiones después de esa (incluida la de hace un rato) fallan igual, incluso con otra cuenta y otra red. Eso descartó de raíz mis teorías de "cabeceras" y "bloqueo de YouTube a la cuenta": el problema estaba en un cambio de código entre esa versión y las siguientes. En vez de seguir adivinando cuál línea exacta era la culpable, se restauró el código de resolución de audio (YTPlayerUtils, MusicService, la lista de clientes de YouTube y la configuración de cifrado) exactamente a como estaba en la 0.6.213 — el mismo código que ahora mismo está funcionando en tu teléfono. No se tocó ninguna otra función de la app.
+- **Reproducción de canciones**: la 0.6.226 restauró solo los 4 archivos que yo creía relacionados con el problema, pero seguiste sin poder reproducir. Eso significaba que había algo más que se me había pasado. Encontré un archivo adicional (la configuración de descifrado para un identificador específico del reproductor de YouTube) que también había cambiado y nunca revisé. Ahora TODO el código de la app — cada archivo que es distinto entre la 0.6.213 y hoy — quedó igualado byte por byte a la 0.6.213, sin ninguna excepción salvo el número de versión. Si esta tampoco reproduce, significa que el problema no está en el código de la app en absoluto.
 
 ## Cómo actualizar
 
