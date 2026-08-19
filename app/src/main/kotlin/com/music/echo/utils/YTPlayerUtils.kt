@@ -1460,6 +1460,18 @@ object YTPlayerUtils {
                     // app.log, so "no reproduce" reports now say which of the twelve clients worked (or
                     // that none did) instead of leaving the owner to guess the cascade.
                     Timber.tag(TAG).i("Playback: client=${currentClient.clientName}, videoId=$videoId, private=$isPrivatelyOwned")
+                    // 2026-08-19, tenth postmortem: the ONE thing missing from the trace that made every
+                    // prior log look like "WEB_CREATOR always wins" instead of "WEB_CREATOR is the only
+                    // client whose URL is NEVER challenged" — every other client's URL either passes or
+                    // fails the HEAD check above (both now logged at WARNING/INFO since 0.6.224); this
+                    // branch is the one path that hands a URL straight to ExoPlayer with zero verification.
+                    // Logging it explicitly closes the trace: a future log can now show, in one place,
+                    // that N clients were HEAD-validated and rejected while this one was never checked at all.
+                    PlaybackLogManager.log(
+                        PlaybackLogLevel.WARNING,
+                        "Stream used WITHOUT HEAD validation",
+                        "${currentClient.clientName} itag=${format?.itag} private=$isPrivatelyOwned reason=${if (isPrivatelyOwned) "privately-owned" else "last-fallback-client"}"
+                    )
                     timing?.winner = currentClient.clientName
                     validatedUrl = true
                     break
