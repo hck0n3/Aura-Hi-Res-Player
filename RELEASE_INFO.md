@@ -1,13 +1,12 @@
-# Aura Hi-Res Player 0.6.214
+# Aura Hi-Res Player 0.6.215
 
-Corrección crítica: canciones nunca antes reproducidas fallaban con error del servidor (403).
+Corrección real del error 403 en canciones nuevas — la de 0.6.214 no era suficiente.
 
 ---
 
 ## Novedades y Correcciones
 
-- **Reproducción de canciones nuevas corregida**: cuando el sistema que descifra el enlace de audio no encontraba la fórmula para la versión actual del reproductor de YouTube, la app usaba el enlace sin descifrar y el servidor lo rechazaba (error `IO_BAD_HTTP_STATUS`, código 2004). Ahora, si eso pasa, se le da automáticamente una segunda oportunidad al sistema de respaldo antes de intentar reproducir — así una fórmula ya guardada y verificada no se desperdicia.
-- **Auto-reparación real**: el bot que detecta cuando YouTube cambia su reproductor y publica la fórmula nueva sin que tengas que actualizar la app llevaba fallando en silencio. Ya está corregido y probado en vivo.
+- **Reproducción de canciones nuevas corregida de verdad**: la fórmula guardada para descifrar el enlace de audio del reproductor actual de YouTube tenía un símbolo que no existe en el archivo real de YouTube, así que fallaba en silencio y la app intentaba reproducir con el enlace sin descifrar (error `IO_BAD_HTTP_STATUS`, código 2004). El arreglo de la versión anterior no lo resolvía porque su plan de respaldo dependía de esa misma fórmula rota. Esta vez se corrigió el símbolo y se comprobó ejecutando el archivo real de YouTube para confirmar que el descifrado funciona.
 
 ## Cómo actualizar
 
