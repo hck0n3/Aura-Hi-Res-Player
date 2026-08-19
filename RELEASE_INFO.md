@@ -1,12 +1,12 @@
-# Aura Hi-Res Player 0.6.220
+# Aura Hi-Res Player 0.6.221
 
-Segunda pieza del arreglo real: faltaba el origen (Origin/Referer), no solo el User-Agent.
+Diagnóstico adicional — el User-Agent y el Origin no bastaron.
 
 ---
 
 ## Novedades y Correcciones
 
-- **Reproducción de canciones nuevas — arreglo completo**: la versión anterior agregó el User-Agent que faltaba, pero un diagnóstico en vivo mostró que YouTube también exige la cabecera "Origin" para el tipo de conexión que usa la app — y esa tampoco se estaba mandando. Este mismo arreglo ya existía, funcionando, en el reproductor de video y en las vistas previas de canciones; ahora también se aplica al audio normal, que es lo que usa el 99% de las reproducciones.
+- **Esta versión tampoco promete arreglar el error todavía.** Las versiones 0.6.219 y 0.6.220 agregaron el User-Agent y el Origin que faltaban en la petición de audio — un log en vivo confirmó que YouTube ya recibe y acepta ese Origin, pero el error 403 sigue apareciendo de todas formas. Esta versión agrega el último dato que falta: si el token anti-bot (pot) realmente está llegando al enlace de audio o se está perdiendo en el camino, y si el enlace ya estaba vencido al momento de usarlo. Con eso se va a poder identificar la causa real, sin adivinar más.
 
 ## Cómo actualizar
 

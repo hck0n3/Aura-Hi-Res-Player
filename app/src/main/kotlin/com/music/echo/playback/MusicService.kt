@@ -7113,7 +7113,13 @@ class MusicService :
                 val reqHeaders = httpCause.dataSpec.httpRequestHeaders.entries.joinToString("; ") { (k, v) -> "$k=$v" }.take(300)
                 val client = runCatching { httpCause.dataSpec.uri.getQueryParameter("c") }.getOrNull()
                 val host = runCatching { httpCause.dataSpec.uri.host }.getOrNull()
-                val summary = "HTTP ${httpCause.responseCode} host=$host c=$client " +
+                // Never log the actual n/pot VALUES (they're per-request secrets) — only whether they're
+                // present and how long they are, to tell apart "never got a token" from "got an invalid one."
+                val nLen = runCatching { httpCause.dataSpec.uri.getQueryParameter("n")?.length }.getOrNull()
+                val potLen = runCatching { httpCause.dataSpec.uri.getQueryParameter("pot")?.length }.getOrNull()
+                val itag = runCatching { httpCause.dataSpec.uri.getQueryParameter("itag") }.getOrNull()
+                val expire = runCatching { httpCause.dataSpec.uri.getQueryParameter("expire") }.getOrNull()
+                val summary = "HTTP ${httpCause.responseCode} host=$host c=$client itag=$itag n_len=$nLen pot_len=$potLen expire=$expire " +
                     "reqHeaders=[$reqHeaders] respHeaders=[$respHeaders] " +
                     "body=${bodyText ?: "(empty/undecodable)"}"
                 Timber.tag(TAG).w("$summary for $mediaId")
