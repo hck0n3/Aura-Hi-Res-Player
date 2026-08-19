@@ -77,6 +77,23 @@ jobs:
             echo "Generated fallback CI keystore"
           fi
 
+      - name: Generate debug keystore for diagnostic build
+        # 2026-08-19: the release buildType is TEMPORARILY signed with signingConfigs.getByName("debug")
+        # (see app/build.gradle.kts) to test whether the release certificate itself is what YouTube is
+        # blocking. That built-in "debug" signing config points at ~/.android/debug.keystore, which
+        # Android Studio creates on first use but which AGP only auto-generates here when it processes an
+        # actual `debug` build-type task — this workflow only ever runs assembleUniversalGmsRelease, so
+        # that never happens and validateSigningUniversalGmsRelease fails with "Keystore file ... not
+        # found". Generate it by hand with the same fixed credentials Android tooling always uses.
+        run: |
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkeypair -v -keystore ~/.android/debug.keystore \
+              -storepass android -keypass android -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
       - name: Build and Sign Release APK (Push to main / Dispatch / Tag)
         env:
           STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD || 'jrmusicpro' }}
