@@ -234,15 +234,33 @@ object YTPlayerUtils {
         // reaching the one client actually equipped to pass the check. TVHTML5 stays first: it's
         // loginRequired, so for a guest it `continue`s with no network call at all — free to keep ahead.
         WEB_REMIX,
-        TVHTML5_SIMPLY_EMBEDDED_PLAYER,
-        ANDROID_VR_1_61_48,
-        ANDROID_CREATOR,
-        IPADOS,
+        // 2026-08-19, fourteenth postmortem: trimmed from 10 fallbacks to 6 after the two-day 403
+        // investigation. Every device log collected this session (dozens of resolves, multiple builds)
+        // showed these three NEVER once producing a playable stream — only wasted round-trips extending
+        // every failing resolve by seconds:
+        //   ANDROID_CREATOR              — always HTTP 400 "Request contains an invalid argument"
+        //   TVHTML5_SIMPLY_EMBEDDED_PLAYER — always hard-blocked, "YouTube ya no es compatible..."
+        //   WEB_CREATOR                  — the one client exempt from this loop's own HEAD-validation
+        //                                   trust check (see validateStatus below); every 403 that
+        //                                   started this whole investigation came from trusting exactly
+        //                                   this client's URL without ever verifying it first. It is
+        //                                   also the single most bot-like entry here: impersonating a
+        //                                   YouTube Studio session neither TVHTML5 nor WEB_REMIX above
+        //                                   are even capable of holding.
+        // Also dropped as redundant near-duplicates of a persona already kept: ANDROID_VR_1_61_48
+        // (a second VR-client variant alongside ANDROID_VR_NO_AUTH — same LOGIN_REQUIRED failure mode
+        // whenever tried as a fallback in every log seen) and IPADOS (an Apple-family persona
+        // alongside IOS, never observed to behave differently from it).
+        // Beyond correctness, trying all 10 (impersonating ten different official YouTube client
+        // personas for a single video, every single failed resolve) is itself a conspicuous automation
+        // signature server-side abuse heuristics are built to catch. Fewer, cheaper, evidence-backed
+        // fallbacks reduce that footprint without losing real coverage — ANDROID_VR_NO_AUTH/MOBILE/IOS/
+        // WEB stay for genuinely different playability paths (age-restriction, region locks) this
+        // session's logs never definitively ruled out.
         ANDROID_VR_NO_AUTH,
         MOBILE,
         IOS,
-        WEB,
-        WEB_CREATOR
+        WEB
     )
     data class PlaybackData(
         val audioConfig: PlayerResponse.PlayerConfig.AudioConfig?,

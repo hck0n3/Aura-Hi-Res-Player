@@ -41,7 +41,16 @@ jobs:
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
       - name: Create google-services.json
-        if: env.HAS_GOOGLE_SERVICES == 'true'
+        # 2026-08-19: TEMPORARILY disabled. applicationId just changed (iad1tya.echo.music ->
+        # iad1tya.aura.music) as part of the package-identity change to recover from what looks like
+        # a YouTube-side block on the old package. The GOOGLE_SERVICES_JSON secret still only has a
+        # Firebase app entry for the OLD package name — injecting it now would make the
+        # com.google.gms.google-services plugin fail the build with "No matching client found for
+        # package name 'iad1tya.aura.music'". Firebase (Analytics/Crashlytics) is a nice-to-have, not
+        # required for playback, so the build proceeds without it rather than blocking on it.
+        # RE-ENABLE (delete this `if: false` line) once the owner adds an Android app for
+        # iad1tya.aura.music in the Firebase console and updates the GOOGLE_SERVICES_JSON secret.
+        if: false
         env:
           HAS_GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES_JSON != '' }}
           GOOGLE_SERVICES_CONTENT: ${{ secrets.GOOGLE_SERVICES_JSON }}

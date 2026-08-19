@@ -212,7 +212,17 @@ android {
     val noSub = project.hasProperty("nosub") && project.property("nosub") == "true"
 
     defaultConfig {
-        applicationId = if (noSub) "iad1tya.echo.music.dev" else "iad1tya.echo.music"
+        // 2026-08-19: renamed from iad1tya.echo.music, kept unchanged since the 0.6.104-era rebrand
+        // to "Aura Hi-Res Player". Exhaustive elimination (identical source/deps/build-config/R8-off/
+        // signing cert, different account, different network, all still failing) left package-level
+        // identity as the only untested variable — and a debug build under a DIFFERENT package name
+        // (iad1tya.echo.music.debug) kept resolving streams normally throughout. `namespace` above is
+        // deliberately left as iad1tya.echo.music: it only controls the generated R class package,
+        // which every .kt file's `package iad1tya.echo.music.*` declaration and R import already
+        // matches — renaming it would require touching 100+ files with zero benefit, since nothing
+        // external (Google/YouTube's servers, Android's own PackageManager-facing identity) ever sees
+        // the Kotlin source package, only applicationId.
+        applicationId = if (noSub) "iad1tya.aura.music.dev" else "iad1tya.aura.music"
         if (noSub) versionNameSuffix = "-nosub"
         buildConfigField("Boolean", "REQUIRE_SUBSCRIPTION", (!noSub).toString())
         minSdk = 26
@@ -220,8 +230,8 @@ android {
         // Public version reset to a fresh stable 0.0.1 for the Aura Hi-Res Player relaunch.
         // versionCode stays monotonic (never below the last shipped 673) so the in-app updater and
         // sideload-install-over-existing keep working; only the user-facing versionName resets.
-        versionCode = 948
-        versionName = "0.6.228"
+        versionCode = 949
+        versionName = "0.6.229"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -369,17 +379,14 @@ android {
 
     buildTypes {
         release {
-            // 2026-08-19, diagnostic (temporary): the ONLY confirmed-working build left standing after
-            // an exhaustive elimination (identical source, deps, build config, signing cert, account,
-            // network — see the postmortem trail in YTPlayerUtils.kt) was a debug build, which differs
-            // from a normal release build in exactly one runtime-relevant way: R8 shrinking/obfuscation.
-            // Disabling it here isolates that single variable. If streaming works with this build, R8 is
-            // confirmed as the cause (most likely: it is silently breaking one of the WebView JS<->Kotlin
-            // bridges in potoken/CipherWebView/EjsNTransformSolver despite the keep rules in
-            // proguard-rules.pro looking correct on paper) and the real fix is finding which one. If it
-            // still fails, R8 is ruled out too. REVERT to true once this is answered either way.
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // 2026-08-19: R8 was disabled for one diagnostic build (0.6.228) to test whether shrinking/
+            // obfuscation explained why only a debug build kept resolving streams. The owner confirmed
+            // 0.6.228 (R8 off, otherwise a normal signed release) STILL failed — ruling R8 out. The real
+            // difference turned out to be applicationId (iad1tya.echo.music appears to have been
+            // rate-limited/blocked server-side after this investigation's own high-volume testing);
+            // see the applicationId comment above. R8 stays ON for the real release.
+            isMinifyEnabled = true
+            isShrinkResources = true
             isCrunchPngs = false
             isDebuggable = false
             signingConfig = signingConfigs.getByName("release")
