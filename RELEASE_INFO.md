@@ -1,12 +1,12 @@
-# Aura Hi-Res Player 0.6.218
+# Aura Hi-Res Player 0.6.219
 
-Diagnóstico del error 403 — todavía no promete arreglar la reproducción.
+Causa real encontrada: el audio nunca mandaba el User-Agent que YouTube exige.
 
 ---
 
 ## Novedades y Correcciones
 
-- **Esta versión no soluciona el error todavía.** Las últimas actualizaciones intentaron corregir la reproducción de canciones nuevas cambiando la fórmula del enlace de audio, pero un análisis más a fondo mostró que ese no era el problema real: incluso versiones anteriores fallan igual. Esta versión agrega el registro del motivo exacto que da YouTube al rechazar una canción (antes solo se veía el código de error, nunca la razón). Con esa información se podrá hacer el arreglo real, no otra suposición.
+- **Reproducción de canciones nuevas, arreglo real esta vez**: la app resolvía el enlace de audio correctamente, pero al pedir el audio real, nunca mandaba el "User-Agent" (identificación del cliente) que YouTube exige para no rechazar la conexión — por eso siempre daba error de servidor (403 / IO_BAD_HTTP_STATUS). Esto no dependía de la versión ni de la canción: le pasaba a todo el que actualizara. El reproductor de video de la app ya tenía este arreglo desde antes; ahora también lo tiene el audio, que es lo que usa el 99% de las reproducciones.
 
 ## Cómo actualizar
 

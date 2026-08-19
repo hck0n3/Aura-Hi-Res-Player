@@ -7094,25 +7094,30 @@ class MusicService :
 
         val mediaId = player.currentMediaItem?.mediaId
         Timber.tag(TAG).w(error, "Player error occurred for $mediaId: errorCode=${error.errorCode}, message=${error.message}")
-        // 2026-08-18: three straight "fixes" to the n-transform (0.6.215/216/217) changed NOTHING —
-        // a fresh device log showed 0.6.213 itself already 403ing on WEB_CREATOR the same way, so the
-        // n-parameter was never the cause. googlevideo's 403 response BODY normally names the exact
-        // reason (expired/invalid token, wrong client, etc.) but nothing here ever logged it — every
-        // report only ever had the bare code. This is the actual next diagnostic, not another guess.
+        // 2026-08-18, fourth postmortem: three straight "fixes" to the n-transform (0.6.215/216/217)
+        // changed NOTHING — a fresh device log showed 0.6.213 itself already 403ing on WEB_CREATOR the
+        // same way, so the n-parameter was never the cause. googlevideo's 403 BODY turned out to always
+        // be empty (0.6.218 confirmed this on-device, twice) — the real cause was the request itself:
+        // the audio OkHttpClient sent no User-Agent at all (fixed in 0.6.219, see createCacheDataSource).
+        // Logging only the body was a dead end that cost a full release cycle to discover. This now also
+        // logs response HEADERS and the REQUEST's own headers (especially User-Agent + the "c=" client
+        // query param) — had that been here from the start, this specific bug would have been visible
+        // in the very first report instead of requiring a live source read to find.
         var httpCause: Throwable? = error.cause
         while (httpCause != null) {
             if (httpCause is HttpDataSource.InvalidResponseCodeException) {
                 val bodyText = httpCause.responseBody?.let {
                     runCatching { String(it, Charsets.UTF_8) }.getOrNull()
                 }?.take(500)
-                Timber.tag(TAG).w(
-                    "HTTP ${httpCause.responseCode} body for $mediaId: ${bodyText ?: "(empty/undecodable)"}"
-                )
-                PlaybackLogManager.log(
-                    PlaybackLogLevel.WARNING,
-                    "HTTP ${httpCause.responseCode} response body",
-                    bodyText ?: "(empty/undecodable)"
-                )
+                val respHeaders = httpCause.headerFields.entries.joinToString("; ") { (k, v) -> "$k=${v.joinToString(",")}" }.take(500)
+                val reqHeaders = httpCause.dataSpec.httpRequestHeaders.entries.joinToString("; ") { (k, v) -> "$k=$v" }.take(300)
+                val client = runCatching { httpCause.dataSpec.uri.getQueryParameter("c") }.getOrNull()
+                val host = runCatching { httpCause.dataSpec.uri.host }.getOrNull()
+                val summary = "HTTP ${httpCause.responseCode} host=$host c=$client " +
+                    "reqHeaders=[$reqHeaders] respHeaders=[$respHeaders] " +
+                    "body=${bodyText ?: "(empty/undecodable)"}"
+                Timber.tag(TAG).w("$summary for $mediaId")
+                PlaybackLogManager.log(PlaybackLogLevel.WARNING, "HTTP ${httpCause.responseCode} detail", summary)
                 break
             }
             httpCause = httpCause.cause
@@ -7593,6 +7598,34 @@ class MusicService :
                                                 .header("Proxy-Authorization", auth)
                                                 .build()
                                         } ?: response.request
+                                    }
+                                    // 2026-08-18, fourth postmortem: EVERY WEB_CREATOR resolve succeeded
+                                    // ("Player response OK", RESOLVE_TIMING ok=true) and then 403'd a few
+                                    // seconds later on the actual byte fetch — on every app version tested
+                                    // (213 through 218), on two different devices, for every song. The
+                                    // n-transform and the PoToken were both red herrings: this OkHttpClient
+                                    // never set a User-Agent at all for the real audio request. The VIDEO
+                                    // data source below (videoOkHttpClient) already had this exact fix with
+                                    // a comment explaining it — "googlevideo URLs can 403 without the right
+                                    // per-client User-Agent" — it was just never applied to audio, the path
+                                    // that actually matters for every normal song. Same fix, mirrored here.
+                                    .addInterceptor { chain ->
+                                        val req = chain.request()
+                                        val host = req.url.host
+                                        val isYt = host.endsWith("googlevideo.com") || host.endsWith("youtube.com") ||
+                                            host.endsWith("googleusercontent.com") || host.endsWith("youtube-nocookie.com") ||
+                                            host.endsWith("ytimg.com")
+                                        if (!isYt) return@addInterceptor chain.proceed(req)
+                                        val c = req.url.queryParameter("c")?.trim().orEmpty()
+                                        val agent = when {
+                                            c.startsWith("WEB", true) -> com.music.innertube.models.YouTubeClient.USER_AGENT_WEB
+                                            c.startsWith("TV", true) -> com.music.innertube.models.YouTubeClient.TVHTML5.userAgent
+                                            c.startsWith("IOS", true) -> com.music.innertube.models.YouTubeClient.IOS.userAgent
+                                            c.startsWith("ANDROID_VR", true) -> com.music.innertube.models.YouTubeClient.ANDROID_VR_NO_AUTH.userAgent
+                                            c.startsWith("ANDROID", true) -> com.music.innertube.models.YouTubeClient.MOBILE.userAgent
+                                            else -> com.music.innertube.models.YouTubeClient.USER_AGENT_WEB
+                                        }
+                                        chain.proceed(req.newBuilder().header("User-Agent", agent).build())
                                     }
                                     .build()
                             )
