@@ -1,12 +1,12 @@
-# Aura Hi-Res Player 0.6.217
+# Aura Hi-Res Player 0.6.218
 
-Se revierte al comportamiento real de 0.6.213 — la única versión confirmada funcionando en pruebas reales repetidas.
+Diagnóstico del error 403 — todavía no promete arreglar la reproducción.
 
 ---
 
 ## Novedades y Correcciones
 
-- **Reproducción de canciones nuevas, vuelta a lo comprobado**: las versiones 0.6.214, 0.6.215 y 0.6.216 modificaban el enlace de audio del último método de conexión con una fórmula propia, y cada una de esas fórmulas resultó estar mal en pruebas reales — rompiendo lo que la 0.6.213 hacía bien. Esta versión deja ese enlace exactamente como YouTube lo entrega, sin tocarlo, igual que la 0.6.213.
+- **Esta versión no soluciona el error todavía.** Las últimas actualizaciones intentaron corregir la reproducción de canciones nuevas cambiando la fórmula del enlace de audio, pero un análisis más a fondo mostró que ese no era el problema real: incluso versiones anteriores fallan igual. Esta versión agrega el registro del motivo exacto que da YouTube al rechazar una canción (antes solo se veía el código de error, nunca la razón). Con esa información se podrá hacer el arreglo real, no otra suposición.
 
 ## Cómo actualizar
 

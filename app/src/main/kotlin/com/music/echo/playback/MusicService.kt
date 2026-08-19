@@ -198,6 +198,8 @@ import iad1tya.echo.music.playback.queues.filterNonMusicForAutoQueue
 import iad1tya.echo.music.utils.CoilBitmapLoader
 import iad1tya.echo.music.utils.DiscordRPC
 import iad1tya.echo.music.utils.NetworkConnectivityObserver
+import iad1tya.echo.music.utils.PlaybackLogLevel
+import iad1tya.echo.music.utils.PlaybackLogManager
 import iad1tya.echo.music.utils.ScrobbleManager
 import iad1tya.echo.music.utils.SyncUtils
 import iad1tya.echo.music.utils.YTPlayerUtils
@@ -7092,6 +7094,29 @@ class MusicService :
 
         val mediaId = player.currentMediaItem?.mediaId
         Timber.tag(TAG).w(error, "Player error occurred for $mediaId: errorCode=${error.errorCode}, message=${error.message}")
+        // 2026-08-18: three straight "fixes" to the n-transform (0.6.215/216/217) changed NOTHING —
+        // a fresh device log showed 0.6.213 itself already 403ing on WEB_CREATOR the same way, so the
+        // n-parameter was never the cause. googlevideo's 403 response BODY normally names the exact
+        // reason (expired/invalid token, wrong client, etc.) but nothing here ever logged it — every
+        // report only ever had the bare code. This is the actual next diagnostic, not another guess.
+        var httpCause: Throwable? = error.cause
+        while (httpCause != null) {
+            if (httpCause is HttpDataSource.InvalidResponseCodeException) {
+                val bodyText = httpCause.responseBody?.let {
+                    runCatching { String(it, Charsets.UTF_8) }.getOrNull()
+                }?.take(500)
+                Timber.tag(TAG).w(
+                    "HTTP ${httpCause.responseCode} body for $mediaId: ${bodyText ?: "(empty/undecodable)"}"
+                )
+                PlaybackLogManager.log(
+                    PlaybackLogLevel.WARNING,
+                    "HTTP ${httpCause.responseCode} response body",
+                    bodyText ?: "(empty/undecodable)"
+                )
+                break
+            }
+            httpCause = httpCause.cause
+        }
         reportException(error)
 
         // VIDEO MODE: if the failing item is the video track (e.g. its muxed URL expired / 403'd or decoder error),
