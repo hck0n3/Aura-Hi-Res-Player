@@ -73,6 +73,17 @@ data class YouTubeClient(
             loginSupported = true,
             loginRequired = true,
             useSignatureTimestamp = true,
+            // 2026-08-19, seventh postmortem: a live device diagnostic (0.6.221) proved every single
+            // 403 on this client's stream URL carried pot_len=null — WEB_CREATOR is the only WEB-family
+            // client in STREAM_FALLBACK_CLIENTS that never set useWebPoTokens, so it never attaches the
+            // ?pot= anti-bot token that WEB_REMIX and TVHTML5 already do. Every OTHER client fails
+            // earlier for its own unrelated reason (LOGIN_REQUIRED, 400, UNPLAYABLE, itag=774 missing),
+            // so WEB_CREATOR is what actually serves nearly every stream on this account/device — and it
+            // was the one client sending an unauthenticated-looking request to a CDN that may now require
+            // this token universally. This is not proven, but it is the first evidence-backed difference
+            // found between WEB_CREATOR and the other WEB-family clients after headers alone (0.6.219/220)
+            // did not fix the 403.
+            useWebPoTokens = true,
         )
 
         val TVHTML5 = YouTubeClient(

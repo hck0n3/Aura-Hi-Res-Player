@@ -1,0 +1,574 @@
+
+> Configure project :app
+WARNING: The option setting 'android.newDsl=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [armeabi-v7a] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+WARNING: [CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+[CXX5202] This app only has 32-bit [x86] native libraries. Beginning August 1, 2019 Google Play store requires that all apps that include native libraries must provide 64-bit versions. For more information, visit https://g.co/64-bit-requirement
+
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preUniversalFossDebugBuild UP-TO-DATE
+> Task :app:mergeUniversalFossDebugNativeDebugMetadata NO-SOURCE
+> Task :canvas:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :canvas:compileKotlin UP-TO-DATE
+> Task :canvas:compileJava NO-SOURCE
+> Task :canvas:processResources NO-SOURCE
+> Task :canvas:classes UP-TO-DATE
+> Task :canvas:jar UP-TO-DATE
+> Task :applecanvas:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :applecanvas:compileKotlin UP-TO-DATE
+> Task :applecanvas:compileJava NO-SOURCE
+> Task :applecanvas:processResources NO-SOURCE
+> Task :applecanvas:classes UP-TO-DATE
+> Task :applecanvas:jar UP-TO-DATE
+> Task :echomusiccanvas:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :echomusiccanvas:compileKotlin UP-TO-DATE
+> Task :echomusiccanvas:compileJava NO-SOURCE
+> Task :echomusiccanvas:processResources NO-SOURCE
+> Task :echomusiccanvas:classes UP-TO-DATE
+> Task :echomusiccanvas:jar UP-TO-DATE
+> Task :app:generateUniversalFossDebugBuildConfig UP-TO-DATE
+> Task :app:protobufDummy UP-TO-DATE
+> Task :app:extractDebugProto UP-TO-DATE
+> Task :app:extractFossProto UP-TO-DATE
+> Task :artistvideo:preBuild UP-TO-DATE
+> Task :artistvideo:preDebugBuild UP-TO-DATE
+> Task :artistvideo:generateDebugResources UP-TO-DATE
+> Task :artistvideo:packageDebugResources UP-TO-DATE
+> Task :artistvideo:processDebugNavigationResources UP-TO-DATE
+> Task :artistvideo:parseDebugLocalResources UP-TO-DATE
+> Task :artistvideo:generateDebugRFile UP-TO-DATE
+> Task :artistvideo:compileDebugKotlin UP-TO-DATE
+> Task :artistvideo:javaPreCompileDebug UP-TO-DATE
+> Task :artistvideo:compileDebugJavaWithJavac NO-SOURCE
+> Task :artistvideo:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :artistvideo:processDebugJavaRes UP-TO-DATE
+> Task :artistvideo:createFullJarDebug UP-TO-DATE
+> Task :betterlyrics:preBuild UP-TO-DATE
+> Task :betterlyrics:preDebugBuild UP-TO-DATE
+> Task :betterlyrics:generateDebugResources UP-TO-DATE
+> Task :betterlyrics:packageDebugResources UP-TO-DATE
+> Task :betterlyrics:processDebugNavigationResources UP-TO-DATE
+> Task :betterlyrics:parseDebugLocalResources UP-TO-DATE
+> Task :betterlyrics:generateDebugRFile UP-TO-DATE
+> Task :betterlyrics:compileDebugKotlin UP-TO-DATE
+> Task :betterlyrics:javaPreCompileDebug UP-TO-DATE
+> Task :betterlyrics:compileDebugJavaWithJavac NO-SOURCE
+> Task :betterlyrics:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :betterlyrics:processDebugJavaRes UP-TO-DATE
+> Task :betterlyrics:createFullJarDebug UP-TO-DATE
+> Task :innertube:preBuild UP-TO-DATE
+> Task :innertube:preDebugBuild UP-TO-DATE
+> Task :innertube:generateDebugResources UP-TO-DATE
+> Task :innertube:packageDebugResources UP-TO-DATE
+> Task :innertube:processDebugNavigationResources UP-TO-DATE
+> Task :innertube:parseDebugLocalResources UP-TO-DATE
+> Task :innertube:generateDebugRFile UP-TO-DATE
+> Task :innertube:compileDebugKotlin UP-TO-DATE
+> Task :innertube:javaPreCompileDebug UP-TO-DATE
+> Task :innertube:compileDebugJavaWithJavac NO-SOURCE
+> Task :innertube:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :innertube:processDebugJavaRes UP-TO-DATE
+> Task :innertube:createFullJarDebug UP-TO-DATE
+> Task :jiosaavn:preBuild UP-TO-DATE
+> Task :jiosaavn:preDebugBuild UP-TO-DATE
+> Task :jiosaavn:generateDebugResources UP-TO-DATE
+> Task :jiosaavn:packageDebugResources UP-TO-DATE
+> Task :jiosaavn:processDebugNavigationResources UP-TO-DATE
+> Task :jiosaavn:parseDebugLocalResources UP-TO-DATE
+> Task :jiosaavn:generateDebugRFile UP-TO-DATE
+> Task :jiosaavn:compileDebugKotlin UP-TO-DATE
+> Task :jiosaavn:javaPreCompileDebug UP-TO-DATE
+> Task :jiosaavn:compileDebugJavaWithJavac NO-SOURCE
+> Task :jiosaavn:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :jiosaavn:processDebugJavaRes UP-TO-DATE
+> Task :jiosaavn:createFullJarDebug UP-TO-DATE
+> Task :kugou:preBuild UP-TO-DATE
+> Task :kugou:preDebugBuild UP-TO-DATE
+> Task :kugou:generateDebugResources UP-TO-DATE
+> Task :kugou:packageDebugResources UP-TO-DATE
+> Task :kugou:processDebugNavigationResources UP-TO-DATE
+> Task :kugou:parseDebugLocalResources UP-TO-DATE
+> Task :kugou:generateDebugRFile UP-TO-DATE
+> Task :kugou:compileDebugKotlin UP-TO-DATE
+> Task :kugou:javaPreCompileDebug UP-TO-DATE
+> Task :kugou:compileDebugJavaWithJavac NO-SOURCE
+> Task :kugou:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :kugou:processDebugJavaRes UP-TO-DATE
+> Task :kugou:createFullJarDebug UP-TO-DATE
+> Task :lrclib:preBuild UP-TO-DATE
+> Task :lrclib:preDebugBuild UP-TO-DATE
+> Task :lrclib:generateDebugResources UP-TO-DATE
+> Task :lrclib:packageDebugResources UP-TO-DATE
+> Task :lrclib:processDebugNavigationResources UP-TO-DATE
+> Task :lrclib:parseDebugLocalResources UP-TO-DATE
+> Task :lrclib:generateDebugRFile UP-TO-DATE
+> Task :lrclib:compileDebugKotlin UP-TO-DATE
+> Task :lrclib:javaPreCompileDebug UP-TO-DATE
+> Task :lrclib:compileDebugJavaWithJavac NO-SOURCE
+> Task :lrclib:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :lrclib:processDebugJavaRes UP-TO-DATE
+> Task :lrclib:createFullJarDebug UP-TO-DATE
+> Task :migration:preBuild UP-TO-DATE
+> Task :migration:preDebugBuild UP-TO-DATE
+> Task :migration:generateDebugResources UP-TO-DATE
+> Task :migration:packageDebugResources UP-TO-DATE
+> Task :migration:processDebugNavigationResources UP-TO-DATE
+> Task :migration:parseDebugLocalResources UP-TO-DATE
+> Task :migration:generateDebugRFile UP-TO-DATE
+> Task :migration:kspDebugKotlin UP-TO-DATE
+> Task :migration:compileDebugKotlin UP-TO-DATE
+> Task :migration:javaPreCompileDebug UP-TO-DATE
+> Task :migration:compileDebugJavaWithJavac NO-SOURCE
+> Task :migration:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :migration:processDebugJavaRes UP-TO-DATE
+> Task :migration:createFullJarDebug UP-TO-DATE
+> Task :betterlyrics:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :paxsenixlyrics:preBuild UP-TO-DATE
+> Task :paxsenixlyrics:preDebugBuild UP-TO-DATE
+> Task :paxsenixlyrics:generateDebugResources UP-TO-DATE
+> Task :paxsenixlyrics:packageDebugResources UP-TO-DATE
+> Task :paxsenixlyrics:processDebugNavigationResources UP-TO-DATE
+> Task :paxsenixlyrics:parseDebugLocalResources UP-TO-DATE
+> Task :paxsenixlyrics:generateDebugRFile UP-TO-DATE
+> Task :paxsenixlyrics:compileDebugKotlin UP-TO-DATE
+> Task :paxsenixlyrics:javaPreCompileDebug UP-TO-DATE
+> Task :paxsenixlyrics:compileDebugJavaWithJavac NO-SOURCE
+> Task :paxsenixlyrics:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :paxsenixlyrics:processDebugJavaRes UP-TO-DATE
+> Task :paxsenixlyrics:createFullJarDebug UP-TO-DATE
+> Task :shazamkit:preBuild UP-TO-DATE
+> Task :shazamkit:preDebugBuild UP-TO-DATE
+> Task :shazamkit:generateDebugResources UP-TO-DATE
+> Task :shazamkit:packageDebugResources UP-TO-DATE
+> Task :shazamkit:processDebugNavigationResources UP-TO-DATE
+> Task :shazamkit:parseDebugLocalResources UP-TO-DATE
+> Task :shazamkit:generateDebugRFile UP-TO-DATE
+> Task :shazamkit:compileDebugKotlin UP-TO-DATE
+> Task :shazamkit:javaPreCompileDebug UP-TO-DATE
+> Task :shazamkit:compileDebugJavaWithJavac NO-SOURCE
+> Task :shazamkit:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :shazamkit:processDebugJavaRes UP-TO-DATE
+> Task :shazamkit:createFullJarDebug UP-TO-DATE
+> Task :simpmusic:preBuild UP-TO-DATE
+> Task :simpmusic:preDebugBuild UP-TO-DATE
+> Task :simpmusic:generateDebugResources UP-TO-DATE
+> Task :simpmusic:packageDebugResources UP-TO-DATE
+> Task :simpmusic:processDebugNavigationResources UP-TO-DATE
+> Task :simpmusic:parseDebugLocalResources UP-TO-DATE
+> Task :simpmusic:generateDebugRFile UP-TO-DATE
+> Task :simpmusic:compileDebugKotlin UP-TO-DATE
+> Task :simpmusic:javaPreCompileDebug UP-TO-DATE
+> Task :simpmusic:compileDebugJavaWithJavac NO-SOURCE
+> Task :simpmusic:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :simpmusic:processDebugJavaRes UP-TO-DATE
+> Task :simpmusic:createFullJarDebug UP-TO-DATE
+> Task :unison:preBuild UP-TO-DATE
+> Task :unison:preDebugBuild UP-TO-DATE
+> Task :unison:generateDebugResources UP-TO-DATE
+> Task :unison:packageDebugResources UP-TO-DATE
+> Task :unison:processDebugNavigationResources UP-TO-DATE
+> Task :unison:parseDebugLocalResources UP-TO-DATE
+> Task :unison:generateDebugRFile UP-TO-DATE
+> Task :unison:compileDebugKotlin UP-TO-DATE
+> Task :unison:javaPreCompileDebug UP-TO-DATE
+> Task :unison:compileDebugJavaWithJavac NO-SOURCE
+> Task :unison:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :unison:processDebugJavaRes UP-TO-DATE
+> Task :unison:createFullJarDebug UP-TO-DATE
+> Task :youlyplus:preBuild UP-TO-DATE
+> Task :youlyplus:preDebugBuild UP-TO-DATE
+> Task :youlyplus:generateDebugResources UP-TO-DATE
+> Task :youlyplus:packageDebugResources UP-TO-DATE
+> Task :youlyplus:processDebugNavigationResources UP-TO-DATE
+> Task :youlyplus:parseDebugLocalResources UP-TO-DATE
+> Task :youlyplus:generateDebugRFile UP-TO-DATE
+> Task :youlyplus:compileDebugKotlin UP-TO-DATE
+> Task :youlyplus:javaPreCompileDebug UP-TO-DATE
+> Task :youlyplus:compileDebugJavaWithJavac NO-SOURCE
+> Task :youlyplus:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :youlyplus:processDebugJavaRes UP-TO-DATE
+> Task :youlyplus:createFullJarDebug UP-TO-DATE
+> Task :app:extractIncludeUniversalFossDebugProto UP-TO-DATE
+> Task :app:extractProto UP-TO-DATE
+> Task :app:extractUniversalFossDebugProto UP-TO-DATE
+> Task :app:extractUniversalFossProto UP-TO-DATE
+> Task :app:extractUniversalProto UP-TO-DATE
+> Task :app:generateUniversalFossDebugProto UP-TO-DATE
+> Task :app:extractUniversalFossDebugSupportedLocales UP-TO-DATE
+> Task :artistvideo:extractDebugSupportedLocales UP-TO-DATE
+> Task :betterlyrics:extractDebugSupportedLocales UP-TO-DATE
+> Task :innertube:extractDebugSupportedLocales UP-TO-DATE
+> Task :jiosaavn:extractDebugSupportedLocales UP-TO-DATE
+> Task :kugou:extractDebugSupportedLocales UP-TO-DATE
+> Task :lrclib:extractDebugSupportedLocales UP-TO-DATE
+> Task :migration:extractDebugSupportedLocales UP-TO-DATE
+> Task :paxsenixlyrics:extractDebugSupportedLocales UP-TO-DATE
+> Task :shazamkit:extractDebugSupportedLocales UP-TO-DATE
+> Task :simpmusic:extractDebugSupportedLocales UP-TO-DATE
+> Task :unison:extractDebugSupportedLocales UP-TO-DATE
+> Task :youlyplus:extractDebugSupportedLocales UP-TO-DATE
+> Task :app:generateUniversalFossDebugLocaleConfig UP-TO-DATE
+> Task :app:generateUniversalFossDebugResources UP-TO-DATE
+> Task :app:packageUniversalFossDebugResources UP-TO-DATE
+> Task :app:processUniversalFossDebugNavigationResources UP-TO-DATE
+> Task :app:parseUniversalFossDebugLocalResources UP-TO-DATE
+> Task :app:generateUniversalFossDebugRFile UP-TO-DATE
+> Task :artistvideo:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :innertube:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :jiosaavn:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :kugou:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :lrclib:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :migration:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :paxsenixlyrics:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :shazamkit:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :simpmusic:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :unison:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :youlyplus:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :app:javaPreCompileUniversalFossDebug UP-TO-DATE
+> Task :app:generateUniversalFossDebugAssets UP-TO-DATE
+> Task :artistvideo:generateDebugAssets UP-TO-DATE
+> Task :artistvideo:mergeDebugAssets UP-TO-DATE
+> Task :betterlyrics:generateDebugAssets UP-TO-DATE
+> Task :betterlyrics:mergeDebugAssets UP-TO-DATE
+> Task :innertube:generateDebugAssets UP-TO-DATE
+> Task :innertube:mergeDebugAssets UP-TO-DATE
+> Task :jiosaavn:generateDebugAssets UP-TO-DATE
+> Task :jiosaavn:mergeDebugAssets UP-TO-DATE
+> Task :kugou:generateDebugAssets UP-TO-DATE
+> Task :kugou:mergeDebugAssets UP-TO-DATE
+> Task :lrclib:generateDebugAssets UP-TO-DATE
+> Task :lrclib:mergeDebugAssets UP-TO-DATE
+> Task :migration:generateDebugAssets UP-TO-DATE
+> Task :migration:mergeDebugAssets UP-TO-DATE
+> Task :paxsenixlyrics:generateDebugAssets UP-TO-DATE
+> Task :paxsenixlyrics:mergeDebugAssets UP-TO-DATE
+> Task :shazamkit:generateDebugAssets UP-TO-DATE
+> Task :shazamkit:mergeDebugAssets UP-TO-DATE
+> Task :simpmusic:generateDebugAssets UP-TO-DATE
+> Task :simpmusic:mergeDebugAssets UP-TO-DATE
+> Task :unison:generateDebugAssets UP-TO-DATE
+> Task :unison:mergeDebugAssets UP-TO-DATE
+> Task :youlyplus:generateDebugAssets UP-TO-DATE
+> Task :youlyplus:mergeDebugAssets UP-TO-DATE
+> Task :app:mergeUniversalFossDebugAssets UP-TO-DATE
+> Task :app:compressUniversalFossDebugAssets UP-TO-DATE
+> Task :app:l8DexDesugarLibUniversalFossDebug UP-TO-DATE
+> Task :app:checkUniversalFossDebugDuplicateClasses UP-TO-DATE
+> Task :app:desugarUniversalFossDebugFileDependencies UP-TO-DATE
+> Task :app:mergeExtDexUniversalFossDebug UP-TO-DATE
+> Task :innertube:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :migration:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :kugou:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :lrclib:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :paxsenixlyrics:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :betterlyrics:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :simpmusic:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :youlyplus:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :shazamkit:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :artistvideo:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :unison:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :jiosaavn:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :app:mergeLibDexUniversalFossDebug UP-TO-DATE
+> Task :artistvideo:writeDebugAarMetadata UP-TO-DATE
+> Task :betterlyrics:writeDebugAarMetadata UP-TO-DATE
+> Task :innertube:writeDebugAarMetadata UP-TO-DATE
+> Task :jiosaavn:writeDebugAarMetadata UP-TO-DATE
+> Task :kugou:writeDebugAarMetadata UP-TO-DATE
+> Task :lrclib:writeDebugAarMetadata UP-TO-DATE
+> Task :migration:writeDebugAarMetadata UP-TO-DATE
+> Task :paxsenixlyrics:writeDebugAarMetadata UP-TO-DATE
+> Task :shazamkit:writeDebugAarMetadata UP-TO-DATE
+> Task :simpmusic:writeDebugAarMetadata UP-TO-DATE
+> Task :unison:writeDebugAarMetadata UP-TO-DATE
+> Task :youlyplus:writeDebugAarMetadata UP-TO-DATE
+> Task :app:checkUniversalFossDebugAarMetadata UP-TO-DATE
+> Task :app:compileUniversalFossDebugNavigationResources UP-TO-DATE
+> Task :app:mapUniversalFossDebugSourceSetPaths UP-TO-DATE
+> Task :app:mergeUniversalFossDebugResources UP-TO-DATE
+> Task :app:createUniversalFossDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksUniversalFossDebug UP-TO-DATE
+> Task :artistvideo:extractDeepLinksDebug UP-TO-DATE
+> Task :artistvideo:processDebugManifest UP-TO-DATE
+> Task :betterlyrics:extractDeepLinksDebug UP-TO-DATE
+> Task :betterlyrics:processDebugManifest UP-TO-DATE
+> Task :innertube:extractDeepLinksDebug UP-TO-DATE
+> Task :innertube:processDebugManifest UP-TO-DATE
+> Task :jiosaavn:extractDeepLinksDebug UP-TO-DATE
+> Task :jiosaavn:processDebugManifest UP-TO-DATE
+> Task :kugou:extractDeepLinksDebug UP-TO-DATE
+> Task :kugou:processDebugManifest UP-TO-DATE
+> Task :lrclib:extractDeepLinksDebug UP-TO-DATE
+> Task :lrclib:processDebugManifest UP-TO-DATE
+> Task :migration:extractDeepLinksDebug UP-TO-DATE
+> Task :migration:processDebugManifest UP-TO-DATE
+> Task :paxsenixlyrics:extractDeepLinksDebug UP-TO-DATE
+> Task :paxsenixlyrics:processDebugManifest UP-TO-DATE
+> Task :shazamkit:extractDeepLinksDebug UP-TO-DATE
+> Task :shazamkit:processDebugManifest UP-TO-DATE
+> Task :simpmusic:extractDeepLinksDebug UP-TO-DATE
+> Task :simpmusic:processDebugManifest UP-TO-DATE
+> Task :unison:extractDeepLinksDebug UP-TO-DATE
+> Task :unison:processDebugManifest UP-TO-DATE
+> Task :youlyplus:extractDeepLinksDebug UP-TO-DATE
+> Task :youlyplus:processDebugManifest UP-TO-DATE
+> Task :app:processUniversalFossDebugMainManifest UP-TO-DATE
+> Task :app:processUniversalFossDebugManifest UP-TO-DATE
+> Task :app:processUniversalFossDebugManifestForPackage UP-TO-DATE
+> Task :artistvideo:compileDebugLibraryResources UP-TO-DATE
+> Task :betterlyrics:compileDebugLibraryResources UP-TO-DATE
+> Task :innertube:compileDebugLibraryResources UP-TO-DATE
+> Task :jiosaavn:compileDebugLibraryResources UP-TO-DATE
+> Task :kugou:compileDebugLibraryResources UP-TO-DATE
+> Task :lrclib:compileDebugLibraryResources UP-TO-DATE
+> Task :migration:compileDebugLibraryResources UP-TO-DATE
+> Task :paxsenixlyrics:compileDebugLibraryResources UP-TO-DATE
+> Task :shazamkit:compileDebugLibraryResources UP-TO-DATE
+> Task :simpmusic:compileDebugLibraryResources UP-TO-DATE
+> Task :unison:compileDebugLibraryResources UP-TO-DATE
+> Task :youlyplus:compileDebugLibraryResources UP-TO-DATE
+> Task :app:processUniversalFossDebugResources UP-TO-DATE
+> Task :app:preArm64GmsDebugBuild UP-TO-DATE
+> Task :app:configureCMakeDebug[arm64-v8a]
+> Task :app:buildCMakeDebug[arm64-v8a]
+> Task :app:preArmeabiGmsDebugBuild UP-TO-DATE
+> Task :app:configureCMakeDebug[armeabi-v7a]
+> Task :app:buildCMakeDebug[armeabi-v7a]
+> Task :app:preX86GmsDebugBuild UP-TO-DATE
+> Task :app:configureCMakeDebug[x86]
+> Task :app:buildCMakeDebug[x86]
+> Task :app:preX86_64GmsDebugBuild UP-TO-DATE
+> Task :app:configureCMakeDebug[x86_64]
+> Task :app:buildCMakeDebug[x86_64]
+> Task :app:mergeUniversalFossDebugJniLibFolders UP-TO-DATE
+> Task :artistvideo:mergeDebugJniLibFolders UP-TO-DATE
+> Task :artistvideo:mergeDebugNativeLibs NO-SOURCE
+> Task :artistvideo:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :betterlyrics:mergeDebugJniLibFolders UP-TO-DATE
+> Task :betterlyrics:mergeDebugNativeLibs NO-SOURCE
+> Task :betterlyrics:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :innertube:mergeDebugJniLibFolders UP-TO-DATE
+> Task :innertube:mergeDebugNativeLibs NO-SOURCE
+> Task :innertube:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :jiosaavn:mergeDebugJniLibFolders UP-TO-DATE
+> Task :jiosaavn:mergeDebugNativeLibs NO-SOURCE
+> Task :jiosaavn:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :kugou:mergeDebugJniLibFolders UP-TO-DATE
+> Task :kugou:mergeDebugNativeLibs NO-SOURCE
+> Task :kugou:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :lrclib:mergeDebugJniLibFolders UP-TO-DATE
+> Task :lrclib:mergeDebugNativeLibs NO-SOURCE
+> Task :lrclib:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :migration:mergeDebugJniLibFolders UP-TO-DATE
+> Task :migration:mergeDebugNativeLibs NO-SOURCE
+> Task :migration:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :paxsenixlyrics:mergeDebugJniLibFolders UP-TO-DATE
+> Task :paxsenixlyrics:mergeDebugNativeLibs NO-SOURCE
+> Task :paxsenixlyrics:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :shazamkit:mergeDebugJniLibFolders UP-TO-DATE
+> Task :shazamkit:mergeDebugNativeLibs NO-SOURCE
+> Task :shazamkit:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :simpmusic:mergeDebugJniLibFolders UP-TO-DATE
+> Task :simpmusic:mergeDebugNativeLibs NO-SOURCE
+> Task :simpmusic:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :unison:mergeDebugJniLibFolders UP-TO-DATE
+> Task :unison:mergeDebugNativeLibs NO-SOURCE
+> Task :unison:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :youlyplus:mergeDebugJniLibFolders UP-TO-DATE
+> Task :youlyplus:mergeDebugNativeLibs NO-SOURCE
+> Task :youlyplus:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :app:mergeUniversalFossDebugNativeLibs UP-TO-DATE
+> Task :app:stripUniversalFossDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningUniversalFossDebug UP-TO-DATE
+> Task :app:writeUniversalFossDebugAppMetadata UP-TO-DATE
+> Task :app:writeUniversalFossDebugSigningConfigVersions UP-TO-DATE
+> Task :app:kspUniversalFossDebugKotlin
+> Task :app:compileUniversalFossDebugKotlin
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/App.kt:339:58 'static field TRIM_MEMORY_RUNNING_LOW: Int' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/App.kt:340:58 'static field TRIM_MEMORY_RUNNING_CRITICAL: Int' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/App.kt:357:66 'static field TRIM_MEMORY_RUNNING_CRITICAL: Int' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/App.kt:380:48 This declaration needs opt-in. Its usage should be marked with '@coil3.annotation.DelicateCoilApi' or '@OptIn(coil3.annotation.DelicateCoilApi::class)'
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/MainActivity.kt:2000:41 'when' is exhaustive so 'else' is redundant here.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/api/AiPlaylistService.kt:317:49 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/api/DeepLService.kt:79:49 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/api/MistralService.kt:153:53 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/api/OpenRouterService.kt:150:49 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/api/OpenRouterStreamingService.kt:128:49 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/api/OpenRouterStreamingService.kt:138:76 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/AudioDeviceBottomSheet.kt:543:88 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeUp.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/AudioDeviceBottomSheet.kt:726:74 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeUp.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/AudioDeviceBottomSheet.kt:726:101 'val Icons.Filled.VolumeOff: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeOff.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/AudioDeviceBottomSheet.kt:1059:52 'val Icons.Filled.VolumeUp: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.VolumeUp.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/BluetoothUtils.kt:31:42 'var isBluetoothA2dpOn: Boolean' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/BluetoothUtils.kt:31:76 'var isBluetoothScoOn: Boolean' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:146:75 Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:147:73 Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:148:74 Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:425:49 'fun ClickableText(text: AnnotatedString, modifier: Modifier = ..., style: TextStyle = ..., softWrap: Boolean = ..., overflow: TextOverflow = ..., maxLines: Int = ..., onTextLayout: (TextLayoutResult) -> Unit = ..., onClick: (Int) -> Unit): Unit' is deprecated. Use Text or BasicText and pass an AnnotatedString that contains a LinkAnnotation. Check LinkAnnotation's documentation for more details and samples.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:429:75 'static fun startActivity(p0: Context, p1: Intent, p2: Bundle?): Unit' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:522:50 Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:523:62 Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/changelog/changelogscreen.kt:524:54 Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:173:41 Unnecessary safe call on a non-null receiver of type 'List<WorkInfo>'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:317:44 'fun largeTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:411:63 'static fun startActivity(p0: Context, p1: Intent, p2: Bundle?): Unit' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:560:59 'static fun startActivity(p0: Context, p1: Intent, p2: Bundle?): Unit' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:605:41 'fun ClickableText(text: AnnotatedString, modifier: Modifier = ..., style: TextStyle = ..., softWrap: Boolean = ..., overflow: TextOverflow = ..., maxLines: Int = ..., onTextLayout: (TextLayoutResult) -> Unit = ..., onClick: (Int) -> Unit): Unit' is deprecated. Use Text or BasicText and pass an AnnotatedString that contains a LinkAnnotation. Check LinkAnnotation's documentation for more details and samples.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:609:67 'static fun startActivity(p0: Context, p1: Intent, p2: Bundle?): Unit' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/echomusic/updater/echomusicupdater.kt:648:72 'fun LinearProgressIndicator(progress: Float, modifier: Modifier = ..., color: Color = ..., trackColor: Color = ..., strokeCap: StrokeCap = ...): Unit' is deprecated. Use the overload that takes `progress` as a lambda.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/eq/audio/AudioEnhanceProcessor.kt:17:18 This declaration overrides a deprecated member but is not marked as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/eq/audio/JrDspAudioProcessor.kt:32:18 This declaration overrides a deprecated member but is not marked as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/eq/audio/NormalizationGainAudioProcessor.kt:25:18 This declaration overrides a deprecated member but is not marked as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/eq/audio/TruePeakLimiterAudioProcessor.kt:19:18 This declaration overrides a deprecated member but is not marked as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/legal/TermsScreens.kt:304:48 'fun largeTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/license/LicenseScreens.kt:317:55 'val LocalLifecycleOwner: ProvidableCompositionLocal<LifecycleOwner>' is deprecated. Moved to lifecycle-runtime-compose library in androidx.lifecycle.compose package.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/listentogether/ListenTogetherServers.kt:60:51 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/lyrics/LyricsTranslationHelper.kt:94:41 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/migration/TidalAuthCallbackBus.kt:33:17 This declaration needs opt-in. Its usage should be marked with '@kotlinx.coroutines.ExperimentalCoroutinesApi' or '@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)'
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/migration/TidalTokenStore.kt:150:41 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/AudioExportService.kt:206:38 Elvis operator (?:) always returns the left operand of non-nullable type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/AudioExportService.kt:234:38 Elvis operator (?:) always returns the left operand of non-nullable type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/AudioExportService.kt:917:30 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/ChunkingDataSource.kt:107:53 'static field POSITION_OUT_OF_RANGE: Int' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/MediaLibrarySessionCallback.kt:106:18 This declaration overrides a deprecated member but is not marked as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/MediaLibrarySessionCallback.kt:118:22 'fun onPlayerCommandRequest(p0: MediaSession, p1: MediaSession.ControllerInfo, p2: Int): Int' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/MediaLibrarySessionCallback.kt:139:18 This declaration overrides a deprecated member but is not marked as deprecated itself. Add the '@Deprecated' annotation or suppress the diagnostic.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/MusicService.kt:4442:27 Unnecessary safe call on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/playback/sponsorblock/SponsorBlockService.kt:45:41 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/qobuz/QobuzApi.kt:70:41 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/qobuz/QobuzApi.kt:103:41 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/qobuz/QobuzApi.kt:128:41 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/qobuz/QobuzApi.kt:167:41 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/qobuz/QobuzBundleScraper.kt:83:68 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/BottomSheetMenu.kt:82:81 'val windowInsets: WindowInsets' is deprecated. Renamed as modalWindowInsets.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/Lyrics.kt:815:79 Unnecessary safe call on a non-null receiver of type 'LyricsEntity'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/Lyrics.kt:1167:59 Unnecessary safe call on a non-null receiver of type 'LyricsEntity'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/Lyrics.kt:1547:97 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/Lyrics.kt:1592:70 Elvis operator (?:) always returns the left operand of non-nullable type 'Int'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/Lyrics.kt:1649:70 Elvis operator (?:) always returns the left operand of non-nullable type 'Int'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/Lyrics.kt:1696:70 Elvis operator (?:) always returns the left operand of non-nullable type 'Int'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/Lyrics.kt:1752:70 Elvis operator (?:) always returns the left operand of non-nullable type 'Int'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/Lyrics.kt:1819:70 Elvis operator (?:) always returns the left operand of non-nullable type 'Int'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/Lyrics.kt:1873:70 Elvis operator (?:) always returns the left operand of non-nullable type 'Int'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/MetroLyrics.kt:853:47 Unnecessary non-null assertion (!!) on a non-null receiver of type 'MetroWordTimestamp'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/UpdaterComponents.kt:279:13 'fun ClickableText(text: AnnotatedString, modifier: Modifier = ..., style: TextStyle = ..., softWrap: Boolean = ..., overflow: TextOverflow = ..., maxLines: Int = ..., onTextLayout: (TextLayoutResult) -> Unit = ..., onClick: (Int) -> Unit): Unit' is deprecated. Use Text or BasicText and pass an AnnotatedString that contains a LinkAnnotation. Check LinkAnnotation's documentation for more details and samples.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/UpdaterComponents.kt:283:39 'static fun startActivity(p0: Context, p1: Intent, p2: Bundle?): Unit' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/backdrop/internal/Paint.kt:18:10 'fun asFrameworkPaint(): Paint' is deprecated. Use platform-specific extension to get platform reference.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/component/backdrop/internal/Paint.kt:24:10 'fun asFrameworkPaint(): Paint' is deprecated. Use platform-specific extension to get platform reference.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/menu/AlbumMenu.kt:276:33 Condition is always 'true'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/menu/AlbumMenu.kt:599:37 Condition is always 'true'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/menu/OldPlayerMenu.kt:760:58 Unnecessary safe call on a non-null receiver of type 'ListenTogetherManager'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/menu/YouTubeAlbumMenu.kt:210:33 Condition is always 'true'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/menu/YouTubeAlbumMenu.kt:228:37 Condition is always 'true'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/newui/AuraMigrationScreen.kt:112:37 'fun <reified VM : ViewModel> hiltViewModel(viewModelStoreOwner: ViewModelStoreOwner = ..., key: String? = ...): VM' is deprecated. Moved to package: androidx.hilt.lifecycle.viewmodel.compose.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/newui/AuraMigrationScreen.kt:989:41 'fun <reified VM : ViewModel> hiltViewModel(viewModelStoreOwner: ViewModelStoreOwner = ..., key: String? = ...): VM' is deprecated. Moved to package: androidx.hilt.lifecycle.viewmodel.compose.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/newui/AuraMigrationScreen.kt:1012:56 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/newui/AuraMigrationScreen.kt:1017:57 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/newui/AuraPlayerMenu.kt:695:50 Unnecessary safe call on a non-null receiver of type 'ListenTogetherManager'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/newui/AuraSearchSuggestions.kt:408:9 'when' is exhaustive so 'else' is redundant here.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/newui/AuraSearchSuggestions.kt:631:21 'when' is exhaustive so 'else' is redundant here.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/player/Player.kt:1574:54 Unnecessary safe call on a non-null receiver of type 'MediaMetadata'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/player/Player.kt:1966:80 Unnecessary safe call on a non-null receiver of type 'MediaMetadata'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/player/Player.kt:1966:118 Unnecessary safe call on a non-null receiver of type 'MediaMetadata'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/player/PlayerVideoSurface.kt:60:35 'field unappliedRotationDegrees: Int' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/player/PlayerVideoSurface.kt:60:79 'field unappliedRotationDegrees: Int' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/player/PlayerVideoSurface.kt:77:29 'field unappliedRotationDegrees: Int' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/player/PlayerVideoSurface.kt:77:75 'field unappliedRotationDegrees: Int' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/OnboardingArtistsScreen.kt:68:38 'fun <reified VM : ViewModel> hiltViewModel(viewModelStoreOwner: ViewModelStoreOwner = ..., key: String? = ...): VM' is deprecated. Moved to package: androidx.hilt.lifecycle.viewmodel.compose.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/PodcastScreen.kt:101:35 'fun <reified VM : ViewModel> hiltViewModel(viewModelStoreOwner: ViewModelStoreOwner = ..., key: String? = ...): VM' is deprecated. Moved to package: androidx.hilt.lifecycle.viewmodel.compose.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/SpotifyImportScreen.kt:63:54 'fun <reified VM : ViewModel> hiltViewModel(viewModelStoreOwner: ViewModelStoreOwner = ..., key: String? = ...): VM' is deprecated. Moved to package: androidx.hilt.lifecycle.viewmodel.compose.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/SpotifyImportScreen.kt:117:39 'fun largeTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/SpotifyImportScreen.kt:124:39 'fun largeTopAppBarColors(): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/artist/ArtistScreen.kt:436:74 Unnecessary safe call on a non-null receiver of type 'ArtistPage'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/artist/ArtistScreen.kt:526:65 Unnecessary safe call on a non-null receiver of type 'ArtistPage'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/artist/ArtistScreen.kt:527:69 Unnecessary safe call on a non-null receiver of type 'ArtistPage'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/artist/ArtistScreen.kt:669:72 Unnecessary safe call on a non-null receiver of type 'ArtistPage'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/equalizer/autoeq/AutoEqScreen.kt:73:41 'fun <reified VM : ViewModel> hiltViewModel(viewModelStoreOwner: ViewModelStoreOwner = ..., key: String? = ...): VM' is deprecated. Moved to package: androidx.hilt.lifecycle.viewmodel.compose.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/equalizer/axion/AxionEqViewModel.kt:139:13 Redundant creation of Json format. Creating instances for each usage can be slow.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/equalizer/axion/AxionEqViewModel.kt:292:13 Redundant creation of Json format. Creating instances for each usage can be slow.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/equalizer/axion/AxionEqViewModel.kt:524:28 Redundant creation of Json format. Creating instances for each usage can be slow.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/equalizer/axion/AxionEqViewModel.kt:537:28 Redundant creation of Json format. Creating instances for each usage can be slow.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/library/LocalSongScreen.kt:441:52 'fun largeTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/library/LocalSongScreen.kt:815:24 Unnecessary non-null assertion (!!) on a non-null receiver of type 'LocalSongScanSummary'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/migration/MigrationScreen.kt:41:37 'fun <reified VM : ViewModel> hiltViewModel(viewModelStoreOwner: ViewModelStoreOwner = ..., key: String? = ...): VM' is deprecated. Moved to package: androidx.hilt.lifecycle.viewmodel.compose.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/migration/MigrationTidalScreen.kt:61:41 'fun <reified VM : ViewModel> hiltViewModel(viewModelStoreOwner: ViewModelStoreOwner = ..., key: String? = ...): VM' is deprecated. Moved to package: androidx.hilt.lifecycle.viewmodel.compose.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/migration/MigrationTidalScreen.kt:85:56 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/migration/MigrationTidalScreen.kt:89:57 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/migration/MigrationViewModel.kt:954:29 Condition is always 'true'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/playlist/CachePlaylistScreen.kt:471:76 Elvis operator (?:) always returns the left operand of non-nullable type 'Int'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/playlist/SongPreviewController.kt:345:49 Unnecessary safe call on a non-null receiver of type 'PlayerConnection'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/search/SearchScreen.kt:366:17 'fun SearchBar(query: String, onQueryChange: (String) -> Unit, onSearch: (String) -> Unit, active: Boolean, onActiveChange: (Boolean) -> Unit, modifier: Modifier = ..., enabled: Boolean = ..., placeholder: ComposableFunction0<Unit>? = ..., leadingIcon: ComposableFunction0<Unit>? = ..., trailingIcon: ComposableFunction0<Unit>? = ..., shape: Shape = ..., colors: SearchBarColors = ..., tonalElevation: Dp = ..., shadowElevation: Dp = ..., windowInsets: WindowInsets = ..., interactionSource: MutableInteractionSource? = ..., content: ComposableFunction1<ColumnScope, Unit>): Unit' is deprecated. Use overload which takes inputField as a parameter.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/search/suggestions/AppleMusicScraper.kt:31:30 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/settings/AboutScreen.kt:240:44 'fun largeTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/settings/ListenBrainzManager.kt:62:42 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/settings/ListenBrainzManager.kt:125:42 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/settings/LogsScreen.kt:114:44 'fun largeTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/settings/QobuzSettingsScreen.kt:77:39 'fun largeTopAppBarColors(containerColor: Color = ..., scrolledContainerColor: Color = ..., navigationIconContentColor: Color = ..., titleContentColor: Color = ..., actionIconContentColor: Color = ...): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/screens/settings/QobuzSettingsScreen.kt:85:39 'fun largeTopAppBarColors(): TopAppBarColors' is deprecated. Use topAppBarColors instead.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/utils/ShowMediaInfo.kt:189:58 Redundant call of conversion method.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/utils/ShowMediaInfo.kt:195:53 Redundant call of conversion method.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/ui/utils/ShowMediaInfo.kt:210:82 Redundant call of conversion method.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/BotDetectionMitigator.kt:81:46 Unnecessary safe call on a non-null receiver of type 'Context'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/ComposeToImage.kt:115:52 Redundant call of conversion method.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/LocalFileDownloader.kt:89:26 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/RingtoneHelper.kt:418:46 Elvis operator (?:) always returns the left operand of non-nullable type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/WebAuthSessionCleaner.kt:79:9 'fun clearFormData(): Unit' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/WebAuthSessionCleaner.kt:81:9 'fun clearUsernamePassword(): Unit' is deprecated. Deprecated in Java.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/YTPlayerUtils.kt:495:68 Elvis operator (?:) always returns the left operand of non-nullable type 'Boolean'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/YTPlayerUtils.kt:496:71 Elvis operator (?:) always returns the left operand of non-nullable type 'Int'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/YTPlayerUtils.kt:1207:80 Unnecessary safe call on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/YTPlayerUtils.kt:1212:93 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/YTPlayerUtils.kt:1227:57 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/YTPlayerUtils.kt:1265:54 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/YTPlayerUtils.kt:1284:92 Unnecessary safe call on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/YTPlayerUtils.kt:1291:97 Unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/YTPlayerUtils.kt:1371:135 Unnecessary safe call on a non-null receiver of type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/cipher/CipherWebView.kt:191:43 Unnecessary safe call on a non-null receiver of type 'FunctionNameExtractor.SigFunctionInfo'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/cipher/CipherWebView.kt:192:45 Unnecessary safe call on a non-null receiver of type 'FunctionNameExtractor.SigFunctionInfo'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/cipher/CipherWebView.kt:193:45 Unnecessary safe call on a non-null receiver of type 'FunctionNameExtractor.SigFunctionInfo'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/cipher/CipherWebView.kt:218:43 Unnecessary safe call on a non-null receiver of type 'FunctionNameExtractor.NFunctionInfo'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/cipher/PlayerJsFetcher.kt:235:33 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/cipher/PlayerJsFetcher.kt:273:33 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/potoken/PoTokenWebView.kt:389:34 Unnecessary non-null assertion (!!) on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/utils/qobuz/QobuzApiClient.kt:156:37 Unnecessary safe call on a non-null receiver of type 'ResponseBody'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/viewmodels/ArtistItemsViewModel.kt:370:101 Elvis operator (?:) always returns the left operand of non-nullable type 'String'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/viewmodels/ArtistViewModel.kt:290:57 Unnecessary safe call on a non-null receiver of type 'ArtistItem'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/viewmodels/ArtistViewModel.kt:302:53 Unnecessary safe call on a non-null receiver of type 'ArtistItem'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/viewmodels/ArtistViewModel.kt:421:53 Unnecessary safe call on a non-null receiver of type 'ArtistItem'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/viewmodels/BackupRestoreViewModel.kt:102:47 Unnecessary non-null assertion (!!) on a non-null receiver of type 'File'.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/viewmodels/BackupRestoreViewModel.kt:262:43 Java type mismatch: inferred type is 'String?', but 'String' was expected.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/viewmodels/BackupRestoreViewModel.kt:548:30 Redundant creation of Json format. Creating instances for each usage can be slow.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/viewmodels/HomeViewModel.kt:1022:17 'when' is exhaustive so 'else' is redundant here.
+w: file:///D:/7-8-26/AURA%20HI-RES/app/src/main/kotlin/com/music/echo/viewmodels/HomeViewModel.kt:1370:37 Condition is always 'true'.
+
+> Task :app:compileUniversalFossDebugJavaWithJavac
+> Task :app:hiltSyncUniversalFossDebug
+> Task :app:hiltAggregateDepsUniversalFossDebug UP-TO-DATE
+> Task :app:hiltJavaCompileUniversalFossDebug
+> Task :app:processUniversalFossDebugJavaRes UP-TO-DATE
+> Task :app:mergeUniversalFossDebugJavaResource UP-TO-DATE
+> Task :app:transformUniversalFossDebugClassesWithAsm
+> Task :app:dexBuilderUniversalFossDebug
+> Task :app:mergeProjectDexUniversalFossDebug
+> Task :app:mergeUniversalFossDebugGlobalSynthetics
+> Task :app:packageUniversalFossDebug
+> Task :app:createUniversalFossDebugApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleUniversalFossDebug
+
+BUILD SUCCESSFUL in 2m 28s
+309 actionable tasks: 18 executed, 291 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
