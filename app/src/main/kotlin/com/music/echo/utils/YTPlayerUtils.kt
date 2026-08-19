@@ -1311,7 +1311,25 @@ object YTPlayerUtils {
                 Timber.tag(logTag).d("Format found: ${format.mimeType}, bitrate: ${format.bitrate}")
 
                 val urlStartMs = SystemClock.elapsedRealtime()
-                streamUrl = findUrlOrNull(format, videoId, responseToUse, skipNewPipe = wasOriginallyAgeRestricted)
+                // See findAudioFormatCandidates: for normal audio playback, try every candidate format
+                // on THIS client (best bitrate first) before giving up on it. Video/ringtone paths are
+                // unchanged — they still resolve exactly one, pre-chosen format.
+                val topFormat = format
+                if (!preferVideo && !preferSmallestAudio) {
+                    for (candidate in findAudioFormatCandidates(responseToUse, audioQuality)) {
+                        val candidateUrl = findUrlOrNull(candidate, videoId, responseToUse, skipNewPipe = wasOriginallyAgeRestricted)
+                        if (candidateUrl != null) {
+                            format = candidate
+                            streamUrl = candidateUrl
+                            if (candidate.itag != topFormat.itag) {
+                                Timber.tag(logTag).w("Top format itag=${topFormat.itag} had no usable URL on $resolvedClientName; fell back to itag=${candidate.itag} on the SAME client")
+                            }
+                            break
+                        }
+                    }
+                } else {
+                    streamUrl = findUrlOrNull(format, videoId, responseToUse, skipNewPipe = wasOriginallyAgeRestricted)
+                }
                 timing?.let { it.urlMs += SystemClock.elapsedRealtime() - urlStartMs }
                 if (streamUrl == null) {
                     // Distinguishes, without logging the URL/cipher itself: "format had nothing to
@@ -1319,15 +1337,17 @@ object YTPlayerUtils {
                     // data) from "we had a cipher and deobfuscation genuinely failed" (hasCipher=true).
                     // These look identical as a bare "Stream URL not found" and were the open question
                     // this whole resolve chain could not previously answer from the shared log alone.
-                    val hasUrl = !format.url.isNullOrEmpty()
-                    val hasCipher = !format.signatureCipher.isNullOrEmpty() || !format.cipher.isNullOrEmpty()
+                    // format was never reassigned in this branch — the fallback loop above only sets
+                    // it when candidateUrl succeeds, which is exactly the case that skips this block.
+                    val hasUrl = !topFormat.url.isNullOrEmpty()
+                    val hasCipher = !topFormat.signatureCipher.isNullOrEmpty() || !topFormat.cipher.isNullOrEmpty()
                     Timber.tag(logTag).w(
-                        "Stream URL not found: client=$resolvedClientName itag=${format.itag} hasUrl=$hasUrl hasCipher=$hasCipher"
+                        "Stream URL not found: client=$resolvedClientName itag=${topFormat.itag} hasUrl=$hasUrl hasCipher=$hasCipher"
                     )
                     PlaybackLogManager.log(
                         PlaybackLogLevel.WARNING,
                         "No stream URL",
-                        "$resolvedClientName itag=${format.itag} hasUrl=$hasUrl hasCipher=$hasCipher"
+                        "$resolvedClientName itag=${topFormat.itag} hasUrl=$hasUrl hasCipher=$hasCipher"
                     )
                     continue
                 }
@@ -1722,7 +1742,34 @@ object YTPlayerUtils {
 
         return format
     }
-    
+
+    // 2026-08-19, eighth postmortem: same audio-pool selection as findFormat's non-video/non-smallest
+    // branch, but ranked instead of collapsed to a single winner. findFormat's top pick (usually the
+    // highest-bitrate Opus tier, itag 774) turned out to have no url/signatureCipher AT ALL on several
+    // clients — YouTube's response lists it with metadata only. The resolve loop used to give up on the
+    // WHOLE client the instant that pick failed, even when the SAME response had a perfectly usable
+    // lower-bitrate format (itag 251) right behind it — forcing every resolve down to WEB_CREATOR, the
+    // one client whose CDN access turned out to be broken regardless of headers/tokens/PoToken (see
+    // 0.6.219-222). This lets the caller try the next-best format on the SAME (working) client first.
+    private fun findAudioFormatCandidates(
+        playerResponse: PlayerResponse,
+        audioQuality: AudioQuality,
+    ): List<PlayerResponse.StreamingData.Format> {
+        val audioFormats = playerResponse.streamingData?.adaptiveFormats?.filter { it.isAudio }
+        val audioPool = audioFormats?.filter { it.isOriginal }?.takeIf { it.isNotEmpty() }
+            ?: audioFormats?.filter { it.audioTrack?.isAutoDubbed == false }?.takeIf { it.isNotEmpty() }
+            ?: audioFormats
+        return audioPool
+            ?.sortedByDescending {
+                var score = it.bitrate.toFloat()
+                if (audioQuality == AudioQuality.OPUS && it.mimeType.startsWith("audio/webm")) {
+                    score *= 2.0f
+                }
+                score
+            }
+            ?: emptyList()
+    }
+
     private fun validateStatus(url: String): Boolean {
         Timber.tag(logTag).d("Validating stream URL status")
         try {
