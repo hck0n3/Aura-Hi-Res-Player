@@ -1157,13 +1157,6 @@ object YTPlayerUtils {
         // Carries the most recent real playability reason seen while iterating clients, so an
         // all-clients-exhausted dead-end can surface WHY (region-locked, members-only, …) to the user.
         var lastPlayabilityReason: String? = null
-        // True only at the three points below that actually trust streamUrl (privately-owned track,
-        // HEAD-validated, or n-transform retry that re-validated). Without this, a last-client attempt
-        // whose hand-applied n-transform later fails validation still leaves streamUrl/format/
-        // streamPlayerResponse non-null from that failed try, so the null-checks after the loop pass
-        // and a broken URL gets returned as if it were a success — silently skipping the embedded-player
-        // last-resort fallback in finishWithEmbeddedFallback, which only runs on a genuine failure Result.
-        var validatedUrl = false
         var retryMainPlayerResponse: PlayerResponse? = if (usedAgeRestrictedClient != null) mainPlayerResponse else null
 
 
@@ -1311,25 +1304,7 @@ object YTPlayerUtils {
                 Timber.tag(logTag).d("Format found: ${format.mimeType}, bitrate: ${format.bitrate}")
 
                 val urlStartMs = SystemClock.elapsedRealtime()
-                // See findAudioFormatCandidates: for normal audio playback, try every candidate format
-                // on THIS client (best bitrate first) before giving up on it. Video/ringtone paths are
-                // unchanged — they still resolve exactly one, pre-chosen format.
-                val topFormat = format
-                if (!preferVideo && !preferSmallestAudio) {
-                    for (candidate in findAudioFormatCandidates(responseToUse, audioQuality)) {
-                        val candidateUrl = findUrlOrNull(candidate, videoId, responseToUse, skipNewPipe = wasOriginallyAgeRestricted)
-                        if (candidateUrl != null) {
-                            format = candidate
-                            streamUrl = candidateUrl
-                            if (candidate.itag != topFormat.itag) {
-                                Timber.tag(logTag).w("Top format itag=${topFormat.itag} had no usable URL on $resolvedClientName; fell back to itag=${candidate.itag} on the SAME client")
-                            }
-                            break
-                        }
-                    }
-                } else {
-                    streamUrl = findUrlOrNull(format, videoId, responseToUse, skipNewPipe = wasOriginallyAgeRestricted)
-                }
+                streamUrl = findUrlOrNull(format, videoId, responseToUse, skipNewPipe = wasOriginallyAgeRestricted)
                 timing?.let { it.urlMs += SystemClock.elapsedRealtime() - urlStartMs }
                 if (streamUrl == null) {
                     // Distinguishes, without logging the URL/cipher itself: "format had nothing to
@@ -1337,17 +1312,15 @@ object YTPlayerUtils {
                     // data) from "we had a cipher and deobfuscation genuinely failed" (hasCipher=true).
                     // These look identical as a bare "Stream URL not found" and were the open question
                     // this whole resolve chain could not previously answer from the shared log alone.
-                    // format was never reassigned in this branch — the fallback loop above only sets
-                    // it when candidateUrl succeeds, which is exactly the case that skips this block.
-                    val hasUrl = !topFormat.url.isNullOrEmpty()
-                    val hasCipher = !topFormat.signatureCipher.isNullOrEmpty() || !topFormat.cipher.isNullOrEmpty()
+                    val hasUrl = !format.url.isNullOrEmpty()
+                    val hasCipher = !format.signatureCipher.isNullOrEmpty() || !format.cipher.isNullOrEmpty()
                     Timber.tag(logTag).w(
-                        "Stream URL not found: client=$resolvedClientName itag=${topFormat.itag} hasUrl=$hasUrl hasCipher=$hasCipher"
+                        "Stream URL not found: client=$resolvedClientName itag=${format.itag} hasUrl=$hasUrl hasCipher=$hasCipher"
                     )
                     PlaybackLogManager.log(
                         PlaybackLogLevel.WARNING,
                         "No stream URL",
-                        "$resolvedClientName itag=${topFormat.itag} hasUrl=$hasUrl hasCipher=$hasCipher"
+                        "$resolvedClientName itag=${format.itag} hasUrl=$hasUrl hasCipher=$hasCipher"
                     )
                     continue
                 }
@@ -1363,28 +1336,8 @@ object YTPlayerUtils {
                 val isPrivatelyOwnedTrack = streamPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
 
                 
-                // 2026-08-19, second postmortem: v0.6.213 (the last version confirmed working on a
-                // real device, repeatedly, across multiple controlled A/B tests against every version
-                // since) NEVER attempted an n-transform on the LAST fallback client — it just trusted
-                // whatever URL that client's response carried. 0.6.214/215/216 all started rewriting
-                // that URL's n= with a static formula (first g.cY, then the "corrected" g.lY) and every
-                // single one of them broke playback that 0.6.213 got right. The validation-gate added
-                // in 0.6.216 (below) proved the rewritten URL never validates for this client — meaning
-                // the transform itself is wrong, not just unvalidated. Since real-device evidence beats
-                // static analysis, the last client goes back to being left untouched, exactly like the
-                // one version that is actually proven to work.
-                val isLastClient = clientIndex == STREAM_FALLBACK_CLIENTS.size - 1
-                val needsNTransform = !isLastClient && (currentClient.useWebPoTokens || streamUrl?.let { Regex("[?&]n=").containsMatchIn(it) } == true)
-                // Whether THIS attempt actually rewrote the n= value using a hardcoded/AST-derived
-                // formula (as opposed to trusting the URL YouTube's own response handed us). This
-                // matters below: a static formula can be wrong for a given player hash in ways no
-                // amount of "it compiles / doesn't throw" checking catches (see 2026-08-19 postmortem —
-                // g.lY looked correct in isolated testing but a real device proved the untouched URL was
-                // the one that actually played). Any URL we've hand-modified must be validated before
-                // being trusted; a URL we left as YouTube gave it to us is not our formula's fault if wrong.
-                var nTransformApplied = false
+                val needsNTransform = currentClient.useWebPoTokens || streamUrl?.let { Regex("[?&]n=").containsMatchIn(it) } == true
                 if (needsNTransform) {
-                    var ejsTransformed = false
                     try {
                         Timber.tag(logTag).d("Applying n-transform to stream URL for ${currentClient.clientName}")
                         val ntrStartMs = SystemClock.elapsedRealtime()
@@ -1392,34 +1345,10 @@ object YTPlayerUtils {
                         timing?.let { it.ntrMs += SystemClock.elapsedRealtime() - ntrStartMs }
                         if (transformed != streamUrl) {
                             streamUrl = transformed
-                            ejsTransformed = true
-                            nTransformApplied = true
                             Timber.tag(logTag).d("N-transform applied successfully")
                         }
                     } catch (e: Exception) {
                         Timber.tag(logTag).e(e, "N-transform failed: ${e.message}")
-                    }
-                    // SAFETY NET (owner, 2026-08-19: every user reported "no reproduce canciones nuevas"):
-                    // the AST-based EJS solver silently returns the ORIGINAL url when it can't find an
-                    // n-function for the current player.js (logged as "found 0 n function possibilities" /
-                    // "EJS n-solver not available") — an untransformed n= param gets a hard 403 from the CDN.
-                    // CipherDeobfuscator has its OWN, independently maintained hardcoded config per player
-                    // hash (see FunctionNameExtractor's KNOWN_PLAYER_CONFIGS) — give it an immediate second
-                    // attempt right here. Whether this is actually safe to trust blind (last client, no
-                    // HEAD check) is decided below via nTransformApplied, not assumed here.
-                    if (!ejsTransformed) {
-                        try {
-                            val ntrFallbackStartMs = SystemClock.elapsedRealtime()
-                            val transformed = CipherDeobfuscator.transformNParamInUrl(streamUrl!!)
-                            timing?.let { it.ntrMs += SystemClock.elapsedRealtime() - ntrFallbackStartMs }
-                            if (transformed != streamUrl) {
-                                streamUrl = transformed
-                                nTransformApplied = true
-                                Timber.tag(logTag).d("CipherDeobfuscator n-transform applied (EJS solver had no fix for this player hash)")
-                            }
-                        } catch (e: Exception) {
-                            Timber.tag(logTag).e(e, "CipherDeobfuscator n-transform fallback failed: ${e.message}")
-                        }
                     }
                 }
 
@@ -1446,8 +1375,8 @@ object YTPlayerUtils {
                 
                 val isPrivatelyOwned = streamPlayerResponse.videoDetails?.musicVideoType == "MUSIC_VIDEO_TYPE_PRIVATELY_OWNED_TRACK"
 
-                if ((clientIndex == STREAM_FALLBACK_CLIENTS.size - 1 && !nTransformApplied) || isPrivatelyOwned) {
-
+                if (clientIndex == STREAM_FALLBACK_CLIENTS.size - 1 || isPrivatelyOwned) {
+                    
                     if (isPrivatelyOwned) {
                         Timber.tag(logTag).d("Skipping validation for privately owned track: ${currentClient.clientName}")
                         println("[PLAYBACK_DEBUG] Using stream without validation for PRIVATELY_OWNED_TRACK")
@@ -1460,25 +1389,12 @@ object YTPlayerUtils {
                     // app.log, so "no reproduce" reports now say which of the twelve clients worked (or
                     // that none did) instead of leaving the owner to guess the cascade.
                     Timber.tag(TAG).i("Playback: client=${currentClient.clientName}, videoId=$videoId, private=$isPrivatelyOwned")
-                    // 2026-08-19, tenth postmortem: the ONE thing missing from the trace that made every
-                    // prior log look like "WEB_CREATOR always wins" instead of "WEB_CREATOR is the only
-                    // client whose URL is NEVER challenged" — every other client's URL either passes or
-                    // fails the HEAD check above (both now logged at WARNING/INFO since 0.6.224); this
-                    // branch is the one path that hands a URL straight to ExoPlayer with zero verification.
-                    // Logging it explicitly closes the trace: a future log can now show, in one place,
-                    // that N clients were HEAD-validated and rejected while this one was never checked at all.
-                    PlaybackLogManager.log(
-                        PlaybackLogLevel.WARNING,
-                        "Stream used WITHOUT HEAD validation",
-                        "${currentClient.clientName} itag=${format?.itag} private=$isPrivatelyOwned reason=${if (isPrivatelyOwned) "privately-owned" else "last-fallback-client"}"
-                    )
                     timing?.winner = currentClient.clientName
-                    validatedUrl = true
                     break
                 }
 
                 val headStartMs = SystemClock.elapsedRealtime()
-                val headOk = validateStatus(streamUrl!!, currentClient)
+                val headOk = validateStatus(streamUrl!!)
                 timing?.let {
                     it.headMs += SystemClock.elapsedRealtime() - headStartMs
                     it.headCount++
@@ -1493,7 +1409,6 @@ object YTPlayerUtils {
 
                     Timber.tag(TAG).i("Playback: client=${currentClient.clientName}, videoId=$videoId")
                     timing?.winner = currentClient.clientName
-                    validatedUrl = true
                     break
                 } else {
                     Timber.tag(logTag).d("Stream validation failed for client: ${currentClient.clientName}")
@@ -1510,7 +1425,7 @@ object YTPlayerUtils {
                             if (nTransformed != streamUrl) {
                                 Timber.tag(logTag).d("CipherDeobfuscator n-transform applied, re-validating...")
                                 val retryHeadStartMs = SystemClock.elapsedRealtime()
-                                val retryHeadOk = validateStatus(nTransformed, currentClient)
+                                val retryHeadOk = validateStatus(nTransformed)
                                 timing?.let {
                                     it.headMs += SystemClock.elapsedRealtime() - retryHeadStartMs
                                     it.headCount++
@@ -1528,7 +1443,6 @@ object YTPlayerUtils {
 
                         if (nTransformWorked) {
                             timing?.winner = currentClient.clientName
-                            validatedUrl = true
                             break
                         }
                     }
@@ -1546,16 +1460,6 @@ object YTPlayerUtils {
                 
                 Timber.tag(logTag).d("Player response status not OK: ${streamPlayerResponse?.playabilityStatus?.status}, reason: ${streamPlayerResponse?.playabilityStatus?.reason}")
             }
-        }
-
-        // A hand-applied n-transform on the last client that never passed HEAD validation must not be
-        // handed to ExoPlayer as if it were trustworthy — that is exactly what produced silent 403s
-        // (IO_BAD_HTTP_STATUS 2004) discovered only during real playback, days after publish. Clearing
-        // streamUrl here routes into the existing "no stream url" dead-end below, which the caller
-        // (finishWithEmbeddedFallback) treats as a genuine failure and retries via
-        // EmbeddedPlayerUrlResolver instead of returning a URL nobody ever confirmed works.
-        if (!validatedUrl) {
-            streamUrl = null
         }
 
         if (streamPlayerResponse == null) {
@@ -1754,59 +1658,14 @@ object YTPlayerUtils {
 
         return format
     }
-
-    // 2026-08-19, eighth postmortem: same audio-pool selection as findFormat's non-video/non-smallest
-    // branch, but ranked instead of collapsed to a single winner. findFormat's top pick (usually the
-    // highest-bitrate Opus tier, itag 774) turned out to have no url/signatureCipher AT ALL on several
-    // clients — YouTube's response lists it with metadata only. The resolve loop used to give up on the
-    // WHOLE client the instant that pick failed, even when the SAME response had a perfectly usable
-    // lower-bitrate format (itag 251) right behind it — forcing every resolve down to WEB_CREATOR, the
-    // one client whose CDN access turned out to be broken regardless of headers/tokens/PoToken (see
-    // 0.6.219-222). This lets the caller try the next-best format on the SAME (working) client first.
-    private fun findAudioFormatCandidates(
-        playerResponse: PlayerResponse,
-        audioQuality: AudioQuality,
-    ): List<PlayerResponse.StreamingData.Format> {
-        val audioFormats = playerResponse.streamingData?.adaptiveFormats?.filter { it.isAudio }
-        val audioPool = audioFormats?.filter { it.isOriginal }?.takeIf { it.isNotEmpty() }
-            ?: audioFormats?.filter { it.audioTrack?.isAutoDubbed == false }?.takeIf { it.isNotEmpty() }
-            ?: audioFormats
-        return audioPool
-            ?.sortedByDescending {
-                var score = it.bitrate.toFloat()
-                if (audioQuality == AudioQuality.OPUS && it.mimeType.startsWith("audio/webm")) {
-                    score *= 2.0f
-                }
-                score
-            }
-            ?: emptyList()
-    }
-
-    private fun validateStatus(url: String, client: YouTubeClient? = null): Boolean {
+    
+    private fun validateStatus(url: String): Boolean {
         Timber.tag(logTag).d("Validating stream URL status")
         try {
-            // 2026-08-19, ninth postmortem: this HEAD check always sent the WEB user-agent and NEVER
-            // sent Origin/Referer, regardless of which client's URL was being validated — the exact
-            // gap already fixed for the real ExoPlayer fetch (createCacheDataSource) in 0.6.219/220, but
-            // never mirrored here. A non-WEB client's URL (IOS, TVHTML5, ANDROID) validated with the
-            // wrong User-Agent, or a WEB-family client's URL (WEB_REMIX) validated without Origin/Referer,
-            // 403s on this HEAD exactly like it would on the real fetch — and that failure was DEBUG-level
-            // and silent, so the client was quietly abandoned and the resolver fell through to WEB_CREATOR,
-            // the one client this whole HEAD gate never runs for (see the isLastClient skip above). If a
-            // client's real CDN access is fine and only this validation-only fetch was misconfigured, this
-            // fixes it. Fall back to WEB's User-Agent only when no client is known (privately-owned/last-
-            // client callers that already skip validation never reach here with client == null).
-            val agent = client?.userAgent ?: YouTubeClient.USER_AGENT_WEB
-            val isWeb = client == null || client.userAgent == YouTubeClient.USER_AGENT_WEB
             val requestBuilder = okhttp3.Request.Builder()
                 .head()
                 .url(url)
-                .header("User-Agent", agent)
-            if (isWeb) {
-                requestBuilder
-                    .header("Origin", YouTubeClient.ORIGIN_YOUTUBE_MUSIC)
-                    .header("Referer", YouTubeClient.REFERER_YOUTUBE_MUSIC)
-            }
+                .header("User-Agent", YouTubeClient.USER_AGENT_WEB)
 
             // Do NOT attach YouTube.cookie here. The main resolver client (ANDROID_VR) is loginSupported=false
             // and the real ExoPlayer byte fetch (OkHttpDataSource) sends NO cookie, so this validation HEAD
@@ -1821,13 +1680,6 @@ object YTPlayerUtils {
             validateHttpClient.newCall(requestBuilder.build()).execute().use { response ->
                 val isSuccessful = response.isSuccessful
                 Timber.tag(logTag).d("Stream URL validation result: ${if (isSuccessful) "Success" else "Failed"} (${response.code})")
-                if (!isSuccessful) {
-                    PlaybackLogManager.log(
-                        PlaybackLogLevel.WARNING,
-                        "HEAD validation failed",
-                        "client=${client?.clientName ?: "?"} code=${response.code} agent=${if (isWeb) "web" else "client"}"
-                    )
-                }
                 return isSuccessful
             }
         } catch (e: Exception) {

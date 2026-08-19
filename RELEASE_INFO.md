@@ -1,13 +1,12 @@
-# Aura Hi-Res Player 0.6.225
+# Aura Hi-Res Player 0.6.226
 
-El recolector de errores que pediste: ahora un solo reporte muestra el destino completo de los 11 clientes, no solo el fragmento final.
+Restaurado el código exacto de la 0.6.213 — la última versión que confirmaste que sí reproduce, hoy mismo, en tu teléfono.
 
 ---
 
 ## Novedades y Correcciones
 
-- **Reporte de diagnóstico mucho más completo**: hasta ahora, cada reporte que mandabas solo alcanzaba a mostrar el final de la última canción que falló — si fallaban varias seguidas, se perdía el rastro de las anteriores. Se amplió la ventana del reporte (de ~80 a 400 líneas) para que quede el rastro completo de una sesión, no solo el último fragmento. También se cerró un hueco real: cuando la comprobación de un enlace fallaba, quedaba invisible en todos los reportes anteriores — ahora se guarda con el código HTTP real. Y se dejó registrado, por primera vez, cuándo un enlace se usa SIN pasar esa comprobación (que es justo lo que le pasa siempre a WEB_CREATOR). El próximo reporte que mandes va a mostrar de una vez el destino de cada cliente para cada canción, en vez de necesitar varias rondas para armar el cuadro completo.
-- **Reproducción de canciones nuevas (0.6.224, incluida aquí)**: la comprobación que decide si un enlace de audio realmente funciona mandaba las cabeceras equivocadas para casi todos los clientes — eso hacía que se descartaran en silencio y el sistema siempre terminara en el único cliente que no pasa por esa comprobación (el que ya sabemos que falla al reproducir de verdad). Ya corregido.
+- **Reproducción de canciones**: confirmaste que la beta de ayer (0.6.213, publicada como a las 6:41pm) sigue reproduciendo música hoy con tu misma cuenta, en WiFi y en datos — mientras que todas las versiones después de esa (incluida la de hace un rato) fallan igual, incluso con otra cuenta y otra red. Eso descartó de raíz mis teorías de "cabeceras" y "bloqueo de YouTube a la cuenta": el problema estaba en un cambio de código entre esa versión y las siguientes. En vez de seguir adivinando cuál línea exacta era la culpable, se restauró el código de resolución de audio (YTPlayerUtils, MusicService, la lista de clientes de YouTube y la configuración de cifrado) exactamente a como estaba en la 0.6.213 — el mismo código que ahora mismo está funcionando en tu teléfono. No se tocó ninguna otra función de la app.
 
 ## Cómo actualizar
 
