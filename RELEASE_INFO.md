@@ -1,12 +1,12 @@
-# Aura Hi-Res Player 0.6.227
+# Aura Hi-Res Player 0.6.228
 
-La 0.6.226 no alcanzó — esta vez es TODO el código igual a la 0.6.213, sin excepción.
+Prueba diagnóstica: la única build que sí te funciona (la vieja) nunca pasó por la ofuscación de código. Esta apaga esa ofuscación para comprobarlo.
 
 ---
 
 ## Novedades y Correcciones
 
-- **Reproducción de canciones**: la 0.6.226 restauró solo los 4 archivos que yo creía relacionados con el problema, pero seguiste sin poder reproducir. Eso significaba que había algo más que se me había pasado. Encontré un archivo adicional (la configuración de descifrado para un identificador específico del reproductor de YouTube) que también había cambiado y nunca revisé. Ahora TODO el código de la app — cada archivo que es distinto entre la 0.6.213 y hoy — quedó igualado byte por byte a la 0.6.213, sin ninguna excepción salvo el número de versión. Si esta tampoco reproduce, significa que el problema no está en el código de la app en absoluto.
+- **Prueba de reproducción**: después de comprobar que el código, la compilación, la firma, la cuenta y la red son idénticas entre tu beta que sí funciona y las que no — la única diferencia real que queda es que la que funciona nunca pasó por R8 (el proceso que ofusca/reduce el código en cada release). Esta versión apaga esa ofuscación, dejando todo lo demás igual (misma firma, mismo paquete). Si esta SÍ reproduce, encontramos la causa real después de dos días — y el arreglo definitivo sería ajustar las reglas de esa ofuscación para todos los usuarios. Si esta TAMBIÉN falla, se descarta y seguimos buscando por otro lado.
 
 ## Cómo actualizar
 

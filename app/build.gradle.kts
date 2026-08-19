@@ -220,8 +220,8 @@ android {
         // Public version reset to a fresh stable 0.0.1 for the Aura Hi-Res Player relaunch.
         // versionCode stays monotonic (never below the last shipped 673) so the in-app updater and
         // sideload-install-over-existing keep working; only the user-facing versionName resets.
-        versionCode = 947
-        versionName = "0.6.227"
+        versionCode = 948
+        versionName = "0.6.228"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -369,8 +369,17 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // 2026-08-19, diagnostic (temporary): the ONLY confirmed-working build left standing after
+            // an exhaustive elimination (identical source, deps, build config, signing cert, account,
+            // network — see the postmortem trail in YTPlayerUtils.kt) was a debug build, which differs
+            // from a normal release build in exactly one runtime-relevant way: R8 shrinking/obfuscation.
+            // Disabling it here isolates that single variable. If streaming works with this build, R8 is
+            // confirmed as the cause (most likely: it is silently breaking one of the WebView JS<->Kotlin
+            // bridges in potoken/CipherWebView/EjsNTransformSolver despite the keep rules in
+            // proguard-rules.pro looking correct on paper) and the real fix is finding which one. If it
+            // still fails, R8 is ruled out too. REVERT to true once this is answered either way.
+            isMinifyEnabled = false
+            isShrinkResources = false
             isCrunchPngs = false
             isDebuggable = false
             signingConfig = signingConfigs.getByName("release")
