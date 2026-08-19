@@ -4,13 +4,27 @@ import urllib.request
 import os
 import sys
 
+# A bare "Mozilla/5.0" (the previous value here) is what triggered this: verified live on 2026-08-19
+# that YouTube serves that exact User-Agent a ~2KB "your browser is out of date" stub with NO jsUrl at
+# all, instead of the real ~450KB homepage — so the regex below was never wrong, the fetch just never
+# had a player URL to find. A realistic desktop Chrome UA gets the real page every time.
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+
 def get_player_url():
     print("Fetching YouTube Music homepage...")
-    req = urllib.request.Request("https://music.youtube.com/", headers={'User-Agent': 'Mozilla/5.0'})
+    req = urllib.request.Request("https://music.youtube.com/", headers={'User-Agent': BROWSER_USER_AGENT})
     html = urllib.request.urlopen(req).read().decode('utf-8')
     match = re.search(r'jsUrl["\']\s*:\s*["\']([^"\']+/player/[a-f0-9]{8}/[^"\']+)["\']', html)
     if not match:
-        raise Exception("Could not find player URL in music.youtube.com")
+        # Diagnostics for next time, instead of a bare "not found": this is exactly what was missing
+        # when this broke silently every 6 hours with nothing to debug from but the one-line error.
+        raise Exception(
+            f"Could not find player URL in music.youtube.com "
+            f"(got {len(html)} bytes, starts with: {html[:200]!r})"
+        )
     url = match.group(1)
     if url.startswith('/'):
         url = 'https://music.youtube.com' + url
@@ -43,7 +57,7 @@ def update_config():
         return
 
     print(f"Downloading {player_url}...")
-    req = urllib.request.Request(player_url, headers={'User-Agent': 'Mozilla/5.0'})
+    req = urllib.request.Request(player_url, headers={'User-Agent': BROWSER_USER_AGENT})
     player_js = urllib.request.urlopen(req).read().decode('utf-8')
     
     print("Extracting parameters...")
