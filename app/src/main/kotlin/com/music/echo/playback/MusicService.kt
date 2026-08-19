@@ -7599,16 +7599,15 @@ class MusicService :
                                                 .build()
                                         } ?: response.request
                                     }
-                                    // 2026-08-18, fourth postmortem: EVERY WEB_CREATOR resolve succeeded
-                                    // ("Player response OK", RESOLVE_TIMING ok=true) and then 403'd a few
-                                    // seconds later on the actual byte fetch — on every app version tested
-                                    // (213 through 218), on two different devices, for every song. The
-                                    // n-transform and the PoToken were both red herrings: this OkHttpClient
-                                    // never set a User-Agent at all for the real audio request. The VIDEO
-                                    // data source below (videoOkHttpClient) already had this exact fix with
-                                    // a comment explaining it — "googlevideo URLs can 403 without the right
-                                    // per-client User-Agent" — it was just never applied to audio, the path
-                                    // that actually matters for every normal song. Same fix, mirrored here.
+                                    // 2026-08-18, fifth postmortem: adding the User-Agent alone (0.6.219)
+                                    // did NOT fix it — a fresh on-device log with response headers now
+                                    // visible showed the SAME 403, and the response carried "vary: Origin"
+                                    // + "cross-origin-resource-policy: cross-origin" — a CORS-shaped
+                                    // signature meaning googlevideo is checking Origin for WEB-family
+                                    // clients specifically, and the audio OkHttpClient sends none. This
+                                    // exact Origin+Referer pattern already exists, working, in TWO other
+                                    // places (CanvasArtworkPlayer, SongPreviewController) — never applied
+                                    // here, the path every normal song actually uses. Same fix, mirrored.
                                     .addInterceptor { chain ->
                                         val req = chain.request()
                                         val host = req.url.host
@@ -7617,15 +7616,21 @@ class MusicService :
                                             host.endsWith("ytimg.com")
                                         if (!isYt) return@addInterceptor chain.proceed(req)
                                         val c = req.url.queryParameter("c")?.trim().orEmpty()
+                                        val isWeb = c.startsWith("WEB", true)
                                         val agent = when {
-                                            c.startsWith("WEB", true) -> com.music.innertube.models.YouTubeClient.USER_AGENT_WEB
+                                            isWeb -> com.music.innertube.models.YouTubeClient.USER_AGENT_WEB
                                             c.startsWith("TV", true) -> com.music.innertube.models.YouTubeClient.TVHTML5.userAgent
                                             c.startsWith("IOS", true) -> com.music.innertube.models.YouTubeClient.IOS.userAgent
                                             c.startsWith("ANDROID_VR", true) -> com.music.innertube.models.YouTubeClient.ANDROID_VR_NO_AUTH.userAgent
                                             c.startsWith("ANDROID", true) -> com.music.innertube.models.YouTubeClient.MOBILE.userAgent
                                             else -> com.music.innertube.models.YouTubeClient.USER_AGENT_WEB
                                         }
-                                        chain.proceed(req.newBuilder().header("User-Agent", agent).build())
+                                        val builder = req.newBuilder().header("User-Agent", agent)
+                                        if (isWeb) {
+                                            builder.header("Origin", com.music.innertube.models.YouTubeClient.ORIGIN_YOUTUBE_MUSIC)
+                                            builder.header("Referer", com.music.innertube.models.YouTubeClient.REFERER_YOUTUBE_MUSIC)
+                                        }
+                                        chain.proceed(builder.build())
                                     }
                                     .build()
                             )

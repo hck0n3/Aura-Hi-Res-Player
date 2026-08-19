@@ -1,12 +1,12 @@
-# Aura Hi-Res Player 0.6.219
+# Aura Hi-Res Player 0.6.220
 
-Causa real encontrada: el audio nunca mandaba el User-Agent que YouTube exige.
+Segunda pieza del arreglo real: faltaba el origen (Origin/Referer), no solo el User-Agent.
 
 ---
 
 ## Novedades y Correcciones
 
-- **Reproducción de canciones nuevas, arreglo real esta vez**: la app resolvía el enlace de audio correctamente, pero al pedir el audio real, nunca mandaba el "User-Agent" (identificación del cliente) que YouTube exige para no rechazar la conexión — por eso siempre daba error de servidor (403 / IO_BAD_HTTP_STATUS). Esto no dependía de la versión ni de la canción: le pasaba a todo el que actualizara. El reproductor de video de la app ya tenía este arreglo desde antes; ahora también lo tiene el audio, que es lo que usa el 99% de las reproducciones.
+- **Reproducción de canciones nuevas — arreglo completo**: la versión anterior agregó el User-Agent que faltaba, pero un diagnóstico en vivo mostró que YouTube también exige la cabecera "Origin" para el tipo de conexión que usa la app — y esa tampoco se estaba mandando. Este mismo arreglo ya existía, funcionando, en el reproductor de video y en las vistas previas de canciones; ahora también se aplica al audio normal, que es lo que usa el 99% de las reproducciones.
 
 ## Cómo actualizar
 
