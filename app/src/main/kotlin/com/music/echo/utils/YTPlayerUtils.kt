@@ -1338,6 +1338,7 @@ object YTPlayerUtils {
                 
                 val needsNTransform = currentClient.useWebPoTokens || streamUrl?.let { Regex("[?&]n=").containsMatchIn(it) } == true
                 if (needsNTransform) {
+                    var ejsTransformed = false
                     try {
                         Timber.tag(logTag).d("Applying n-transform to stream URL for ${currentClient.clientName}")
                         val ntrStartMs = SystemClock.elapsedRealtime()
@@ -1345,10 +1346,34 @@ object YTPlayerUtils {
                         timing?.let { it.ntrMs += SystemClock.elapsedRealtime() - ntrStartMs }
                         if (transformed != streamUrl) {
                             streamUrl = transformed
+                            ejsTransformed = true
                             Timber.tag(logTag).d("N-transform applied successfully")
                         }
                     } catch (e: Exception) {
                         Timber.tag(logTag).e(e, "N-transform failed: ${e.message}")
+                    }
+                    // SAFETY NET (owner, 2026-08-19: every user reported "no reproduce canciones nuevas"):
+                    // the AST-based EJS solver silently returns the ORIGINAL url when it can't find an
+                    // n-function for the current player.js (logged as "found 0 n function possibilities" /
+                    // "EJS n-solver not available") — an untransformed n= param gets a hard 403 from the CDN.
+                    // For the LAST fallback client this is fatal: the code below skips HEAD-validation for
+                    // it entirely (clientIndex == STREAM_FALLBACK_CLIENTS.size - 1), so a broken URL from
+                    // there was never caught or retried. CipherDeobfuscator has its OWN, independently
+                    // maintained hardcoded config per player hash (see FunctionNameExtractor's
+                    // KNOWN_PLAYER_CONFIGS) — give it an immediate second attempt right here, BEFORE the
+                    // skip-validation branch can trust a still-broken url.
+                    if (!ejsTransformed) {
+                        try {
+                            val ntrFallbackStartMs = SystemClock.elapsedRealtime()
+                            val transformed = CipherDeobfuscator.transformNParamInUrl(streamUrl!!)
+                            timing?.let { it.ntrMs += SystemClock.elapsedRealtime() - ntrFallbackStartMs }
+                            if (transformed != streamUrl) {
+                                streamUrl = transformed
+                                Timber.tag(logTag).d("CipherDeobfuscator n-transform applied (EJS solver had no fix for this player hash)")
+                            }
+                        } catch (e: Exception) {
+                            Timber.tag(logTag).e(e, "CipherDeobfuscator n-transform fallback failed: ${e.message}")
+                        }
                     }
                 }
 
