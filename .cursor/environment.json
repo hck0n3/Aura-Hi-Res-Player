@@ -1,0 +1,6 @@
+{
+  "name": "Aura Hi-Res Player (Android)",
+  "user": "ubuntu",
+  "install": "./.cursor/install.sh",
+  "start": "./.cursor/start.sh"
+}
