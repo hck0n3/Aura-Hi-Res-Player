@@ -88,7 +88,6 @@ import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.LocalSyncUtils
 import iad1tya.echo.music.R
-import iad1tya.echo.music.constants.AiPlaylistEnabledKey
 import iad1tya.echo.music.constants.InnerTubeCookieKey
 import iad1tya.echo.music.constants.PlaylistEditLockKey
 import iad1tya.echo.music.constants.PlaylistSongSortDescendingKey
@@ -114,7 +113,6 @@ import iad1tya.echo.music.ui.menu.LocalPlaylistMenu
 import iad1tya.echo.music.ui.menu.SelectionSongMenu
 import iad1tya.echo.music.ui.menu.SongMenu
 import iad1tya.echo.music.ui.screens.playlist.AddMusicSheet
-import iad1tya.echo.music.ui.screens.playlist.AiModifyPlaylistDialog
 import iad1tya.echo.music.ui.screens.playlist.FeaturedArtistsSection
 import iad1tya.echo.music.ui.screens.playlist.SuggestedSongsSection
 import iad1tya.echo.music.ui.screens.playlist.rememberPlaylistCoverEditor
@@ -308,27 +306,6 @@ fun AuraLocalPlaylistScreen(
                 },
             )
         }
-    }
-
-    // "Editar con IA" — same feature toggle that gates the create-playlist AI FAB in Biblioteca.
-    val (aiPlaylistEnabled) = rememberPreference(AiPlaylistEnabledKey, true)
-    var showAiModifyDialog by remember { mutableStateOf(false) }
-
-    // Pure-local editable playlists ONLY. A YouTube-synced playlist gets wiped and re-imported by
-    // "Sincronizar" (clearPlaylist + re-insert), so local-only AI edits there would silently vanish.
-    val canAiModify = aiPlaylistEnabled && editable && playlist?.playlist?.browseId == null
-
-    if (showAiModifyDialog && canAiModify) {
-        AiModifyPlaylistDialog(
-            playlistId = viewModel.playlistId,
-            // The list as DISPLAYED, so an instruction about what the user sees lines up.
-            songs = songs,
-            onDismiss = { showAiModifyDialog = false },
-            onOpenAiSettings = {
-                showAiModifyDialog = false
-                navController.navigate("settings/ai")
-            },
-        )
     }
 
     var showRemoveDownloadDialog by remember { mutableStateOf(false) }
@@ -588,9 +565,6 @@ fun AuraLocalPlaylistScreen(
                                             songs = songs,
                                             downloadState = downloadState,
                                             snackbarHostState = snackbarHostState,
-                                            onAiModify = if (canAiModify) {
-                                                { showAiModifyDialog = true }
-                                            } else null,
                                             onEdit = { showEditDialog = true },
                                             onDelete = { showDeletePlaylistDialog = true },
                                             onShowRemoveDownloadDialog = {
@@ -1174,7 +1148,6 @@ private fun AuraLocalPlaylistMenuHost(
     songs: List<PlaylistSong>,
     downloadState: Int,
     snackbarHostState: SnackbarHostState,
-    onAiModify: (() -> Unit)?,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onShowRemoveDownloadDialog: () -> Unit,
@@ -1193,7 +1166,6 @@ private fun AuraLocalPlaylistMenuHost(
         songs = songs,
         context = context,
         downloadState = downloadState,
-        onAiModify = onAiModify,
         onEdit = onEdit,
         onSync = {
             val browseId = playlist.playlist.browseId

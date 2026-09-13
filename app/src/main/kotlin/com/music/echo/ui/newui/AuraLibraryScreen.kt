@@ -52,7 +52,6 @@ import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.LocalPlayerConnection
 import iad1tya.echo.music.R
-import iad1tya.echo.music.constants.AiPlaylistEnabledKey
 import iad1tya.echo.music.constants.ChipSortTypeKey
 import iad1tya.echo.music.constants.FloatingToolbarBottomPadding
 import iad1tya.echo.music.constants.LibraryFilter
@@ -60,7 +59,6 @@ import iad1tya.echo.music.constants.MiniPlayerBottomSpacing
 import iad1tya.echo.music.constants.MiniPlayerHeight
 import iad1tya.echo.music.constants.NavigationBarHeight
 import iad1tya.echo.music.constants.OfflineModeKey
-import iad1tya.echo.music.ui.component.AiPlaylistDialog
 import iad1tya.echo.music.ui.component.CreatePlaylistDialog
 import iad1tya.echo.music.ui.component.TextFieldDialog
 import iad1tya.echo.music.ui.screens.DownloadedOnlyView
@@ -77,7 +75,7 @@ import iad1tya.echo.music.utils.rememberPreference
  * ## Same shell, same state, same actions as the classic Library
  * The five tabs are not five routes — they are one screen switched by [ChipSortTypeKey], and this
  * screen reads and writes THAT key, so which tab you were on survives toggling "Interfaz nueva" in
- * either direction. The floating actions open the SAME `CreatePlaylistDialog` / `AiPlaylistDialog` /
+ * either direction. The floating actions open the SAME `CreatePlaylistDialog` /
  * `TextFieldDialog` with the same parse rules and the same navigation targets.
  *
  * ## Surfaces reused as-is
@@ -103,13 +101,11 @@ fun AuraLibraryScreen(navController: NavController) {
     var showYoutubeImportDialog by remember { mutableStateOf(false) }
     var showSpotifyImportDialog by remember { mutableStateOf(false) }
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
-    var showAiPlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     // Hoisted here, not per tab, so the open/closed state still survives a tab switch exactly as it
     // did when the toggle lived in the header. `remember` keeps it one instance instead of a new
     // lambda per recomposition of the tab host.
     val toggleSearch = remember { { searchOpen = !searchOpen } }
-    val (aiPlaylistEnabled) = rememberPreference(AiPlaylistEnabledKey, true)
     val context = LocalContext.current
 
     BackHandler(enabled = filterType != LibraryFilter.LIBRARY) {
@@ -271,7 +267,7 @@ fun AuraLibraryScreen(navController: NavController) {
             }
         }
 
-        // Floating actions: AI-generate, create, and import a playlist by URL.
+        // Floating actions: create, and import a playlist by URL.
         if (isPlaylists) {
             Box(
                 modifier = Modifier
@@ -288,14 +284,6 @@ fun AuraLibraryScreen(navController: NavController) {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalAlignment = Alignment.End,
                 ) {
-                    if (aiPlaylistEnabled) {
-                        AuraFab(
-                            icon = AuraIcons.Radio,
-                            label = null,
-                            contentDescription = stringResource(R.string.ai_playlist_title),
-                            onClick = { showAiPlaylistDialog = true },
-                        )
-                    }
                     AuraFab(
                         icon = AuraIcons.Plus,
                         label = stringResource(R.string.create_playlist),
@@ -443,19 +431,6 @@ fun AuraLibraryScreen(navController: NavController) {
         )
     }
 
-    if (showAiPlaylistDialog) {
-        AiPlaylistDialog(
-            onDismiss = { showAiPlaylistDialog = false },
-            onPlaylistCreated = { playlistId ->
-                showAiPlaylistDialog = false
-                navController.navigate("local_playlist/$playlistId")
-            },
-            onOpenAiSettings = {
-                showAiPlaylistDialog = false
-                navController.navigate("settings/ai")
-            },
-        )
-    }
 }
 
 /**

@@ -153,14 +153,8 @@ import iad1tya.echo.music.constants.AutoTranslateLyricsKey
 import iad1tya.echo.music.constants.LyricsTextPositionKey
 import iad1tya.echo.music.constants.LyricsTextSizeKey
 import iad1tya.echo.music.constants.PlayerBackgroundStyle
-import iad1tya.echo.music.constants.OpenRouterApiKey
-import iad1tya.echo.music.constants.DeeplApiKey
-import iad1tya.echo.music.constants.AiProviderKey
-import iad1tya.echo.music.constants.OpenRouterBaseUrlKey
-import iad1tya.echo.music.constants.OpenRouterModelKey
 import iad1tya.echo.music.constants.TranslateLanguageKey
 import iad1tya.echo.music.constants.TranslateModeKey
-import iad1tya.echo.music.constants.DeeplFormalityKey
 import iad1tya.echo.music.constants.PlayerBackgroundStyleKey
 import iad1tya.echo.music.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import iad1tya.echo.music.lyrics.LyricsEntry
@@ -314,11 +308,6 @@ fun Lyrics(
     // the per-frame blur/glow/layout-explosion just like Performance Mode does; a cool device is unaffected.
     val effectiveAnimationStyle = if (perfOn || deviceThrottle) LyricsAnimationStyle.NONE else lyricsAnimationStyle
 
-    val openRouterApiKey by rememberPreference(OpenRouterApiKey, "")
-    val deeplApiKey by rememberPreference(DeeplApiKey, "")
-    val aiProvider by rememberPreference(AiProviderKey, "OpenRouter")
-    val openRouterBaseUrl by rememberPreference(OpenRouterBaseUrlKey, "https://openrouter.ai/api/v1/chat/completions")
-    val openRouterModel by rememberPreference(OpenRouterModelKey, "google/gemini-2.5-flash-lite")
     val translateLanguage by rememberPreference(TranslateLanguageKey, "es-419")
     // Prefer the stored target (default Español Latinoamérica). Legacy "en" still maps to the device
     // language so an English-only install is not stuck translating English→English.
@@ -327,7 +316,6 @@ fun Lyrics(
         else translateLanguage
     }
     val translateMode by rememberPreference(TranslateModeKey, "Literal")
-    val deeplFormality by rememberPreference(DeeplFormalityKey, "default")
     val askTranslateOnOpen by rememberPreference(AskTranslateLyricsOnOpenKey, false)
     val autoTranslateLyrics by rememberPreference(AutoTranslateLyricsKey, true)
     // Per-song, per-session: songIds the user already answered (confirmed or dismissed) so we never nag.
@@ -601,46 +589,15 @@ fun Lyrics(
     LaunchedEffect(showLyrics, lines.size) {
         LyricsTranslationHelper.manualTrigger.collect {
             if (!(showLyrics && lines.isNotEmpty())) return@collect
-            val effectiveApiKey = if (aiProvider == "DeepL") deeplApiKey else openRouterApiKey
-            if (effectiveApiKey.isNotBlank()) {
-                // User configured their own key → their provider/model, EXACTLY as before (unchanged).
-                LyricsTranslationHelper.translateLyrics(
-                    lyrics = lines,
-                    targetLanguage = effectiveTranslateTarget,
-                    apiKey = openRouterApiKey,
-                    baseUrl = openRouterBaseUrl,
-                    model = openRouterModel,
-                    mode = translateMode,
-                    scope = scope,
-                    context = context,
-                    provider = aiProvider,
-                    deeplApiKey = deeplApiKey,
-                    deeplFormality = deeplFormality,
-                    useStreaming = true,
-                    songId = currentSong?.id ?: "",
-                    database = database
-                )
-            } else if (aiProvider == "DeepL") {
-                // DeepL is not part of the keyless chain (needs its own key) → keep the prompt to add one.
-                Toast.makeText(context, context.getString(R.string.ai_api_key_required), Toast.LENGTH_SHORT).show()
-            } else {
-                // No user key → translate for FREE via the built-in keyless AI (same path AiPlaylistService uses).
-                LyricsTranslationHelper.translateLyrics(
-                    lyrics = lines,
-                    targetLanguage = effectiveTranslateTarget,
-                    apiKey = "",
-                    baseUrl = "",
-                    model = "",
-                    mode = translateMode,
-                    scope = scope,
-                    context = context,
-                    provider = "OpenRouter",
-                    useStreaming = false,
-                    songId = currentSong?.id ?: "",
-                    database = database,
-                    keyless = true
-                )
-            }
+            LyricsTranslationHelper.translateLyrics(
+                lyrics = lines,
+                targetLanguage = effectiveTranslateTarget,
+                mode = translateMode,
+                scope = scope,
+                context = context,
+                songId = currentSong?.id ?: "",
+                database = database,
+            )
         }
     }
 
@@ -691,41 +648,15 @@ fun Lyrics(
             return@LaunchedEffect
         }
         autoTranslatedSongs.add(songId)
-        val effectiveApiKey = if (aiProvider == "DeepL") deeplApiKey else openRouterApiKey
-        if (effectiveApiKey.isNotBlank()) {
-            LyricsTranslationHelper.translateLyrics(
-                lyrics = lines,
-                targetLanguage = effectiveTranslateTarget,
-                apiKey = openRouterApiKey,
-                baseUrl = openRouterBaseUrl,
-                model = openRouterModel,
-                mode = translateMode,
-                scope = scope,
-                context = context,
-                provider = aiProvider,
-                deeplApiKey = deeplApiKey,
-                deeplFormality = deeplFormality,
-                useStreaming = true,
-                songId = songId,
-                database = database,
-            )
-        } else if (aiProvider != "DeepL") {
-            LyricsTranslationHelper.translateLyrics(
-                lyrics = lines,
-                targetLanguage = effectiveTranslateTarget,
-                apiKey = "",
-                baseUrl = "",
-                model = "",
-                mode = translateMode,
-                scope = scope,
-                context = context,
-                provider = "OpenRouter",
-                useStreaming = false,
-                songId = songId,
-                database = database,
-                keyless = true,
-            )
-        }
+        LyricsTranslationHelper.translateLyrics(
+            lyrics = lines,
+            targetLanguage = effectiveTranslateTarget,
+            mode = translateMode,
+            scope = scope,
+            context = context,
+            songId = songId,
+            database = database,
+        )
     }
 
     if (showTranslatePrompt) {

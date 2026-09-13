@@ -41,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import iad1tya.echo.music.LocalPlayerAwareWindowInsets
 import iad1tya.echo.music.R
-import iad1tya.echo.music.constants.AiPlaylistEnabledKey
 import iad1tya.echo.music.constants.ChipSortTypeKey
 import iad1tya.echo.music.constants.FloatingToolbarBottomPadding
 import iad1tya.echo.music.constants.LibraryFilter
@@ -49,7 +48,6 @@ import iad1tya.echo.music.constants.MiniPlayerBottomSpacing
 import iad1tya.echo.music.constants.MiniPlayerHeight
 import iad1tya.echo.music.constants.NavigationBarHeight
 import iad1tya.echo.music.constants.OfflineModeKey
-import iad1tya.echo.music.ui.component.AiPlaylistDialog
 import iad1tya.echo.music.ui.component.ChipsRow
 import iad1tya.echo.music.ui.component.CreatePlaylistDialog
 import iad1tya.echo.music.ui.component.TextFieldDialog
@@ -72,8 +70,6 @@ fun LibraryScreen(navController: NavController) {
     var showYoutubeImportDialog by remember { mutableStateOf(false) }
     var showSpotifyImportDialog by remember { mutableStateOf(false) }
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
-    var showAiPlaylistDialog by rememberSaveable { mutableStateOf(false) }
-    val (aiPlaylistEnabled) = rememberPreference(AiPlaylistEnabledKey, true)
     val context = LocalContext.current
 
     BackHandler(enabled = filterType != LibraryFilter.LIBRARY) {
@@ -182,21 +178,6 @@ fun LibraryScreen(navController: NavController) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalAlignment = Alignment.End,
             ) {
-                if (aiPlaylistEnabled) {
-                    SmallFloatingActionButton(
-                        onClick = { showAiPlaylistDialog = true },
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.auto_awesome),
-                            contentDescription = stringResource(R.string.ai_playlist_title),
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-
                 ExtendedFloatingActionButton(
                     text = { Text(stringResource(R.string.create_playlist)) },
                     icon = { Icon(painter = painterResource(R.drawable.add), contentDescription = null) },
@@ -332,17 +313,4 @@ fun LibraryScreen(navController: NavController) {
         )
     }
 
-    if (showAiPlaylistDialog) {
-        AiPlaylistDialog(
-            onDismiss = { showAiPlaylistDialog = false },
-            onPlaylistCreated = { playlistId ->
-                showAiPlaylistDialog = false
-                navController.navigate("local_playlist/$playlistId")
-            },
-            onOpenAiSettings = {
-                showAiPlaylistDialog = false
-                navController.navigate("settings/ai")
-            },
-        )
-    }
 }

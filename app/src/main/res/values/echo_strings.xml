@@ -831,43 +831,17 @@
     <string name="unblock">Unblock</string>
     <string name="user_blocked_by_host">User blocked by host</string>
 
-    <!-- AI Lyrics Translation -->
-    <string name="ai_lyrics_translation">AI Lyrics Translation</string>
+    <!-- Lyrics translation (Google Translate, free, no key, no AI) -->
+    <string name="ai_lyrics_translation">Lyrics Translation</string>
     <string name="ai_translating_lyrics">Translating lyrics...</string>
     <string name="ai_lyrics_translated">Lyrics translated</string>
-    <string name="ai_provider">Provider</string>
-    <string name="ai_base_url">Base URL</string>
-    <string name="ai_api_key">API Key</string>
-    <string name="ai_model">Model</string>
-    <string name="ai_translation_mode">Translation Mode</string>
     <string name="ai_target_language">Target Language</string>
-    <string name="ai_setup_guide">API Credentials</string>
-    <string name="ai_translation_literal">Translation</string>
-    <string name="ai_translation_literal_desc">Translate meaning to target language</string>
-    <string name="ai_translation_transcribed">Transcription</string>
-    <string name="ai_translation_transcribed_desc">Convert pronunciation to target script</string>
-    <string name="ai_api_key_required">API Key Required</string>
-    <string name="ai_error_api_key_required">API key is required</string>
     <string name="ai_error_no_lyrics">No lyrics to translate</string>
     <string name="ai_error_lyrics_empty">Lyrics are empty</string>
     <string name="ai_error_language_required">Target language is required</string>
     <string name="ai_error_unexpected">Unexpected translation result</string>
     <string name="ai_error_unknown">Unknown error occurred</string>
     <string name="ai_error_translation_failed">Translation failed</string>
-    <string name="ai_provider_help">Get API Keys</string>
-    <string name="ai_provider_openrouter_help">Visit openrouter.ai for free and paid models</string>
-    <string name="ai_provider_mistral_help">Visit console.mistral.ai/api-keys</string>
-    <string name="ai_provider_openai_help">Visit platform.openai.com/api-keys</string>
-    <string name="ai_provider_claude_help">Visit console.anthropic.com/settings/keys</string>
-    <string name="ai_provider_gemini_help">Visit aistudio.google.com/apikey</string>
-    <string name="ai_provider_perplexity_help">Visit perplexity.ai/settings/api</string>
-    <string name="ai_provider_xai_help">Visit console.x.ai</string>
-    <string name="ai_provider_deepl_help">Visit deepl.com/pro-api for free and paid keys</string>
-    <string name="ai_provider_nvidia_help">Visit build.nvidia.com for API keys</string>
-    <string name="ai_deepl_formality">Formality</string>
-    <string name="ai_deepl_formality_default">Default</string>
-    <string name="ai_deepl_formality_more">More Formal</string>
-    <string name="ai_deepl_formality_less">Less Formal</string>
 
     <!-- Crash Handler -->
     <string name="crash_title">App Crashed</string>

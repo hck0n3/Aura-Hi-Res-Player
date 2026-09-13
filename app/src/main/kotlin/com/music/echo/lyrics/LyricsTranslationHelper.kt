@@ -3,11 +3,6 @@
 package iad1tya.echo.music.lyrics
 
 import android.content.Context
-import iad1tya.echo.music.api.DeepLService
-import iad1tya.echo.music.api.MistralService
-import iad1tya.echo.music.api.OpenRouterService
-import iad1tya.echo.music.api.OpenRouterStreamingService
-import iad1tya.echo.music.constants.LanguageCodeToName
 import iad1tya.echo.music.db.MusicDatabase
 import iad1tya.echo.music.db.entities.LyricsEntity
 import kotlinx.coroutines.CoroutineScope
@@ -34,30 +29,16 @@ import okhttp3.Request
 import org.json.JSONArray
 import timber.log.Timber
 import java.net.URLEncoder
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 object LyricsTranslationHelper {
     private val _status = MutableStateFlow<TranslationStatus>(TranslationStatus.Idle)
     val status: StateFlow<TranslationStatus> = _status.asStateFlow()
 
-    // FREE keyless translation (no user API key). There is NO embedded OpenRouter key in the app:
-    // AiPlaylistService's "free" path is fully KEYLESS (no Authorization header) against the public
-    // OpenAI-compatible Pollinations endpoint. We reuse the same endpoint here so lyric translation works
-    // without the user configuring any key.
-    //
-    // Only ONE model, not the old listOf("openai", "mistral", "llama", "deepseek"): probed live against
-    // https://text.pollinations.ai/models, the anonymous tier exposes exactly one model (`openai-fast`,
-    // aliased as `openai`); the other three return "Model not found" — they were three guaranteed failed
-    // round-trips pretending to be a fallback. This path is only a FALLBACK anyway: Google Translate above
-    // is the primary keyless translator (#31).
-    private const val FREE_KEYLESS_BASE_URL = "https://text.pollinations.ai/openai"
-    private val FREE_KEYLESS_MODELS = listOf("openai")
-
     // FREE, reliable, keyless lyric translation via Google Translate's public web endpoint.
     // GET https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=<code>&dt=t&q=<text>
     // returns HTTP 200 with NO API key. It preserves \n and translates line-by-line, which is ideal for
-    // lyrics. This is the primary keyless path; the old Pollinations AI cascade is only a fallback.
+    // lyrics. This is the only translation path — no AI provider is involved.
     private const val GOOGLE_TRANSLATE_URL = "https://translate.googleapis.com/translate_a/single"
 
     // Overall budget for the whole keyless path so the UI can never hang on "Translating" forever.
@@ -79,8 +60,7 @@ object LyricsTranslationHelper {
      * the translated text by concatenating each segment's translated part and re-split on '\n'.
      *
      * Returns exactly [lines].size translated strings (padded/truncated as needed), or null on ANY
-     * failure (empty input, network error, non-200, parse error). Never throws — safe for the keyless
-     * branch, where null simply advances to the AI cascade fallback.
+     * failure (empty input, network error, non-200, parse error). Never throws.
      */
     /** One free Google-Translate request for a single text; returns the concatenated translation or null. */
     private fun googleTranslateOnce(text: String, tl: String): String? {
@@ -165,51 +145,6 @@ object LyricsTranslationHelper {
 
     private fun getCacheKey(lyricsText: String, mode: String, language: String): String =
         "${lyricsText.hashCode()}_${mode}_$language"
-
-    
-    private fun tryParsePartialTranslation(content: String, expectedCount: Int): List<String> {
-        val startIdx = content.indexOf('[')
-        if (startIdx == -1) return emptyList()
-
-        val result = mutableListOf<String>()
-        var pos = startIdx + 1
-        var inString = false
-        var escaping = false
-        val currentString = StringBuilder()
-
-        while (pos < content.length && result.size < expectedCount) {
-            val char = content[pos]
-
-            when {
-                escaping -> {
-                    currentString.append(char)
-                    escaping = false
-                }
-                char == '\\' && inString -> {
-                    currentString.append(char)
-                    escaping = true
-                }
-                char == '"' -> {
-                    if (inString) {
-                        result.add(currentString.toString())
-                        currentString.clear()
-                        inString = false
-                    } else {
-                        inString = true
-                    }
-                }
-                inString -> {
-                    currentString.append(char)
-                }
-                char == ']' -> {
-                    break
-                }
-            }
-            pos++
-        }
-
-        return result
-    }
 
     fun getCachedTranslations(lyrics: List<LyricsEntry>, mode: String, language: String): List<String>? {
         val lyricsText = lyrics.filter { it.text.isNotBlank() }.joinToString("\n") { it.text }
@@ -316,37 +251,20 @@ object LyricsTranslationHelper {
     fun translateLyrics(
         lyrics: List<LyricsEntry>,
         targetLanguage: String,
-        apiKey: String,
-        baseUrl: String,
-        model: String,
         mode: String,
         scope: CoroutineScope,
         context: Context,
-        provider: String = "OpenRouter",
-        deeplApiKey: String = "",
-        deeplFormality: String = "default",
-        useStreaming: Boolean = true,
         songId: String = "",
         database: MusicDatabase? = null,
-        keyless: Boolean = false,
     ) {
         translationJob?.cancel()
         _status.value = TranslationStatus.Translating
 
-        
+
         lyrics.forEach { it.translatedTextFlow.value = null }
 
         translationJob = scope.launch(Dispatchers.IO) {
             try {
-                
-                val effectiveApiKey = if (provider == "DeepL") deeplApiKey else apiKey
-                // keyless = FREE built-in AI (no user key needed): skip the "key required" abort and
-                // route through the keyless endpoint/model cascade below. DeepL never runs keyless.
-                if (!keyless && effectiveApiKey.isBlank()) {
-                    _status.value = TranslationStatus.Error(context.getString(iad1tya.echo.music.R.string.ai_error_api_key_required))
-                    return@launch
-                }
-
                 if (lyrics.isEmpty()) {
                     _status.value = TranslationStatus.Error(context.getString(iad1tya.echo.music.R.string.ai_error_no_lyrics))
                     return@launch
@@ -413,138 +331,22 @@ object LyricsTranslationHelper {
                     return@launch
                 }
 
-                
-                val fullLanguageName = LanguageCodeToName[targetLanguage]
-                    ?: try {
-                        Locale.forLanguageTag(targetLanguage).displayLanguage.takeIf { it.isNotBlank() && it != targetLanguage }
-                    } catch (e: Exception) { null }
-                    ?: targetLanguage
-
-                val result = if (provider == "DeepL") {
-                    Timber.d("Using DeepL for translation")
-                    DeepLService.translate(
-                        text = fullText,
-                        targetLanguage = targetLanguage,
-                        apiKey = deeplApiKey,
-                        formality = deeplFormality,
+                // FREE, keyless translation via Google Translate's public endpoint — the only provider.
+                // An overall timeout guarantees the UI never hangs on "Translating" forever.
+                val result = withTimeoutOrNull(KEYLESS_TRANSLATE_TIMEOUT_MS) {
+                    val googleLines = googleTranslateFree(
+                        lines = nonEmptyEntries.map { it.second.text },
+                        targetLang = targetLanguage,
                     )
-                } else if (provider == "Mistral") {
-                    Timber.d("Using Mistral for translation")
-                    MistralService.translate(
-                        text = fullText,
-                        targetLanguage = fullLanguageName,
-                        apiKey = apiKey,
-                        model = model,
-                        mode = mode,
-                    )
-                } else if (keyless) {
-                    // FREE keyless path. Google Translate's public endpoint (no key, HTTP 200) is
-                    // reliable and fast, so it goes FIRST for standard translation. The old Pollinations
-                    // AI cascade — which was DOWN (502) / not deployed (404) and hung on "Translating" —
-                    // is now only a fallback (and still needed for Romanized/Transcribed, which Google's
-                    // dt=t translation cannot do). An overall timeout guarantees the UI never hangs: if
-                    // every provider stalls we surface a clear error card (no crash, no infinite spinner).
-                    Timber.d("Using FREE keyless translation (Google Translate first)")
-                    val standardTranslate = mode != "Romanized" && mode != "Transcribed"
-                    withTimeoutOrNull(KEYLESS_TRANSLATE_TIMEOUT_MS) {
-                        var freeResult: Result<List<String>> =
-                            Result.failure(Exception("No free translation available"))
-
-                        // 1) Google Translate FREE keyless endpoint (reliable, no key).
-                        if (standardTranslate) {
-                            val googleLines = googleTranslateFree(
-                                lines = nonEmptyEntries.map { it.second.text },
-                                targetLang = targetLanguage,
-                            )
-                            if (googleLines != null) {
-                                Timber.d("Google Translate returned ${googleLines.size} lines")
-                                freeResult = Result.success(googleLines)
-                            }
-                        }
-
-                        // 2) Fallback: keyless AI cascade (Pollinations) — used only if Google failed
-                        // or the mode needs AI. Mirrors AiPlaylistService's free path.
-                        if (freeResult.isFailure) {
-                            Timber.d("Falling back to keyless AI cascade")
-                            for (freeModel in FREE_KEYLESS_MODELS) {
-                                freeResult = OpenRouterService.translate(
-                                    text = fullText,
-                                    targetLanguage = fullLanguageName,
-                                    apiKey = "",
-                                    baseUrl = FREE_KEYLESS_BASE_URL,
-                                    model = freeModel,
-                                    mode = mode,
-                                )
-                                if (freeResult.isSuccess) break
-                            }
-                        }
-                        freeResult
-                    } ?: Result.failure(
-                        Exception(context.getString(iad1tya.echo.music.R.string.ai_error_translation_failed)),
-                    )
-                } else if (useStreaming && provider != "Custom") {
-                    Timber.d("Using streaming for translation with provider: $provider")
-                    var translatedLines: List<String>? = null
-                    var hasError = false
-                    var errorMessage = ""
-                    val contentAccumulator = StringBuilder()
-
-                    OpenRouterStreamingService.streamTranslation(
-                        text = fullText,
-                        targetLanguage = fullLanguageName,
-                        apiKey = apiKey,
-                        baseUrl = baseUrl,
-                        model = model,
-                        mode = mode,
-                    ).collect { chunk ->
-                        Timber.v("Received streaming chunk: $chunk")
-                        when (chunk) {
-                            is OpenRouterStreamingService.StreamChunk.Content -> {
-                                contentAccumulator.append(chunk.text)
-
-                                val partialContent = contentAccumulator.toString()
-                                val partialResult = tryParsePartialTranslation(partialContent, nonEmptyEntries.size)
-                                if (partialResult.isNotEmpty()) {
-                                    partialResult.forEachIndexed { idx, translation ->
-                                        if (idx < nonEmptyEntries.size && translation.isNotBlank()) {
-                                            val originalIndex = nonEmptyEntries[idx].first
-                                            lyrics[originalIndex].translatedTextFlow.value = translation
-                                        }
-                                    }
-                                    _status.value = TranslationStatus.Translating
-                                }
-                            }
-                            is OpenRouterStreamingService.StreamChunk.Complete -> {
-                                Timber.d("Streaming complete with ${chunk.translatedLines.size} lines")
-                                translatedLines = chunk.translatedLines
-                            }
-                            is OpenRouterStreamingService.StreamChunk.Error -> {
-                                Timber.e("Streaming error: ${chunk.message}")
-                                hasError = true
-                                errorMessage = chunk.message
-                            }
-                        }
-                    }
-
-                    Timber.d("Streaming collection complete. hasError=$hasError, translatedLines=${translatedLines?.size}")
-                    if (hasError) {
-                        Result.failure(Exception(errorMessage))
-                    } else if (translatedLines != null) {
-                        Result.success(translatedLines)
+                    if (googleLines != null) {
+                        Timber.d("Google Translate returned ${googleLines.size} lines")
+                        Result.success(googleLines)
                     } else {
-                        Result.failure(Exception("No translation received"))
+                        Result.failure(Exception(context.getString(iad1tya.echo.music.R.string.ai_error_translation_failed)))
                     }
-                } else {
-                    Timber.d("Using non-streaming for translation")
-                    OpenRouterService.translate(
-                        text = fullText,
-                        targetLanguage = fullLanguageName,
-                        apiKey = apiKey,
-                        baseUrl = baseUrl,
-                        model = model,
-                        mode = mode,
-                    )
-                }
+                } ?: Result.failure(
+                    Exception(context.getString(iad1tya.echo.music.R.string.ai_error_translation_failed)),
+                )
 
                 result.onSuccess { translatedLines ->
                     if (!isCompositionActive) {

@@ -99,6 +99,7 @@ fun SettingsScreen(
     val listenTogetherText = stringResource(R.string.listen_together)
     val contentText = stringResource(R.string.content)
     val aiLyricsText = stringResource(R.string.ai_lyrics_translation)
+    val aiChatText = stringResource(R.string.ai_chat_title)
     val privacyText = stringResource(R.string.privacy)
     val storageText = stringResource(R.string.storage)
     val backupText = stringResource(R.string.backup_restore)
@@ -261,6 +262,15 @@ fun SettingsScreen(
                         icon = painterResource(R.drawable.translate),
                         title = { Text(aiLyricsText) },
                         onClick = { navController.navigate("settings/ai") }
+                    )
+                )
+            }
+            if (aiChatText.lowercase().contains(searchLower)) {
+                add(
+                    Material3SettingsItem(
+                        icon = painterResource(R.drawable.auto_awesome),
+                        title = { Text(aiChatText) },
+                        onClick = { navController.navigate("settings/ai_chat") }
                     )
                 )
             }

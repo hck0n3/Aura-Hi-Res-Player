@@ -366,22 +366,6 @@ class HomeViewModel @Inject constructor(
             }
         }.stateIn(viewModelScope, SharingStarted.Lazily, null)
 
-    // ---- "Recomendado para ti (IA)" ------------------------------------------------------------
-    // The ONE persistent AI-recommendations playlist (fixed id), rebuilt daily by the opt-in
-    // AutoRecoPlaylistWorker. Reactive DB flows only — zero network from the Home path; the section
-    // simply doesn't exist until the worker has produced a non-empty playlist.
-
-    /** The playlist entity (carries name + lastUpdateTime for the "Actualizado" header label). */
-    val aiRecommendedPlaylist: StateFlow<Playlist?> =
-        database.playlist(iad1tya.echo.music.reco.AutoRecoPlaylistWorker.PLAYLIST_ID)
-            .stateIn(viewModelScope, SharingStarted.Lazily, null)
-
-    /** Its songs in playlist order (the DAO query already sorts by position). */
-    val aiRecommendedSongs: StateFlow<List<Song>?> =
-        database.playlistSongs(iad1tya.echo.music.reco.AutoRecoPlaylistWorker.PLAYLIST_ID)
-            .map { playlistSongs -> playlistSongs.map { it.song } }
-            .stateIn(viewModelScope, SharingStarted.Lazily, null)
-
     /** TimeOfDayMix as displayed: its pool IS quickPicks + forgottenFavorites + keepListening, and the
      *  shelf renders right under QuickPicks, so the raw mix duplicated the first screenful (worst in
      *  perf mode, where it's 1 of only 4 shelves). Same pattern + ifEmpty guard as above: excludes

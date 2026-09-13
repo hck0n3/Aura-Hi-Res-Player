@@ -140,6 +140,7 @@ fun AuraSettingsScreen(
     val listenTogetherText = stringResource(R.string.listen_together)
     val contentText = stringResource(R.string.content)
     val aiLyricsText = stringResource(R.string.ai_lyrics_translation)
+    val aiChatText = stringResource(R.string.ai_chat_title)
     val privacyText = stringResource(R.string.privacy)
     val storageText = stringResource(R.string.storage)
     val backupText = stringResource(R.string.backup_restore)
@@ -186,6 +187,7 @@ fun AuraSettingsScreen(
                 entries = listOf(
                     AuraSettingsEntry(contentText) { navController.navigate("settings/content") },
                     AuraSettingsEntry(aiLyricsText) { navController.navigate("settings/ai") },
+                    AuraSettingsEntry(aiChatText) { navController.navigate("settings/ai_chat") },
                 ),
             )
         )

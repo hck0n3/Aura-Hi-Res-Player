@@ -1,6 +1,5 @@
 package iad1tya.echo.music.ui.newui
 
-import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -91,7 +90,6 @@ import iad1tya.echo.music.extensions.toMediaItem
 import iad1tya.echo.music.models.toMediaMetadata
 import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.YouTubeQueue
-import iad1tya.echo.music.reco.AutoRecoPlaylistWorker
 import iad1tya.echo.music.ui.component.LocalMenuState
 import iad1tya.echo.music.ui.component.shimmer.ShimmerHost
 import iad1tya.echo.music.ui.menu.AlbumMenu
@@ -113,12 +111,10 @@ import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.ui.utils.tvFocusRestorer
 import iad1tya.echo.music.ui.utils.tvFocusable
 import iad1tya.echo.music.utils.isInternetAvailable
-import iad1tya.echo.music.constants.AiRecommendedPlaylistKey
 import iad1tya.echo.music.utils.rememberEnumPreference
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.HomeViewModel
 import java.time.LocalTime
-import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
@@ -176,8 +172,6 @@ fun AuraHomeScreen(
     val dailyMixes by viewModel.dailyMixes.collectAsState()
     val recentlyPlayed by viewModel.recentlyPlayed.collectAsState()
     val timeOfDayMix by viewModel.timeOfDayMixDisplay.collectAsState()
-    val aiRecommendedPlaylist by viewModel.aiRecommendedPlaylist.collectAsState()
-    val aiRecommendedSongs by viewModel.aiRecommendedSongs.collectAsState()
     val communityPlaylists by viewModel.communityPlaylists.collectAsState()
     val newFromArtists by viewModel.newFromArtists.collectAsState()
     val genreMix by viewModel.genreMix.collectAsState()
@@ -276,10 +270,9 @@ fun AuraHomeScreen(
         }
     }
 
-    val (aiRecsEnabled) = rememberPreference(AiRecommendedPlaylistKey, false)
     val homeSections = remember(
         randomizeHomeOrder, randomSeed, tasteOnlyHome, speedDialItems, quickPicks, dailyMixes,
-        timeOfDayMix, aiRecommendedSongs, aiRecsEnabled, keepListening, accountPlaylists, forgottenFavorites,
+        timeOfDayMix, keepListening, accountPlaylists, forgottenFavorites,
         communityPlaylists, newFromArtists, genreMix, similarRecommendations, homePage?.sections,
         explorePage?.moodAndGenres, explorePage?.newReleaseAlbums, perfOn, showSpeedDial,
     ) {
@@ -293,8 +286,6 @@ fun AuraHomeScreen(
             quickPickCount = quickPicks?.size ?: 0,
             dailyMixItemCounts = dailyMixes?.map { it.items.size }.orEmpty(),
             timeOfDayMixSongCount = timeOfDayMix?.songs?.size ?: 0,
-            // Settings toggle must win: a leftover AI playlist in the DB must not keep the shelf alive.
-            aiRecommendedSongCount = if (aiRecsEnabled) aiRecommendedSongs?.size ?: 0 else 0,
             keepListeningCount = keepListening?.size ?: 0,
             accountPlaylistCount = accountPlaylists?.size ?: 0,
             forgottenFavoritesCount = forgottenFavorites?.size ?: 0,
@@ -308,9 +299,8 @@ fun AuraHomeScreen(
         )
     }
 
-    val heroCarouselSongs = remember(quickPicks, aiRecommendedSongs) {
+    val heroCarouselSongs = remember(quickPicks) {
         quickPicks?.takeIf { it.isNotEmpty() }
-            ?: aiRecommendedSongs?.takeIf { it.isNotEmpty() }
     }
 
     // ── Shared item actions (the SAME lambdas the classic Home installs) ──────────────────────────
@@ -948,65 +938,6 @@ fun AuraHomeScreen(
                                                     isPlaying = isPlaying,
                                                     onClick = { playSong(song) },
                                                     onLongClick = { songMenu(song) },
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        HomeSection.AiRecommended -> {
-                            if (!aiRecsEnabled) return@forEach
-                            aiRecommendedSongs?.takeIf { it.isNotEmpty() }?.let { recommended ->
-                                item(key = "aura_ai_recommended") {
-                                    val recEntity = aiRecommendedPlaylist?.playlist
-                                    val recTitle = recEntity?.name ?: AutoRecoPlaylistWorker.PLAYLIST_NAME
-                                    Column(Modifier.animateItem()) {
-                                        AuraSectionHeader(
-                                            // The render's own "RECOMENDADO PARA TI · IA" rule, in violet.
-                                            title = recTitle,
-                                            accent = AuraPalette.Violet,
-                                            label = recEntity?.lastUpdateTime?.let { updated ->
-                                                "Actualizado: " + DateUtils.getRelativeTimeSpanString(
-                                                    updated.atZone(ZoneId.systemDefault()).toInstant()
-                                                        .toEpochMilli(),
-                                                    System.currentTimeMillis(),
-                                                    DateUtils.MINUTE_IN_MILLIS,
-                                                )
-                                            },
-                                            onClick = {
-                                                navController.navigate(
-                                                    "local_playlist/${AutoRecoPlaylistWorker.PLAYLIST_ID}",
-                                                )
-                                            },
-                                            onPlayAll = { playAllSongs(recTitle, recommended) },
-                                        )
-                                        // The render draws THIS section as rows, not as a shelf.
-                                        Column(
-                                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                                            modifier = Modifier.padding(
-                                                horizontal = AuraSpacing.Gutter,
-                                                vertical = AuraSpacing.SectionGap,
-                                            ),
-                                        ) {
-                                            recommended.distinctBy { it.id }.take(6).forEach { song ->
-                                                AuraSongRow(
-                                                    title = song.song.title,
-                                                    subtitle = song.artists.joinToString { it.name },
-                                                    thumbnailUrl = song.song.thumbnailUrl,
-                                                    seed = song.id,
-                                                    isActive = song.id == mediaMetadata?.id,
-                                                    isPlaying = isPlaying,
-                                                    liked = song.song.liked,
-                                                    explicit = song.song.explicit,
-                                                    downloadId = song.id,
-                                                    format = song.format,
-                                                    playedInShuffle = song.song.totalPlayTime > 0L,
-                                                    swipeMediaItem = song.toMediaItem(),
-                                                    onClick = { playSong(song) },
-                                                    onLongClick = { songMenu(song) },
-                                                    onMenuClick = { songMenu(song) },
                                                 )
                                             }
                                         }

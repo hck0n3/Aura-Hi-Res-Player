@@ -1,6 +1,5 @@
 package iad1tya.echo.music.ui.screens
 
-import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.focusGroup
@@ -138,7 +137,6 @@ import iad1tya.echo.music.playback.queues.ListQueue
 import iad1tya.echo.music.playback.queues.LocalAlbumRadio
 import iad1tya.echo.music.playback.queues.YouTubeAlbumRadio
 import iad1tya.echo.music.playback.queues.YouTubeQueue
-import iad1tya.echo.music.reco.AutoRecoPlaylistWorker
 import iad1tya.echo.music.R
 import iad1tya.echo.music.ui.component.AlbumGridItem
 import iad1tya.echo.music.ui.component.ArtistGridItem
@@ -170,11 +168,9 @@ import iad1tya.echo.music.ui.utils.resize
 import iad1tya.echo.music.utils.isInternetAvailable
 import iad1tya.echo.music.utils.listItemShape
 import iad1tya.echo.music.utils.rememberEnumPreference
-import iad1tya.echo.music.constants.AiRecommendedPlaylistKey
 import iad1tya.echo.music.utils.rememberPreference
 import iad1tya.echo.music.viewmodels.CommunityPlaylistItem
 import iad1tya.echo.music.viewmodels.HomeViewModel
-import java.time.ZoneId
 import kotlin.math.min
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
@@ -191,8 +187,6 @@ sealed class HomeSection(val id: String, val baseWeight: Int) {
     data class DailyMix(val index: Int) : HomeSection("daily_mix_$index", 80)
     // "Mix de la mañana/tarde/noche": light local row, near QuickPicks.
     data object TimeOfDayMix : HomeSection("time_of_day_mix", 85)
-    // "Recomendado para ti (IA)": the persistent daily AI playlist (AutoRecoPlaylistWorker).
-    data object AiRecommended : HomeSection("ai_recommended", 88)
     data object NewFromArtists : HomeSection("new_from_artists", 65)
     // "Nuevos lanzamientos": explorePage.newReleaseAlbums (previously fetched but never rendered).
     data object NewReleases : HomeSection("new_releases", 60)
@@ -226,7 +220,6 @@ internal fun computeHomeSections(
     quickPickCount: Int,
     dailyMixItemCounts: List<Int>,
     timeOfDayMixSongCount: Int,
-    aiRecommendedSongCount: Int,
     keepListeningCount: Int,
     accountPlaylistCount: Int,
     forgottenFavoritesCount: Int,
@@ -244,9 +237,6 @@ internal fun computeHomeSections(
     if (quickPickCount > 0) list.add(HomeSection.QuickPicks)
     // "Mix de la mañana/tarde/noche" — light local row, only when there's enough history.
     if (timeOfDayMixSongCount > 0) list.add(HomeSection.TimeOfDayMix)
-    // "Recomendado para ti (IA)" IS the user's taste (built from their own history) — shown even in
-    // taste-only mode; only exists once the opt-in worker has produced a non-empty playlist.
-    if (aiRecommendedSongCount > 0) list.add(HomeSection.AiRecommended)
     // "From the community" is generic (not the user's taste) — hidden in taste-only mode.
     if (!tasteOnlyHome && communityPlaylistCount > 0) list.add(HomeSection.FromTheCommunity)
     // Up to 3 "Mix diario N" shelves, one per seed.
@@ -297,7 +287,6 @@ internal fun computeHomeSections(
                 is HomeSection.DailyMix -> 500
 
                 HomeSection.TimeOfDayMix,
-                HomeSection.AiRecommended,
                 HomeSection.KeepListening,
                 HomeSection.AccountPlaylists,
                 HomeSection.ForgottenFavorites,
@@ -321,7 +310,6 @@ internal fun computeHomeSections(
                     Random(randomSeed + "daily_mix".hashCode()).nextInt(-200, 400) - section.index
 
                 HomeSection.TimeOfDayMix,
-                HomeSection.AiRecommended,
                 HomeSection.KeepListening,
                 HomeSection.AccountPlaylists,
                 HomeSection.ForgottenFavorites,
@@ -343,7 +331,6 @@ internal fun computeHomeSections(
             HomeSection.QuickPicks to 900,
             // Apple Listen Now: recents sit near the top, then Made for You, then new music.
             HomeSection.KeepListening to 880,
-            HomeSection.AiRecommended to 860,
             HomeSection.TimeOfDayMix to 850,
             HomeSection.NewFromArtists to 650,
             HomeSection.NewReleases to 620,
@@ -782,9 +769,6 @@ fun HomeScreen(
     val recentlyPlayed by viewModel.recentlyPlayed.collectAsState()
     // Deduped display flow: the raw mix pool overlaps QuickPicks/SpeedDial (see HomeViewModel).
     val timeOfDayMix by viewModel.timeOfDayMixDisplay.collectAsState()
-    // "Recomendado para ti (IA)": the persistent daily AI playlist + its songs (fixed id, DB-reactive).
-    val aiRecommendedPlaylist by viewModel.aiRecommendedPlaylist.collectAsState()
-    val aiRecommendedSongs by viewModel.aiRecommendedSongs.collectAsState()
     val communityPlaylists by viewModel.communityPlaylists.collectAsState()
     val newFromArtists by viewModel.newFromArtists.collectAsState()
     val genreMix by viewModel.genreMix.collectAsState()
@@ -823,7 +807,6 @@ fun HomeScreen(
     val (showSpeedDial) = rememberPreference(ShowSpeedDialKey, true)
     val (tasteOnlyHome) = rememberPreference(HomeTasteOnlyKey, true)
     val (homeRichLayout) = rememberPreference(HomeRichLayoutKey, true)
-    val (aiRecsEnabled) = rememberPreference(AiRecommendedPlaylistKey, false)
     // Editorial look: bigger artwork cards in the taste rows. Null = compact (default component size).
     val richCardHeight: androidx.compose.ui.unit.Dp? = if (homeRichLayout) GridThumbnailHeight * 1.25f else null
 
@@ -1050,8 +1033,6 @@ fun HomeScreen(
         quickPicks,
         dailyMixes,
         timeOfDayMix,
-        aiRecommendedSongs,
-        aiRecsEnabled,
         keepListening,
         accountPlaylists,
         forgottenFavorites,
@@ -1075,7 +1056,6 @@ fun HomeScreen(
             quickPickCount = quickPicks?.size ?: 0,
             dailyMixItemCounts = dailyMixes?.map { it.items.size }.orEmpty(),
             timeOfDayMixSongCount = timeOfDayMix?.songs?.size ?: 0,
-            aiRecommendedSongCount = if (aiRecsEnabled) aiRecommendedSongs?.size ?: 0 else 0,
             keepListeningCount = keepListening?.size ?: 0,
             accountPlaylistCount = accountPlaylists?.size ?: 0,
             forgottenFavoritesCount = forgottenFavorites?.size ?: 0,
@@ -2058,60 +2038,6 @@ fun HomeScreen(
                                     ) {
                                         items(
                                             items = mix.songs.distinctBy { it.id },
-                                            key = { it.id },
-                                        ) { song ->
-                                            Box(modifier = Modifier.width(GridThumbnailHeight)) {
-                                                localGridItem(song)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        HomeSection.AiRecommended -> {
-                            if (!aiRecsEnabled) return@forEach
-                            // "Recomendado para ti (IA)": the ONE persistent AI playlist rebuilt daily by
-                            // the opt-in AutoRecoPlaylistWorker. Light local row (same pattern as GenreMix);
-                            // the header shows when it was last refreshed (from the entity's REAL
-                            // lastUpdateTime, bumped on every rebuild) and tapping it opens the playlist.
-                            aiRecommendedSongs?.takeIf { it.isNotEmpty() }?.let { recommended ->
-                                item(key = "ai_recommended_title") {
-                                    val recEntity = aiRecommendedPlaylist?.playlist
-                                    val recTitle = recEntity?.name ?: AutoRecoPlaylistWorker.PLAYLIST_NAME
-                                    NavigationTitle(
-                                        label = recEntity?.lastUpdateTime?.let { updated ->
-                                            "Actualizado: " + DateUtils.getRelativeTimeSpanString(
-                                                updated.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-                                                System.currentTimeMillis(),
-                                                DateUtils.MINUTE_IN_MILLIS,
-                                            )
-                                        },
-                                        title = recTitle,
-                                        onClick = {
-                                            navController.navigate(
-                                                "local_playlist/${AutoRecoPlaylistWorker.PLAYLIST_ID}"
-                                            )
-                                        },
-                                        onPlayAllClick = {
-                                            val items = recommended.distinctBy { it.id }.map { it.toMediaItem() }
-                                            if (items.isNotEmpty()) {
-                                                playerConnection.playQueue(
-                                                    ListQueue(title = recTitle, items = items)
-                                                )
-                                            }
-                                        },
-                                        modifier = Modifier.animateItem()
-                                    )
-                                }
-                                item(key = "ai_recommended_list") {
-                                    LazyRow(
-                                        contentPadding = WindowInsets.systemBars
-                                            .only(WindowInsetsSides.Horizontal)
-                                            .asPaddingValues(),
-                                        modifier = Modifier.animateItem().tvFocusRestorer()
-                                    ) {
-                                        items(
-                                            items = recommended.distinctBy { it.id },
                                             key = { it.id },
                                         ) { song ->
                                             Box(modifier = Modifier.width(GridThumbnailHeight)) {

@@ -770,25 +770,14 @@ val LyricsRomanizePunjabiKey = booleanPreferencesKey("lyricsRomanizePunjabi")
 val LyricsRomanizeAsMainKey = booleanPreferencesKey("lyricsRomanizeAsMain")
 val LyricsRomanizeCyrillicByLineKey = booleanPreferencesKey("lyricsRomanizeCyrillicByLine")
 // Opt-in (default false): when the lyrics of an English-looking song open, prompt "¿Traducir?"
-// and translate via the FREE keyless AI on confirm. Off = no prompt (previous behavior).
+// and translate via the FREE keyless Google Translate endpoint on confirm. Off = no prompt (previous behavior).
 val AskTranslateLyricsOnOpenKey = booleanPreferencesKey("askTranslateLyricsOnOpen")
 /** When true, opening lyrics auto-translates to [TranslateLanguageKey] (default: Español Latinoamérica). */
 val AutoTranslateLyricsKey = booleanPreferencesKey("autoTranslateLyrics")
 /** One-shot: seed auto-translate ON + target es-419 for everyone who still has English translate defaults. */
 val LyricsEsLatamAutoTranslateV1AppliedKey = booleanPreferencesKey("lyrics_es_latam_auto_translate_v1_applied")
-// AI text-to-playlist feature toggle (Library → "Lista AI"). Kill-switch, defaults on.
-val AiPlaylistEnabledKey = booleanPreferencesKey("ai_playlist_enabled")
-// Opt-in (default false): daily worker that rebuilds the ONE persistent "Recomendado para ti (IA)"
-// playlist from the user's listening history (AutoRecoPlaylistWorker). Off = zero network/battery cost.
-val AiRecommendedPlaylistKey = booleanPreferencesKey("aiRecommendedPlaylist")
-val OpenRouterApiKey = stringPreferencesKey("openRouterApiKey")
-val AiProviderKey = stringPreferencesKey("aiProvider")
-val OpenRouterBaseUrlKey = stringPreferencesKey("openRouterBaseUrl")
-val OpenRouterModelKey = stringPreferencesKey("openRouterModel")
 val TranslateModeKey = stringPreferencesKey("translateMode")
 val TranslateLanguageKey = stringPreferencesKey("translateLanguage")
-val DeeplApiKey = stringPreferencesKey("deeplApiKey")
-val DeeplFormalityKey = stringPreferencesKey("deeplFormality")
 val LyricsGlowEffectKey = booleanPreferencesKey("lyricsGlowEffect")
 val AppleMusicLyricsBlurKey = booleanPreferencesKey("appleMusicLyricsBlur")
 val LyricsStandardBlurKey = booleanPreferencesKey("lyricsStandardBlur")

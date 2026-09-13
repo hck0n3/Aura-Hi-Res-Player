@@ -39,7 +39,6 @@ fun BoxScope.HideOnScrollFAB(
     @DrawableRes icon: Int,
     onClick: () -> Unit,
     onRecognitionClick: (() -> Unit)? = null,
-    onAiPlaylistClick: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = visible && lazyListState.isScrollingUp(),
@@ -57,21 +56,6 @@ fun BoxScope.HideOnScrollFAB(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(end = 16.dp, bottom = 64.dp)
         ) {
-            if (onAiPlaylistClick != null) {
-                SmallFloatingActionButton(
-                    onClick = onAiPlaylistClick,
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.auto_awesome),
-                        contentDescription = stringResource(R.string.ai_playlist_title),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-            }
             if (onRecognitionClick != null) {
                 SmallFloatingActionButton(
                     onClick = onRecognitionClick,
@@ -106,7 +90,6 @@ fun BoxScope.HideOnScrollFAB(
     @DrawableRes icon: Int,
     onClick: () -> Unit,
     onRecognitionClick: (() -> Unit)? = null,
-    onAiPlaylistClick: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = visible && lazyListState.isScrollingUp(),
@@ -124,21 +107,6 @@ fun BoxScope.HideOnScrollFAB(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(end = 16.dp, bottom = 64.dp)
         ) {
-            if (onAiPlaylistClick != null) {
-                SmallFloatingActionButton(
-                    onClick = onAiPlaylistClick,
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.auto_awesome),
-                        contentDescription = stringResource(R.string.ai_playlist_title),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-            }
             if (onRecognitionClick != null) {
                 SmallFloatingActionButton(
                     onClick = onRecognitionClick,
@@ -173,7 +141,6 @@ fun BoxScope.HideOnScrollFAB(
     @DrawableRes icon: Int,
     onClick: () -> Unit,
     onRecognitionClick: (() -> Unit)? = null,
-    onAiPlaylistClick: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = visible && scrollState.isScrollingUp(),
@@ -191,21 +158,6 @@ fun BoxScope.HideOnScrollFAB(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(end = 16.dp, bottom = 64.dp)
         ) {
-            if (onAiPlaylistClick != null) {
-                SmallFloatingActionButton(
-                    onClick = onAiPlaylistClick,
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.auto_awesome),
-                        contentDescription = stringResource(R.string.ai_playlist_title),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-            }
             if (onRecognitionClick != null) {
                 SmallFloatingActionButton(
                     onClick = onRecognitionClick,

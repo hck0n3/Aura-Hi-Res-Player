@@ -46,7 +46,8 @@ import iad1tya.echo.music.ui.screens.settings.RomanizationSettings
 import iad1tya.echo.music.ui.screens.settings.SettingsScreen
 import iad1tya.echo.music.ui.screens.settings.StorageSettings
 import iad1tya.echo.music.ui.screens.settings.ThemeScreen
-import iad1tya.echo.music.ui.screens.settings.AiSettings
+import iad1tya.echo.music.ui.screens.settings.AiChatScreen
+import iad1tya.echo.music.ui.screens.settings.LyricsTranslationSettings
 import iad1tya.echo.music.ui.screens.settings.integrations.ListenTogetherSettings
 import iad1tya.echo.music.ui.screens.recognition.RecognitionScreen
 import iad1tya.echo.music.ui.screens.recognition.RecognitionHistoryScreen
@@ -427,9 +428,13 @@ fun NavGraphBuilder.navigationBuilder(
     }
 
     composable("settings/ai") {
-        AiSettings(navController, scrollBehavior)
+        LyricsTranslationSettings(navController, scrollBehavior)
     }
-    
+
+    composable("settings/ai_chat") {
+        AiChatScreen(navController)
+    }
+
     composable("settings/player") {
         PlayerSettings(navController, scrollBehavior)
     }
